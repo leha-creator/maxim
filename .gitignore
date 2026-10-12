@@ -1,0 +1,18 @@
+# IDE
+.idea/
+.vscode/
+
+# Секреты и локальное окружение
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Локальные настройки инструментов
+.claude/settings.local.json
+
+# ОС
+.DS_Store
+Thumbs.db
