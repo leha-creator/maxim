@@ -4,7 +4,7 @@
 
 **Связанные документы.** [glossary.md](glossary.md) — названия; [03-placement.md](03-placement.md) — состояния и суммы размещения; [05-integrations.md](05-integrations.md) — внешние объекты; [06-finance-legal.md](06-finance-legal.md) — проводки.
 
-**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12; A-07, A-13, A-14, A-22 … A-26, A-31 … A-33, A-35.
+**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, A-05, A-07, A-08, A-13, A-14, A-20, A-22, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, Q-33.
 
 ## 1. Общие правила
 
@@ -251,7 +251,7 @@ erDiagram
 
 ### post_version
 
-Снимок поста. Создаётся при оформлении заказа и при каждой правке после него (03 §9).
+Снимок поста. Создаётся при оформлении заказа и при каждой правке после него (03 §9). После перехода в `ready` не изменяется (D-03).
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
@@ -275,7 +275,7 @@ erDiagram
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
 | `post_version_id` | `uuid` | да | |
-| `position` | `integer` | да | С 0. Уникально в паре с версией. Не более 10 строк на версию (A-23) |
+| `position` | `integer` | да | С 0. Уникально в паре с версией. Альбом (D-10): не более 10 строк на версию (A-23) |
 | `media_file_id` | `uuid` | да | Оригинал |
 | `media_derivative_id` | `uuid` | да | Файл, который уходит в канал: `labeled` или `plain` |
 
@@ -324,7 +324,7 @@ erDiagram
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
-| `order_id`, `channel_id` | `uuid` | да | Уникальная пара |
+| `order_id`, `channel_id` | `uuid` | да | Уникальная пара. Размещение — единица работы (D-02) |
 | `blogger_organization_id` | `uuid` | да | Снимок владельца канала при создании |
 | `format_id` | `text` | да | |
 | `top_hours`, `duration_hours` | `integer` | да | Снимок формата |
@@ -438,13 +438,13 @@ erDiagram
 |---|---|---|
 | `ord_organization` | `organization_id uuid` | `organization_id` |
 | `ord_contract` | `kind text` (`initial`, `publisher`); `client_organization_id`, `contractor_organization_id uuid`; `number text`; `signed_date date` | `(kind, client_organization_id, contractor_organization_id)` |
-| `ord_platform` | `channel_id uuid`; `name text`; `url text` | `channel_id` |
-| `creative` | `post_version_id uuid`; `ord_contract_id uuid` (изначальный); `erid text`; `erir_status text` (`pending`, `success`, `error`); `erir_error text` | `post_version_id`; `erid` |
+| `ord_platform` (A-32) | `channel_id uuid`; `name text`; `url text` | `channel_id` |
+| `creative` (D-07) | `post_version_id uuid`; `ord_contract_id uuid` (изначальный); `erid text`; `erir_status text` (`pending`, `success`, `error`); `erir_error text` | `post_version_id`; `erid` |
 | `ord_statistics` | `creative_id`, `ord_platform_id`, `placement_id uuid`; `period date` (первое число месяца); `impressions integer`; `shown_from`, `shown_to date`; `amount bigint` | `(creative_id, ord_platform_id, period)` |
 | `ord_invoice` | `ord_contract_id uuid`; `period date`; `number text`; `invoice_date date`; `amount bigint` | `(ord_contract_id, period)` |
 | `ord_invoice_item` | `ord_invoice_id`, `creative_id`, `ord_platform_id uuid`; `amount bigint` | `(ord_invoice_id, creative_id, ord_platform_id)` |
 
-Договор `initial`: клиент — рекламодатель, исполнитель — платформа. Договор `publisher`: клиент — платформа, исполнитель — блогер (A-31).
+Договор `initial`: клиент — рекламодатель, исполнитель — платформа. Договор `publisher`: клиент — платформа, исполнитель — блогер (A-31). Параметры договоров для ОРД — A-33.
 
 ### ad_category
 
