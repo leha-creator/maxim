@@ -4,7 +4,7 @@
 
 **Связанные документы.** [glossary.md](glossary.md) — названия; [03-placement.md](03-placement.md) — состояния и суммы размещения; [05-integrations.md](05-integrations.md) — внешние объекты; [06-finance-legal.md](06-finance-legal.md) — проводки.
 
-**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, A-05, A-07, A-08, A-13, A-14, A-20, A-22, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, Q-33.
+**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, D-14, A-05, A-08, A-13, A-14, A-20, A-22, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, Q-33, Q-37.
 
 ## 1. Общие правила
 
@@ -77,12 +77,36 @@ erDiagram
 |---|---|---|---|
 | `legal_type` | `text` | да | `legal_entity`, `sole_proprietor`, `self_employed` |
 | `inn` | `text` | да | Уникально. 10 цифр для `legal_entity`, 12 для остальных; проверяется контрольное число |
-| `name` | `text` | да | Официальное наименование или ФИО. Идёт в плашку, строку маркировки и ОРД |
+| `name` | `text` | да | Официальное наименование или ФИО. Для `legal_entity` — сокращённое наименование, например «ООО «Ромашка»». Идёт в плашку, строку маркировки и ОРД |
 | `contact_name` | `text` | да | |
 | `phone` | `text` | да | |
+| `kpp` | `text` | нет | 9 цифр. Только для `legal_entity` |
+| `address` | `text` | нет | Юридический адрес для `legal_entity`, адрес регистрации для `sole_proprietor`. У `self_employed` не запрашивается |
+| `tax_regime` | `text` | нет | Режим налогообложения (§9). Допустимые значения зависят от `legal_type` — таблица ниже |
+| `vat_rate` | `text` | нет | Ставка НДС (§9). Допустимые значения зависят от `tax_regime` — таблица ниже |
+| `tax_document_storage_key`, `tax_document_sha256` | `text` | нет | Файл документа, подтверждающего режим налогообложения |
+| `signer_position`, `signer_name` | `text` | нет | Подписант: должность и ФИО. Только для `legal_entity` |
+| `signer_basis_name`, `signer_basis_number` | `text` | нет | Документ, на основании которого действует подписант: название и номер. Только для `legal_entity` |
 | `bank_account`, `bank_bik` | `text` | нет | Реквизиты для вывода остатка баланса (S-33) |
 | `is_platform` | `boolean` | да | `true` у единственной строки — самой платформы (ИП-владельца). Нужна как сторона договоров ОРД |
 | `status` | `text` | да | `active`, `blocked` |
+
+Поля от `kpp` до `signer_basis_number` заполняются при регистрации рекламодателя (S-01, 08 §4.2) и блогера (S-10, 08 §4.3) и обязательны в пределах своего типа лица: `tax_regime`, `vat_rate` и файл документа — всем; `address` — `sole_proprietor` и `legal_entity`; `kpp` и поля подписанта — `legal_entity`.
+
+Допустимые сочетания — рабочие, проверить с бухгалтером (Q-37).
+
+| `legal_type` | Допустимые `tax_regime` |
+|---|---|
+| `self_employed` | `npd` |
+| `sole_proprietor` | `osno`, `usn`, `ausn`, `eshn`, `psn`, `npd` |
+| `legal_entity` | `osno`, `usn`, `ausn`, `eshn` |
+
+| `tax_regime` | Допустимые `vat_rate` |
+|---|---|
+| `osno` | `vat_22`, `none` (освобождение по ст. 145 НК) |
+| `usn` | `none`, `vat_5`, `vat_7`, `vat_22` |
+| `eshn` | `vat_22`, `none` (освобождение) |
+| `ausn`, `psn`, `npd` | `none` |
 
 ### organization_member
 
@@ -98,9 +122,9 @@ erDiagram
 | Таблица | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|---|
 | `advertiser_profile` | — | — | — | Дополнительных полей нет. Баланс берётся из счёта учёта |
-| `blogger_profile` | `full_name` | `text` | да | ФИО для обращения и выплат |
+| `blogger_profile` | `full_name` | `text` | нет | ФИО для обращения и выплат. Обязательно для `self_employed` и `sole_proprietor`; у `legal_entity` пусто |
 
-Ограничение: `advertiser_profile` допустим при `legal_type` из `legal_entity`, `sole_proprietor` (A-05); `blogger_profile` — из `self_employed`, `sole_proprietor` (A-07).
+Ограничение: `advertiser_profile` допустим при `legal_type` из `legal_entity`, `sole_proprietor` (A-05); `blogger_profile` — при любом `legal_type` (D-14). Для блогера с `legal_entity` запись `rocketwork_contractor` не создаётся: выплаты идут вне Рокет Ворк (A-36).
 
 ### legal_document, legal_acceptance
 
@@ -658,6 +682,8 @@ erDiagram
 | Перечисление | Значения |
 |---|---|
 | `organization.legal_type` | `legal_entity`, `sole_proprietor`, `self_employed` |
+| `organization.tax_regime` | `osno` — общая система; `usn` — упрощённая; `ausn` — автоматизированная упрощённая; `eshn` — единый сельхозналог; `psn` — патент; `npd` — налог на профессиональный доход |
+| `organization.vat_rate` | `none` — без НДС; `vat_5`; `vat_7`; `vat_22` |
 | `channel.status` | `unclaimed` — бот добавлен неизвестным пользователем; `pending_rights` — не хватает прав или канал закрытый; `moderation`; `active`; `rejected`; `suspended` — временно недоступен (права, РКН); `disconnected` — бот удалён; `blocked` — заблокирован администратором |
 | `channel.rkn_status` | `not_required`, `pending`, `confirmed`, `rejected` |
 | `post_version.status` | `pending_moderation`, `rejected`, `approved`, `ready` |
@@ -689,12 +715,14 @@ erDiagram
 |---|---|---|
 | Почта | `user.email` | Вход, уведомления |
 | Идентификатор пользователя MAX | `user.max_user_id` | Привязка канала, уведомления |
-| ФИО | `organization.name`, `organization.contact_name`, `blogger_profile.full_name` | Договор, маркировка, выплаты |
+| ФИО | `organization.name`, `organization.contact_name`, `organization.signer_name`, `blogger_profile.full_name` | Договор, маркировка, выплаты |
 | ИНН | `organization.inn` | Договор, ОРД, выплаты |
 | Телефон | `organization.phone` | Связь |
+| Адрес регистрации ИП | `organization.address` | Договор, закрывающие документы |
+| Документ о режиме налогообложения | `organization.tax_document_storage_key` | Подтверждение режима и ставки НДС |
 | Банковские реквизиты рекламодателя | `organization.bank_account`, `bank_bik` | Возврат остатка |
 | IP-адрес | `session.ip`, `legal_acceptance.ip`, `audit_log.ip` | Безопасность, доказательство принятия документов |
 
-Не хранится: паспортные данные, фотографии документов, банковские карты и счета блогеров — всё это находится в Рокет Ворк (A-24). В `outbound_request` и журнале приложения персональные данные маскируются (07 §5).
+Не хранится: паспортные данные, фотографии документов, удостоверяющих личность, банковские карты и счета блогеров — всё это находится в Рокет Ворк (A-24). В `outbound_request` и журнале приложения персональные данные маскируются (07 §5).
 
 Состав и основания обработки — проверить с юристом (Q-33).
