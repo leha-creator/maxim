@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Макет экранов — биржа рекламы в каналах MAX</title>
+<!--
+  Макет без дизайна: какие экраны есть и какие элементы на каждом.
+  Один файл, без сборки и зависимостей — открывается двойным щелчком.
+
+  Как править:
+  - экран = <section class="screen" id="роль/экран" data-title data-s data-stage [data-nav]>
+      id          — он же адрес после # и будущий маршрут кабинета
+      data-s      — сценарии из docs/02-scenarios.md
+      data-stage  — этап из .ai-factory/ROADMAP.md
+      data-nav    — пункт меню, который подсвечен (для вложенных экранов)
+  - оболочка кабинета (шапка, меню), левый список экранов и сводная таблица строятся скриптом внизу
+  - пошаговый экран: <div class="steps"> с несколькими <div class="step" data-step="Название шага">;
+    показывается один шаг, адрес шага — #роль/экран@N
+  - сценарий — путь по экранам со стрелками: список flows в скрипте, адрес — #go/ключ/N
+  - .box блок, .btn кнопка, .in поле ввода, .ph заглушка картинки или графика,
+    .tag состояние, .if условие показа, .note пояснение
+-->
+<style>
+  :root { --bg: #f3f5f9; --card: #fff; --line: #dde2ea; --text: #1e2632; --muted: #6a7484; --accent: #3565e8; --soft: #eaf0ff;
+          --ok: #e3f5e8; --ok-t: #1d6b34; --warn: #fff3d6; --warn-t: #7a5600; --bad: #fde7e7; --bad-t: #a12626; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, "Segoe UI", Arial, sans-serif; color: var(--text); background: var(--bg); display: flex; min-height: 100vh; }
+  a { color: var(--accent); }
+  code { background: #e9edf3; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+
+  /* левый список экранов */
+  #index { width: 270px; flex: none; background: var(--card); border-right: 1px solid var(--line); padding: 16px 12px; overflow: auto; height: 100vh; position: sticky; top: 0; }
+  #index h1 { font-size: 17px; margin: 0 0 2px; }
+  #index h2 { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 18px 0 4px 8px; }
+  #index a { display: block; padding: 4px 8px; text-decoration: none; color: var(--text); border-radius: 7px; }
+  #index a:hover { background: var(--bg); }
+  #index a.sub { padding-left: 22px; color: var(--muted); }
+  #index a.flow::before { content: "▶ "; color: var(--accent); font-size: 11px; }
+  #index a.on { background: var(--accent); color: #fff; }
+  #index a.on::before { color: #fff; }
+
+  main { flex: 1; padding: 20px 24px 40px; min-width: 0; }
+  .screen, #overview { display: none; }
+  .screen.on, #overview.on { display: block; }
+  .meta { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .meta b { color: var(--text); font-size: 20px; margin-right: 12px; }
+
+  /* панель сценария: стрелки и подпись шага */
+  #flow { display: none; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; position: sticky; top: 12px; z-index: 5; box-shadow: 0 4px 16px rgba(30, 38, 50, .08); max-width: 1200px; }
+  #flow.on { display: flex; }
+  #flow .arrow { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; text-decoration: none; cursor: pointer; }
+  #flow .arrow.off { background: var(--line); pointer-events: none; }
+  #flow .mid { flex: 1; min-width: 0; }
+  #flow .name { font-size: 12px; color: var(--muted); }
+  #flow .cap { font-size: 17px; font-weight: 600; }
+  #flow .dots { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+  #flow .dots a { width: 22px; height: 6px; border-radius: 3px; background: var(--line); }
+  #flow .dots a.done { background: #a9bdf5; }
+  #flow .dots a.on { background: var(--accent); }
+  #flow .close { color: var(--muted); text-decoration: none; font-size: 13px; white-space: nowrap; }
+
+  /* рамка кабинета */
+  .frame { background: var(--card); border: 1px solid var(--line); border-radius: 14px; max-width: 1200px; overflow: hidden; box-shadow: 0 2px 10px rgba(30, 38, 50, .05); }
+  .top { display: flex; gap: 16px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .top .sp { flex: 1; }
+  .shell { display: flex; }
+  .menu { width: 200px; flex: none; border-right: 1px solid var(--line); padding: 12px 10px; background: #fafbfd; }
+  .menu a { display: block; padding: 7px 10px; text-decoration: none; color: var(--text); border-radius: 8px; }
+  .menu a.on { background: var(--soft); color: var(--accent); font-weight: 600; }
+  .content { flex: 1; padding: 20px; min-width: 0; }
+  .content > h3 { margin: 0 0 14px; font-size: 20px; }
+  .lead { color: var(--muted); margin: -8px 0 14px; }
+
+  .cols { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .cols > * { flex: 1; min-width: 220px; }
+  .cols > .w2 { flex: 2; }
+  .cols > .narrow { flex: 0 0 230px; }
+  .box { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; background: var(--card); }
+  .box > h4 { margin: 0 0 8px; font-size: 15px; }
+  .box p, .box ul, .box ol { margin: 6px 0; }
+  ul, ol { padding-left: 20px; }
+
+  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 5px 13px; margin: 3px 4px 3px 0; background: var(--card); color: var(--text); text-decoration: none; white-space: nowrap; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.main { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.big { padding: 10px 20px; font-size: 16px; }
+  .in { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 120px; color: #98a1ae; background: #fbfcfd; margin: 3px 0; }
+  .in.wide { display: block; }
+  .in.area { display: block; min-height: 76px; }
+  label { display: block; margin: 9px 0 0; font-size: 13px; color: var(--muted); }
+  .ph { border: 1px dashed #c3cad6; border-radius: 10px; background: #f6f8fb; color: var(--muted); display: flex; align-items: center; justify-content: center; min-height: 84px; text-align: center; padding: 8px; margin: 6px 0; font-size: 13px; }
+  .tag { display: inline-block; border-radius: 20px; padding: 1px 10px; font-size: 12.5px; white-space: nowrap; background: #e9edf3; color: #3d4756; }
+  .tag.ok { background: var(--ok); color: var(--ok-t); }
+  .tag.warn { background: var(--warn); color: var(--warn-t); }
+  .tag.bad { background: var(--bad); color: var(--bad-t); }
+  .if { display: inline-block; font-size: 12.5px; color: var(--warn-t); background: var(--warn); border-radius: 6px; padding: 1px 8px; }
+  .if::before { content: "если: "; font-weight: 600; }
+  .note { font-size: 13px; color: #3d4a66; background: var(--soft); border-radius: 8px; padding: 7px 12px; margin: 8px 0; }
+  .note::before { content: "💡 "; }
+
+  table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 8px; text-align: left; vertical-align: top; }
+  th { font-weight: 500; color: var(--muted); font-size: 12.5px; }
+  tr:last-child td { border-bottom: 0; }
+
+  /* пошаговый экран: один шаг на всю рабочую область */
+  .stepper { display: flex; gap: 6px; align-items: center; justify-content: center; margin: 4px 0 22px; flex-wrap: wrap; }
+  .stepper a { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--muted); padding: 4px 10px; border-radius: 20px; }
+  .stepper a i { font-style: normal; width: 26px; height: 26px; border-radius: 50%; background: var(--line); color: var(--text); display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .stepper a.done i { background: #a9bdf5; color: #fff; }
+  .stepper a.on { color: var(--text); font-weight: 600; background: var(--soft); }
+  .stepper a.on i { background: var(--accent); color: #fff; }
+  .stepper span { color: #b6bdc9; }
+  .step { display: none; max-width: 560px; margin: 0 auto; padding: 8px 4px 4px; }
+  .step.on { display: block; }
+  .step > h4 { font-size: 22px; margin: 0 0 4px; text-align: center; }
+  .step > .lead { text-align: center; margin: 0 0 16px; }
+  .stepnav { display: flex; justify-content: space-between; align-items: center; max-width: 560px; margin: 18px auto 6px; }
+  .stepnav .off { visibility: hidden; }
+  .choice { display: flex; gap: 14px; }
+  .choice a { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 18px 14px; text-align: center; text-decoration: none; color: var(--text); }
+  .choice a:hover { border-color: var(--accent); background: var(--soft); }
+  .choice b { display: block; font-size: 17px; }
+  .choice span { color: var(--muted); font-size: 13px; }
+
+  /* стартовая страница */
+  #flowcards { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 22px; }
+  #flowcards a { flex: 1; min-width: 220px; border: 1px solid var(--line); border-radius: 12px; padding: 16px; text-decoration: none; color: var(--text); background: var(--card); }
+  #flowcards a:hover { border-color: var(--accent); }
+  #flowcards b { display: block; font-size: 16px; margin-bottom: 4px; }
+  #flowcards span { color: var(--muted); font-size: 13px; }
+  #flowcards em { display: block; margin-top: 10px; color: var(--accent); font-style: normal; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<nav id="index">
+  <h1>Макет экранов</h1>
+  <div style="font-size:13px;color:#6a7484">Какие экраны есть и что на каждом. Начните со сценария — он проведёт по шагам.</div>
+  <a href="#" id="ovlink" style="margin-top:8px">Все экраны (таблица)</a>
+</nav>
+
+<main>
+
+<div id="flow"></div>
+
+<div id="overview">
+  <div class="meta"><b>Макет экранов</b></div>
+  <div class="frame" style="padding:20px">
+    <h3 style="margin:0 0 4px">Пройти сценарий по шагам</h3>
+    <p class="lead" style="margin:0 0 8px">Каждый шаг — экран целиком. Стрелки ← → на панели сверху или на клавиатуре ведут к следующему шагу.</p>
+    <div id="flowcards"></div>
+    <h3 style="margin:0 0 4px">Все экраны</h3>
+    <p>Экран — отдельная страница кабинета. Адрес экрана совпадает с предполагаемым маршрутом. Сценарии — из <code>docs/02-scenarios.md</code>, этап — из <code>.ai-factory/ROADMAP.md</code>.</p>
+    <table id="ovtable"><tr><th>Раздел</th><th>Экран</th><th>Адрес</th><th>Сценарии</th><th>Этап роадмапа</th></tr></table>
+    <div class="note">Обозначения: синяя кнопка — главное действие экрана; пунктирная рамка — картинка или график; цветной овал — состояние (зелёный — хорошо, жёлтый — ждёт, красный — проблема); жёлтая пометка «если:» — условие, при котором элемент показывается; голубая плашка — пояснение, на экране её нет.</div>
+  </div>
+</div>
+
+<!-- ============================ ВХОД ============================ -->
+
+<section class="screen" id="auth/login" data-title="Вход по почте" data-s="S-01, S-10" data-stage="Каркас и аккаунты">
+  <div class="steps">
+    <div class="step" data-step="Почта">
+      <h4>Добро пожаловать</h4>
+      <p class="lead">Введите почту — пришлём код для входа. Пароль не нужен.</p>
+      <label>Почта</label><span class="in wide">name@company.ru</span>
+      <p><a class="btn main big" data-go="1">Получить код →</a></p>
+      <div class="note">Вход и регистрация — одна форма: если вы здесь впервые, аккаунт создастся сам.</div>
+    </div>
+    <div class="step" data-step="Код">
+      <h4>Проверьте почту</h4>
+      <p class="lead">Отправили код на name@company.ru. Он действует 10 минут.</p>
+      <label>Код из письма (6 цифр)</label><span class="in wide">······</span>
+      <p><a class="btn main big" data-go="1">Войти →</a></p>
+      <p><span class="btn">Отправить ещё раз</span> <a class="btn" data-go="-1">Изменить почту</a></p>
+      <p><span class="if">код неверен — «Осталось попыток: N»</span> <span class="if">код просрочен — «Запросите новый»</span></p>
+    </div>
+    <div class="step" data-step="Роль">
+      <h4>Кто вы?</h4>
+      <p class="lead">Вторую роль можно добавить позже в реквизитах.</p>
+      <div class="choice">
+        <a href="#auth/org-adv"><b>Рекламодатель</b><span>Размещаю рекламу в каналах</span></a>
+        <a href="#auth/org-blg"><b>Блогер</b><span>У меня есть канал в MAX</span></a>
+      </div>
+      <div class="note">Шаг показывается только новому пользователю. Остальные сразу попадают в кабинет.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="auth/org-adv" data-title="Реквизиты рекламодателя" data-s="S-01" data-stage="Каркас и аккаунты">
+  <div class="box"><h4>Организация</h4>
+    <label>Тип лица</label><span class="btn">Юрлицо</span><span class="btn">ИП</span>
+    <label>ИНН (10 цифр для юрлица, 12 для ИП)</label><span class="in wide">7700000000</span>
+    <label>КПП (9 цифр) <span class="if">юрлицо</span></label><span class="in wide">770001001</span>
+    <label>Сокращённое наименование организации <span class="if">юрлицо</span></label><span class="in wide">ООО «Ромашка»</span>
+    <label>ФИО <span class="if">ИП</span></label><span class="in wide">Фамилия Имя Отчество</span>
+    <label>Адрес (юридический для юрлица, регистрации для ИП)</label><span class="in wide">…</span>
+    <label>Режим налогообложения</label><span class="in wide">Выберите ▾ (список зависит от типа лица)</span>
+    <label>Ставка НДС</label><span class="in wide">Выберите ▾ (список зависит от режима)</span>
+    <label>Документ, подтверждающий систему налогообложения</label>
+    <div class="ph" style="min-height:50px">загрузить файл</div>
+    <label>Контактное лицо</label><span class="in wide">Имя Фамилия</span>
+    <label>Телефон</label><span class="in wide">+7 …</span>
+    <p class="if">ошибка: ИНН не прошёл проверку / ИНН уже занят — обратитесь в поддержку</p>
+  </div>
+  <div class="box"><h4>Данные подписанта</h4>
+    <p class="if">юрлицо</p>
+    <label>Должность</label><span class="in wide">Генеральный директор</span>
+    <label>ФИО</label><span class="in wide">Фамилия Имя Отчество</span>
+    <label>Документ, на основании которого действует: название</label><span class="in wide">Устав</span>
+    <label>Документ, на основании которого действует: номер</label><span class="in wide">№ …</span>
+  </div>
+  <div class="box"><h4>Документы</h4>
+    <p>☐ Принимаю оферту рекламодателя (ссылка)</p>
+    <p>☐ Принимаю правила площадки (ссылка)</p>
+    <p>☐ Согласен с политикой персональных данных (ссылка)</p>
+  </div>
+  <a class="btn main" href="#adv/catalog">Сохранить и перейти в каталог</a>
+</section>
+
+<section class="screen" id="auth/org-blg" data-title="Реквизиты блогера и привязка MAX" data-s="S-10" data-stage="Каркас и аккаунты">
+  <div class="steps">
+    <div class="step" data-step="Реквизиты">
+      <h4>Расскажите о себе</h4>
+      <p class="lead">Реквизиты нужны для договора, маркировки и выплат.</p>
+      <label>Тип лица</label><span class="btn">Самозанятый</span><span class="btn">ИП</span><span class="btn">Юрлицо</span>
+      <label>ИНН (12 цифр для самозанятого и ИП, 10 для юрлица)</label><span class="in wide">770000000000</span>
+      <label>КПП (9 цифр) <span class="if">юрлицо</span></label><span class="in wide">770001001</span>
+      <label>ФИО <span class="if">самозанятый или ИП</span></label><span class="in wide">Фамилия Имя Отчество</span>
+      <label>Сокращённое наименование организации <span class="if">юрлицо</span></label><span class="in wide">ООО «Ромашка»</span>
+      <label>Адрес (регистрации для ИП, юридический для юрлица) <span class="if">ИП или юрлицо</span></label><span class="in wide">…</span>
+      <label>Режим налогообложения</label><span class="in wide">Выберите ▾ (список зависит от типа лица)</span>
+      <label>Ставка НДС</label><span class="in wide">Выберите ▾ (список зависит от режима)</span>
+      <label>Документ, подтверждающий систему налогообложения</label>
+      <div class="ph" style="min-height:50px">загрузить файл</div>
+      <label>Телефон</label><span class="in wide">+7 …</span>
+      <div class="box"><h4>Данные подписанта</h4>
+        <p class="if">юрлицо</p>
+        <label>Должность</label><span class="in wide">Генеральный директор</span>
+        <label>ФИО</label><span class="in wide">Фамилия Имя Отчество</span>
+        <label>Документ, на основании которого действует: название</label><span class="in wide">Устав</span>
+        <label>Документ, на основании которого действует: номер</label><span class="in wide">№ …</span>
+      </div>
+      <p>☐ Принимаю оферту блогера (ссылка)<br>☐ Принимаю правила площадки (ссылка)<br>☐ Согласен с политикой персональных данных (ссылка)</p>
+      <p><a class="btn main big" data-go="1">Сохранить и продолжить →</a></p>
+      <p><span class="if">ИНН не прошёл проверку или уже занят — текст ошибки под полем</span></p>
+    </div>
+    <div class="step" data-step="Аккаунт MAX">
+      <h4>Привяжите аккаунт MAX</h4>
+      <p class="lead">Так бот узнает вас, когда вы добавите его в канал, и сможет присылать заказы.</p>
+      <p>Отправьте этот код боту платформы личным сообщением:</p>
+      <div class="ph" style="min-height:60px;font-size:24px;letter-spacing:.1em">K7Q2-9XPM</div>
+      <p>Код действует 15 минут. <span class="btn">Получить новый код</span> <span class="btn">Скопировать</span></p>
+      <p><a class="btn main big" href="#ext/bot">Открыть бота в MAX</a></p>
+      <p><span class="if">привязка прошла — «Аккаунт MAX привязан» и кнопка</span> <a class="btn" href="#blg/channel-add">Добавить канал →</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ РЕКЛАМОДАТЕЛЬ ============================ -->
+
+<section class="screen" id="adv/catalog" data-title="Каталог" data-s="S-02" data-stage="Каталог">
+  <h3>Каталог каналов</h3>
+  <div class="cols">
+    <div class="box narrow"><h4>Фильтры</h4>
+      <label>Категория канала</label><span class="in wide">Все ▾</span>
+      <label>Подписчики</label><span class="in" style="min-width:70px">от</span> <span class="in" style="min-width:70px">до</span>
+      <label>Цена, ₽</label><span class="in" style="min-width:70px">от</span> <span class="in" style="min-width:70px">до</span>
+      <label>Формат</label><span class="in wide">Любой ▾ (1/24, 2/48, 3/72, 7 дней)</span>
+      <p><span class="btn">Сбросить</span></p>
+    </div>
+    <div class="w2">
+      <div class="box">Найдено: 128 · Сортировка: <span class="in">Подписчики ▾ (просмотры, цена, цена за 1000 просмотров)</span></div>
+      <div class="box"><h4>Строка канала (повторяется)</h4>
+        <table>
+          <tr><th>Канал</th><th>Категория</th><th>Подписчики</th><th>Средние просмотры</th><th>Вовлечённость</th><th>Постов в неделю</th><th>Цены с комиссией</th><th></th></tr>
+          <tr><td>◻ значок · <a href="#adv/channel">Название канала</a></td><td>Технологии</td><td>24 300</td><td>6 100</td><td>25 %</td><td>9</td><td>1/24 — 5 750 ₽<br>2/48 — 8 050 ₽<br>3/72 — нет<br>7 дней — 17 250 ₽</td><td><a class="btn" href="#adv/channel">Открыть</a><br><span class="tag">в корзине</span></td></tr>
+        </table>
+      </div>
+      <div class="box">Постраничная навигация: ‹ 1 2 3 … ›</div>
+      <div class="note">В каталоге только каналы в состоянии active. Цена — итоговая: цена блогера плюс комиссия.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/channel" data-nav="adv/catalog" data-title="Карточка канала" data-s="S-02, S-03" data-stage="Каталог; Заказ и размещения">
+  <p><a href="#adv/catalog">← Каталог</a></p>
+  <div class="cols">
+    <div class="w2">
+      <div class="box"><h4>О канале</h4>
+        <p>◻ значок · <b>Название канала</b> · Технологии · <u>ссылка на канал в MAX</u></p>
+        <p>Описание канала от блогера.</p>
+        <p>Подписчики: 24 300 · Средние просмотры: 6 100 · Вовлечённость: 25 % · Постов в неделю: 9</p>
+      </div>
+      <div class="box"><h4>Метрики за 30 дней</h4><div class="ph">график: подписчики, просмотры по дням</div></div>
+      <div class="box"><h4>Занятость</h4><div class="ph" style="min-height:50px">календарь: ближайшие занятые интервалы и недоступность блогера</div></div>
+    </div>
+    <div class="box"><h4>Добавить в корзину</h4>
+      <label>Формат</label>
+      <table>
+        <tr><th></th><th>Формат</th><th>В топе</th><th>Срок</th><th>Цена</th></tr>
+        <tr><td>◉</td><td>1/24</td><td>1 ч</td><td>24 ч</td><td>5 750 ₽</td></tr>
+        <tr><td>○</td><td>2/48</td><td>2 ч</td><td>48 ч</td><td>8 050 ₽</td></tr>
+        <tr><td>○</td><td>7 дней</td><td>3 ч</td><td>168 ч</td><td>17 250 ₽</td></tr>
+      </table>
+      <label>Окно дат: начало (дата, час, МСК)</label><span class="in wide">15.10.2026 10:00</span>
+      <label>Окно дат: конец</label><span class="in wide">18.10.2026 20:00</span>
+      <div class="note">Точное время внутри окна выберет блогер. Начало — не раньше чем через 24 часа; длина окна от 24 часов до 14 суток.</div>
+      <a class="btn main" href="#adv/cart">В корзину</a>
+      <p class="if">канал уже в корзине: вместо кнопки — «В корзине» и ссылка на корзину</p>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/cart" data-title="Корзина" data-s="S-03, S-06" data-stage="Заказ и размещения">
+  <h3>Корзина</h3>
+  <div class="box"><h4>Позиции</h4>
+    <table>
+      <tr><th>Канал</th><th>Формат</th><th>Окно дат (МСК)</th><th>Сумма</th><th></th></tr>
+      <tr><td><a href="#adv/channel">Название канала</a></td><td><span class="in">1/24 ▾</span></td><td><span class="in">15.10 10:00 — 18.10 20:00</span></td><td>5 750 ₽</td><td><span class="btn">Удалить</span></td></tr>
+      <tr><td>Другой канал<br><span class="if">цена изменилась: было 8 050 ₽, стало 9 200 ₽</span> <span class="btn">Подтвердить</span></td><td><span class="in">2/48 ▾</span></td><td><span class="in">16.10 09:00 — 20.10 09:00</span></td><td>9 200 ₽</td><td><span class="btn">Удалить</span></td></tr>
+      <tr><td>Третий канал<br><span class="if">канал недоступен — удалите позицию</span></td><td>—</td><td>—</td><td>—</td><td><span class="btn">Удалить</span></td></tr>
+    </table>
+    <p><b>Итого: 14 950 ₽</b> · <a href="#adv/catalog">Добавить каналы</a></p>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Пост для заказа</h4>
+      <span class="in wide">Выберите пост ▾</span>
+      <p><a class="btn" href="#adv/post-edit">Создать пост</a> <span class="btn">Предпросмотр</span></p>
+      <p class="if">у поста не выбрана категория рекламы или не заполнены поля категории — список ошибок</p>
+    </div>
+    <div class="box"><h4>Оплата с баланса</h4>
+      <p>Свободно на балансе: 84 000 ₽ · К удержанию: 14 950 ₽</p>
+      <p class="if">не хватает: «Недостаёт 6 000 ₽»</p> <a class="btn" href="#adv/balance">Пополнить баланс</a>
+      <p class="if">не заполнены реквизиты или не приняты документы</p> <a class="btn" href="#adv/profile">Заполнить</a>
+      <p><a class="btn main" href="#adv/order">Оформить заказ</a></p>
+      <div class="note">После оформления: заказ уходит на модерацию, сумма по каждому каналу удерживается, корзина очищается.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/posts" data-title="Посты" data-s="S-04" data-stage="Медиатека и редактор поста">
+  <h3>Посты</h3>
+  <p><a class="btn main" href="#adv/post-edit">Создать пост</a></p>
+  <div class="box">
+    <table>
+      <tr><th>Название (внутреннее)</th><th>Пост</th><th>Категория рекламы</th><th>Последняя версия</th><th>Изменён</th><th>Заказы</th><th></th></tr>
+      <tr><td>Осенняя акция</td><td>◻ превью · начало текста…</td><td>Товары для дома</td><td>— (черновик)</td><td>12.10 14:20</td><td>—</td><td><a class="btn" href="#adv/post-edit">Открыть</a> <span class="btn">В архив</span></td></tr>
+      <tr><td>Запуск сервиса</td><td>◻ превью · начало текста…</td><td>Онлайн-сервисы</td><td><span class="tag">версия 2: готова</span> erid получен</td><td>10.10 09:00</td><td><a href="#adv/order">№ 1042</a></td><td><a class="btn" href="#adv/post-edit">Открыть</a> <span class="btn">В архив</span></td></tr>
+    </table>
+    <div class="note">Состояния версии: на модерации, отклонена (причина), одобрена — идёт маркировка, готова — erid получен. ☐ Показывать архивные.</div>
+  </div>
+</section>
+
+<section class="screen" id="adv/post-edit" data-nav="adv/posts" data-title="Редактор поста и предпросмотр" data-s="S-04, S-05, S-29" data-stage="Медиатека и редактор поста">
+  <p><a href="#adv/posts">← Посты</a></p>
+  <p class="if">пост уже в заказе: «Правка создаст новую версию. Неопубликованные размещения вернутся на модерацию, блогеры примут заказ заново.» + список размещений, которые будут отменены, если окно дат заканчивается раньше чем через 24 часа</p>
+  <div class="cols">
+    <div class="w2">
+      <div class="box"><h4>Название</h4>
+        <label>Внутреннее название — видно только вам</label><span class="in wide">Осенняя акция</span>
+      </div>
+      <div class="box"><h4>Текст</h4>
+        <p><span class="btn">Ж</span><span class="btn">К</span><span class="btn">Ч</span><span class="btn">Зачёркнутый</span><span class="btn">Моно</span><span class="btn">Ссылка</span><span class="btn">Выделение</span><span class="btn">Заголовок</span><span class="btn">Цитата</span></p>
+        <span class="in area">Текст поста…</span>
+        <p>Символов: 1 240 из 3 800</p>
+        <div class="note">Только форматирование MAX. Списков и спойлеров нет. 200 символов зарезервировано под строку маркировки.</div>
+      </div>
+      <div class="box"><h4>Изображения (0–10)</h4>
+        <div class="cols"><div class="ph">1</div><div class="ph">2</div><div class="ph">3</div><div class="ph">+ добавить</div></div>
+        <p><a class="btn" href="#adv/media">Выбрать из медиатеки</a> <span class="btn">Загрузить</span> · порядок меняется перетаскиванием · у каждой картинки «убрать»</p>
+        <p>☑ Плашка с названием и ИНН рекламодателя на изображениях</p>
+      </div>
+      <div class="box"><h4>Кнопка-ссылка (не более одной)</h4>
+        <label>Текст (до 64 символов)</label><span class="in wide">Перейти на сайт</span>
+        <label>Адрес (https://)</label><span class="in wide">https://…</span>
+      </div>
+      <div class="box"><h4>Категория рекламы</h4>
+        <span class="in wide">Выберите категорию ▾ (закрытые категории недоступны)</span>
+        <p class="if">после выбора: требования категории и дополнительные поля</p>
+        <label>Возрастная метка</label><span class="in">18+ ▾</span>
+        <label>Реквизиты продавца</label><span class="in wide">…</span>
+        <label>Сроки акции</label><span class="in wide">…</span>
+      </div>
+      <span class="btn main">Сохранить</span> <span class="btn">Предпросмотр</span>
+    </div>
+    <div class="box"><h4>Предпросмотр: как выйдет в канале</h4>
+      <div class="ph">изображения альбомом, с плашкой</div>
+      <p>Текст поста с форматированием…</p>
+      <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: <i>будет присвоен</i></p>
+      <span class="btn">Перейти на сайт</span>
+      <div class="note">Строку маркировки и плашку добавляет система. Ссылкам при оформлении заказа добавляются UTM-метки.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/media" data-title="Медиатека" data-s="S-04" data-stage="Медиатека и редактор поста">
+  <h3>Медиатека</h3>
+  <p><span class="btn main">Загрузить изображения</span> <span class="if">отклоняется: не изображение, больше 50 МБ, больше 7680×7680</span></p>
+  <div class="box"><h4>Файлы</h4>
+    <div class="cols"><div class="ph">картинка<br>имя · размер · дата</div><div class="ph">картинка</div><div class="ph">картинка</div><div class="ph">картинка</div></div>
+    <p>У файла: <span class="btn">Открыть</span> <span class="btn">Удалить</span> <span class="if">удаление недоступно, если файл используется в посте</span></p>
+  </div>
+</section>
+
+<section class="screen" id="adv/orders" data-title="Заказы" data-s="S-07" data-stage="Заказ и размещения">
+  <h3>Заказы</h3>
+  <div class="box">Фильтр по состоянию: <span class="in">Все ▾</span></div>
+  <div class="box">
+    <table>
+      <tr><th>№</th><th>Создан</th><th>Пост</th><th>Состояние заказа</th><th>Размещения</th><th>Сумма</th><th></th></tr>
+      <tr><td><a href="#adv/order">1042</a></td><td>12.10 15:00</td><td>начало текста…</td><td><span class="tag">в работе</span></td><td>всего 5: опубликовано 2, ожидает блогера 2, отклонено 1</td><td>48 300 ₽</td><td><a class="btn" href="#adv/order">Открыть</a></td></tr>
+      <tr><td>1038</td><td>08.10 11:00</td><td>начало текста…</td><td><span class="tag">на модерации</span></td><td>всего 3</td><td>21 000 ₽</td><td><span class="btn">Открыть</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adv/order" data-nav="adv/orders" data-title="Заказ и его размещения" data-s="S-07, S-08, S-29" data-stage="Заказ и размещения; Приёмка, споры и возвраты">
+  <p><a href="#adv/orders">← Заказы</a></p>
+  <div class="box"><h4>Заказ № 1042</h4>
+    <p>Состояние: <span class="tag">в работе</span> (на модерации / отклонён / маркировка / в работе / завершён / отменён) · Создан 12.10 15:00 МСК · Сумма 48 300 ₽ · Удержано 26 450 ₽ · Возвращено 9 200 ₽</p>
+    <p>Пост: версия 2, erid: 2Vtzq… · <span class="btn">Предпросмотр</span> <a class="btn" href="#adv/post-edit">Изменить пост</a> <span class="btn">Отменить заказ</span> <a class="btn" href="#adv/report">Отчёт</a></p>
+    <p class="if">заказ отклонён модератором: причина отклонения и кнопка «Изменить пост»</p>
+  </div>
+  <div class="box"><h4>Размещения</h4>
+    <table>
+      <tr><th>Канал</th><th>Формат</th><th>Окно дат</th><th>Состояние</th><th>Публикация</th><th>Снятие</th><th>Пост</th><th>Просмотры</th><th>Сумма</th><th>Действия</th></tr>
+      <tr><td>Канал А</td><td>1/24</td><td>15.10 10:00 — 18.10 20:00</td><td><span class="tag">ожидает блогера</span><br>осталось 18 ч</td><td>—</td><td>—</td><td>—</td><td>—</td><td>5 750 ₽</td><td><span class="btn">Отменить</span></td></tr>
+      <tr><td>Канал Б</td><td>2/48</td><td>…</td><td><span class="tag">запланировано</span></td><td>16.10 12:00</td><td>18.10 12:00</td><td>—</td><td>—</td><td>9 200 ₽</td><td><span class="if">отмены нет — «написать в поддержку»</span></td></tr>
+      <tr><td>Канал В</td><td>1/24</td><td>…</td><td><span class="tag">опубликовано</span></td><td>13.10 10:00</td><td>14.10 10:00</td><td><u>ссылка</u></td><td>3 120</td><td>6 900 ₽</td><td><span class="btn">Подать претензию</span></td></tr>
+      <tr><td>Канал Г</td><td>1/24</td><td>…</td><td><span class="tag">снято</span><br>автоприёмка через 20 ч</td><td>12.10 18:00</td><td>13.10 18:00</td><td>удалён</td><td>4 480</td><td>8 050 ₽</td><td><span class="btn main">Принять</span> <span class="btn">Подать претензию</span></td></tr>
+      <tr><td>Канал Д</td><td>7 дней</td><td>…</td><td><span class="tag">спор</span></td><td>…</td><td>…</td><td>…</td><td>…</td><td>17 250 ₽</td><td><span class="btn">Открыть спор</span> (переписка, запрос пояснений)</td></tr>
+      <tr><td>Канал Е</td><td>2/48</td><td>…</td><td><span class="tag">отклонено блогером</span><br>причина</td><td>—</td><td>—</td><td>—</td><td>—</td><td>9 200 ₽ возвращено</td><td>—</td></tr>
+    </table>
+    <div class="note">Остальные состояния строки: подготовка, принято, выплачено, истекло, отменено, сорвано, возвращено — без действий.</div>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Окно «Претензия»</h4>
+      <label>Причина</label><span class="in wide">Снят раньше срока / Нарушены часы в топе / Содержимое не совпадает / Другое ▾</span>
+      <label>Описание (до 2000 символов)</label><span class="in area">…</span>
+      <span class="btn main">Отправить</span> <span class="btn">Отмена</span>
+      <div class="note">Одна претензия на размещение. Доступна от публикации до 24 часов после снятия.</div>
+    </div>
+    <div class="box"><h4>Окно «Спор»</h4>
+      <p>Причина · состояние · решение администратора (полная выплата / полный возврат / пропорционально, доля)</p>
+      <div class="ph" style="min-height:50px">переписка с администратором</div>
+      <span class="in wide">Ответ…</span> <span class="btn">Отправить</span>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/report" data-nav="adv/orders" data-title="Отчёт по кампании" data-s="S-09" data-stage="Уведомления и отчёт по кампании">
+  <p><a href="#adv/order">← Заказ № 1042</a></p>
+  <h3>Отчёт по заказу № 1042</h3>
+  <div class="box"><h4>Итог</h4>
+    <p>Просмотры: 12 480 · Потрачено: 30 100 ₽ · Возвращено: 9 200 ₽ · Цена за 1000 просмотров: 2 412 ₽</p>
+    <span class="btn">Выгрузить CSV</span>
+  </div>
+  <div class="box"><h4>По размещениям</h4>
+    <table>
+      <tr><th>Канал</th><th>Ссылка на пост (с UTM)</th><th>Опубликован</th><th>Снят</th><th>Просмотры на момент снятия</th><th>Сумма</th><th>Исход</th></tr>
+      <tr><td>Канал Г</td><td><u>ссылка</u></td><td>12.10 18:00</td><td>13.10 18:00</td><td>4 480</td><td>8 050 ₽</td><td>принято</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adv/balance" data-title="Баланс" data-s="S-06, S-33" data-stage="Приём оплаты и учёт денег">
+  <h3>Баланс</h3>
+  <div class="cols">
+    <div class="box"><h4>Состояние</h4>
+      <p>Всего: 120 000 ₽ · Удержано по размещениям: 36 000 ₽ · <b>Свободно: 84 000 ₽</b></p>
+    </div>
+    <div class="box"><h4>Пополнить</h4>
+      <label>Сумма, ₽</label><span class="in">50 000</span> <span class="btn main">Сформировать счёт</span>
+      <div class="note">Счёт в PDF с реквизитами. Оплата банковским переводом; зачисление после загрузки выписки администратором.</div>
+    </div>
+    <div class="box"><h4>Вывести остаток</h4>
+      <label>Сумма, ₽ (не больше свободного)</label><span class="in">…</span>
+      <label>Расчётный счёт</label><span class="in wide">…</span>
+      <label>БИК</label><span class="in wide">…</span>
+      <span class="btn">Подать заявку</span>
+      <div class="note">Сумма блокируется до перевода. Перевод делает администратор.</div>
+    </div>
+  </div>
+  <div class="box"><h4>Счета</h4>
+    <table>
+      <tr><th>№ счёта</th><th>Дата</th><th>Сумма</th><th>Состояние</th><th></th></tr>
+      <tr><td>СЧ-000123</td><td>12.10.2026</td><td>50 000 ₽</td><td><span class="tag">выставлен</span> (оплачен — с фактической суммой, если она отличается / просрочен через 14 суток / отменён)</td><td><span class="btn">Скачать PDF</span></td></tr>
+    </table>
+  </div>
+  <div class="box"><h4>Операции</h4>
+    <table>
+      <tr><th>Дата</th><th>Операция</th><th>Основание</th><th>Сумма</th></tr>
+      <tr><td>12.10 15:00</td><td>Удержание</td><td>Заказ № 1042, Канал А</td><td>−5 750 ₽</td></tr>
+      <tr><td>12.10 09:00</td><td>Пополнение</td><td>Счёт СЧ-000120</td><td>+100 000 ₽</td></tr>
+    </table>
+    <p>Виды: пополнение, удержание, снятие удержания, списание, возврат, вывод.</p>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Заявки на вывод</h4>
+      <table><tr><th>Дата</th><th>Сумма</th><th>Счёт, БИК</th><th>Состояние</th></tr><tr><td>12.10</td><td>20 000 ₽</td><td>…</td><td><span class="tag">подана</span> (выполнена / отменена)</td></tr></table>
+    </div>
+    <div class="box"><h4>Закрывающие документы</h4>
+      <table><tr><th>Период</th><th>№ акта</th><th>Услуги блогеров</th><th>Вознаграждение платформы</th><th></th></tr><tr><td>сентябрь 2026</td><td>А-000045</td><td>42 000 ₽</td><td>6 300 ₽</td><td><span class="btn">Скачать PDF</span></td></tr></table>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/profile" data-title="Реквизиты" data-s="S-01" data-stage="Каркас и аккаунты">
+  <h3>Реквизиты и аккаунт</h3>
+  <div class="cols">
+    <div class="box"><h4>Организация</h4>
+      <p>Тип лица · ИНН · КПП <span class="if">юрлицо</span> · Наименование или ФИО — <i>после заказов меняются через поддержку</i></p>
+      <label>Адрес (юридический для юрлица, регистрации для ИП)</label><span class="in wide">…</span>
+      <label>Контактное лицо</label><span class="in wide">…</span>
+      <label>Телефон</label><span class="in wide">…</span>
+      <span class="btn main">Сохранить</span>
+    </div>
+    <div class="box"><h4>Налоги</h4>
+      <label>Режим налогообложения</label><span class="in wide">УСН ▾ (список зависит от типа лица)</span>
+      <label>Ставка НДС</label><span class="in wide">Без НДС ▾ (список зависит от режима)</span>
+      <label>Документ, подтверждающий систему налогообложения</label>
+      <div class="ph" style="min-height:50px">загруженный файл: имя · дата</div>
+      <span class="btn">Заменить файл</span> <span class="btn main">Сохранить</span>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Данные подписанта</h4>
+      <p class="if">юрлицо</p>
+      <label>Должность</label><span class="in wide">…</span>
+      <label>ФИО</label><span class="in wide">…</span>
+      <label>Документ, на основании которого действует: название</label><span class="in wide">…</span>
+      <label>Документ, на основании которого действует: номер</label><span class="in wide">…</span>
+      <span class="btn main">Сохранить</span>
+    </div>
+    <div class="box"><h4>Аккаунт</h4>
+      <p>Почта: name@company.ru</p>
+      <p>Принятые документы: оферта (версия, дата), правила, политика</p>
+      <p class="if">у пользователя нет кабинета блогера</p> <a class="btn" href="#auth/org-blg">Стать блогером</a>
+      <p><span class="btn">Выйти</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ БЛОГЕР ============================ -->
+
+<section class="screen" id="blg/placements" data-title="Запросы и размещения" data-s="S-14" data-stage="Заказ и размещения">
+  <h3>Запросы и размещения</h3>
+  <p class="if">выплаты не подключены: «Чтобы принимать заказы, подключите выплаты»</p> <a class="btn" href="#blg/payouts">Подключить выплаты</a>
+  <div class="box">Вкладки: <span class="btn main">Новые запросы (2)</span><span class="btn">Запланированы</span><span class="btn">Опубликованы</span><span class="btn">Завершены</span> · Канал: <span class="in">Все ▾</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Канал</th><th>Формат</th><th>Окно дат (МСК)</th><th>Состояние</th><th>Публикация / снятие</th><th>К получению</th><th></th></tr>
+      <tr><td>Мой канал</td><td>1/24</td><td>15.10 10:00 — 18.10 20:00</td><td><span class="tag">ожидает ответа</span><br>осталось 18 ч</td><td>—</td><td>5 000 ₽</td><td><a class="btn main" href="#blg/placement">Открыть</a></td></tr>
+      <tr><td>Мой канал</td><td>2/48</td><td>…</td><td><span class="tag">запланировано</span></td><td>16.10 12:00 / 18.10 12:00</td><td>7 000 ₽</td><td><a class="btn" href="#blg/placement">Открыть</a></td></tr>
+      <tr><td>Мой канал</td><td>1/24</td><td>…</td><td><span class="tag">выплачено</span></td><td>…</td><td>5 000 ₽</td><td><span class="btn">Открыть</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="blg/placement" data-nav="blg/placements" data-title="Запрос на размещение" data-s="S-14" data-stage="Заказ и размещения">
+  <p><a href="#blg/placements">← Запросы и размещения</a></p>
+  <div class="cols">
+    <div class="box"><h4>Пост: как выйдет в канале</h4>
+      <div class="ph">изображения с плашкой</div>
+      <p>Текст поста с форматированием…</p>
+      <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: 2Vtzq…</p>
+      <span class="btn">Перейти на сайт</span>
+    </div>
+    <div>
+      <div class="box"><h4>Условия</h4>
+        <p>Канал: Мой канал · Формат: 1/24 (1 час в топе, 24 часа в ленте)</p>
+        <p>Окно дат: 15.10 10:00 — 18.10 20:00 МСК</p>
+        <p><b>К получению: 5 000 ₽</b> · Состояние: <span class="tag">ожидает ответа</span> · ответить до 13.10 15:00</p>
+      </div>
+      <div class="box"><h4>Принять</h4>
+        <label>Время публикации (внутри окна, не раньше чем через 1 час)</label><span class="in wide">16.10.2026 12:00</span>
+        <div class="ph" style="min-height:40px">занятые интервалы канала в окне</div>
+        <span class="btn main">Принять</span>
+        <p class="if">ошибка: время вне окна / раньше чем через час / пересекается с другим размещением</p>
+        <p class="if">принятие недоступно: выплаты не подключены / канал не активен</p>
+      </div>
+      <div class="box"><h4>Отказаться</h4>
+        <label>Причина</label><span class="in wide">Выберите ▾</span>
+        <span class="btn">Отказаться</span>
+      </div>
+      <div class="box"><h4>После принятия</h4>
+        <p><span class="if">запланировано, до публикации больше 1 часа</span> <span class="btn">Перенести время</span></p>
+        <p><span class="if">опубликовано</span> ссылка на пост, время снятия, просмотры, «часы в топе до 13:00 — не публикуйте другие посты»</p>
+        <p><span class="if">спор</span> причина, переписка с администратором, решение</p>
+        <p><span class="if">принято / выплачено</span> сумма, состояние выплаты, ссылка на чек</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="blg/channels" data-title="Каналы" data-s="S-12" data-stage="Подключение каналов">
+  <h3>Мои каналы</h3>
+  <p><a class="btn main" href="#blg/channel-add">Добавить канал</a></p>
+  <div class="box">
+    <table>
+      <tr><th>Канал</th><th>Состояние</th><th>Подписчики</th><th>Цены</th><th>Что требуется</th><th></th></tr>
+      <tr><td>◻ Мой канал</td><td><span class="tag">активен</span></td><td>24 300</td><td>3 формата</td><td>—</td><td><a class="btn" href="#blg/channel">Настроить</a></td></tr>
+      <tr><td>◻ Второй канал</td><td><span class="tag">нет прав</span></td><td>3 100</td><td>—</td><td>Дайте боту право удалять сообщения</td><td><a class="btn" href="#blg/channel">Настроить</a></td></tr>
+    </table>
+    <div class="note">Состояния канала: нет прав, на модерации, активен, отклонён (причина), приостановлен (причина: права бота, нужен номер РКН), отключён, заблокирован.</div>
+  </div>
+</section>
+
+<section class="screen" id="blg/channel-add" data-nav="blg/channels" data-title="Добавление канала" data-s="S-12" data-stage="Подключение каналов">
+  <p><a href="#blg/channels">← Каналы</a></p>
+  <h3>Добавить канал</h3>
+  <p class="if">аккаунт MAX не привязан: сначала привязка</p> <a class="btn" href="#blg/profile">Привязать MAX</a>
+  <div class="box"><h4>Инструкция</h4>
+    <ol>
+      <li>Откройте настройки канала в MAX → Администраторы.</li>
+      <li>Добавьте бота платформы: <u>@имя_бота</u> <span class="btn">Скопировать</span></li>
+      <li>Дайте права: публикация сообщений и удаление сообщений.</li>
+      <li>Канал появится в списке автоматически.</li>
+    </ol>
+    <div class="ph" style="min-height:50px">картинки-подсказки</div>
+    <div class="note">Канал должен быть публичным. Страница ждёт событие от бота и сама переходит к настройке канала.</div>
+  </div>
+</section>
+
+<section class="screen" id="blg/channel" data-nav="blg/channels" data-title="Настройка канала: описание, цены, недоступность" data-s="S-12, S-13" data-stage="Подключение каналов; Каталог">
+  <p><a href="#blg/channels">← Каналы</a></p>
+  <div class="box"><h4>Мой канал</h4>
+    <p>Состояние: <span class="tag">на модерации</span> · Подписчики: 24 300 · Рейтинг: 100 из 100 · <u>ссылка в MAX</u></p>
+    <p>Права бота: публикация ✓ · удаление ✗ <span class="if">не хватает прав — что сделать</span> <span class="btn">Проверить снова</span></p>
+    <p class="if">отклонён или приостановлен: причина</p>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Описание для каталога</h4>
+      <label>Категория канала</label><span class="in wide">Технологии ▾</span>
+      <label>Описание</label><span class="in area">…</span>
+      <label>Номер в реестре РКН <span class="if">от 10 000 подписчиков — обязательно</span></label><span class="in wide">…</span>
+      <span class="btn main">Сохранить</span>
+    </div>
+    <div class="box"><h4>Цены по форматам</h4>
+      <table>
+        <tr><th>Вкл.</th><th>Формат</th><th>Ваша цена, ₽</th><th>Увидит рекламодатель</th></tr>
+        <tr><td>☑</td><td>1/24</td><td><span class="in" style="min-width:70px">5 000</span></td><td>5 750 ₽</td></tr>
+        <tr><td>☑</td><td>2/48</td><td><span class="in" style="min-width:70px">7 000</span></td><td>8 050 ₽</td></tr>
+        <tr><td>☐</td><td>3/72</td><td>—</td><td>—</td></tr>
+        <tr><td>☑</td><td>7 дней</td><td><span class="in" style="min-width:70px">15 000</span></td><td>17 250 ₽</td></tr>
+      </table>
+      <div class="note">От 100 ₽ до 10 000 000 ₽. Без хотя бы одной цены канал не выходит в каталог. Новая цена не меняет оформленные заказы.</div>
+      <span class="btn main">Сохранить</span>
+    </div>
+  </div>
+  <div class="box"><h4>Когда не принимаю публикации</h4>
+    <table><tr><th>С</th><th>По</th><th></th></tr><tr><td>20.10 00:00</td><td>25.10 00:00</td><td><span class="btn">Удалить</span></td></tr></table>
+    <span class="btn">Добавить интервал</span>
+  </div>
+  <div class="box"><h4>Метрики и занятость</h4><div class="ph" style="min-height:50px">то же, что видит рекламодатель в карточке канала</div></div>
+</section>
+
+<section class="screen" id="blg/payouts" data-title="Выплаты" data-s="S-11, S-15" data-stage="Выплаты блогерам через Рокет Ворк">
+  <h3>Выплаты</h3>
+  <div class="box"><h4>Подключение выплат (Рокет Ворк)</h4>
+    <p>Состояние: <span class="tag">не подключено</span> (приглашён / ожидает подтверждения / активно / заблокировано — причина)</p>
+    <span class="btn main">Подключить выплаты</span>
+    <p class="if">после нажатия: ссылка на регистрацию в Рокет Ворк и инструкция (для самозанятого — разрешение в «Мой налог»)</p> <span class="btn">Проверить статус</span>
+  </div>
+  <div class="box"><h4>Итог</h4><p>Получено всего: 85 000 ₽ · В работе: 12 000 ₽</p></div>
+  <div class="box"><h4>История выплат</h4>
+    <table>
+      <tr><th>Дата</th><th>Размещение</th><th>Сумма</th><th>Состояние</th><th>Чек</th></tr>
+      <tr><td>14.10 10:05</td><td><a href="#blg/placement">Мой канал, 1/24, 12.10</a></td><td>5 000 ₽</td><td><span class="tag">выполнена</span> (создана / отправлена)</td><td><u>ссылка</u></td></tr>
+      <tr><td>13.10 09:00</td><td>…</td><td>7 000 ₽</td><td><span class="tag">не прошла</span> причина: утрачен статус самозанятого</td><td>—</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="blg/profile" data-title="Реквизиты и MAX" data-s="S-10" data-stage="Каркас и аккаунты; Подключение каналов">
+  <h3>Реквизиты и аккаунт</h3>
+  <div class="cols">
+    <div class="box"><h4>Реквизиты</h4>
+      <p>Тип лица · ИНН · КПП <span class="if">юрлицо</span> · ФИО или наименование — <i>меняются через поддержку</i></p>
+      <label>Адрес (регистрации для ИП, юридический для юрлица) <span class="if">ИП или юрлицо</span></label><span class="in wide">…</span>
+      <label>Телефон</label><span class="in wide">…</span>
+      <span class="btn main">Сохранить</span>
+    </div>
+    <div class="box"><h4>Налоги</h4>
+      <label>Режим налогообложения</label><span class="in wide">НПД ▾ (список зависит от типа лица)</span>
+      <label>Ставка НДС</label><span class="in wide">Без НДС ▾ (список зависит от режима)</span>
+      <label>Документ, подтверждающий систему налогообложения</label>
+      <div class="ph" style="min-height:50px">загруженный файл: имя · дата</div>
+      <span class="btn">Заменить файл</span> <span class="btn main">Сохранить</span>
+    </div>
+    <div class="box"><h4>Данные подписанта</h4>
+      <p class="if">юрлицо</p>
+      <label>Должность</label><span class="in wide">…</span>
+      <label>ФИО</label><span class="in wide">…</span>
+      <label>Документ, на основании которого действует: название</label><span class="in wide">…</span>
+      <label>Документ, на основании которого действует: номер</label><span class="in wide">…</span>
+      <span class="btn main">Сохранить</span>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Аккаунт MAX</h4>
+      <p class="if">привязан</p> <p>Привязан: Имя в MAX · уведомления приходят от бота</p>
+      <p class="if">не привязан</p> <p>Код привязки: <b>K7Q2-9XPM</b> (15 минут) · <span class="btn">Новый код</span> <a class="btn" href="#ext/bot">Открыть бота</a></p>
+    </div>
+    <div class="box"><h4>Аккаунт</h4>
+      <p>Почта · принятые документы (версия, дата)</p>
+      <p class="if">у пользователя нет кабинета рекламодателя</p> <a class="btn" href="#auth/org-adv">Стать рекламодателем</a>
+      <p><span class="btn">Выйти</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ АДМИНИСТРАТОР ============================ -->
+
+<section class="screen" id="adm/channels" data-title="Каналы: очередь модерации" data-s="S-16, S-19" data-stage="Каталог; Админка и отчётность ОРД">
+  <h3>Каналы</h3>
+  <div class="box">Вкладки: <span class="btn main">На модерации (4)</span><span class="btn">Все</span> · Поиск: <span class="in">название, ИНН</span> · Состояние: <span class="in">Все ▾ (включая «без владельца»)</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Канал</th><th>Блогер</th><th>Категория</th><th>Подписчики</th><th>Номер РКН</th><th>Флаги</th><th>Ждёт</th><th></th></tr>
+      <tr><td>Название канала</td><td>ИП Иванов</td><td>Технологии</td><td>24 300</td><td>указан, не проверен</td><td>резкий рост подписчиков</td><td>5 ч</td><td><a class="btn" href="#adm/channel">Открыть</a></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adm/channel" data-nav="adm/channels" data-title="Канал: модерация" data-s="S-16, S-19" data-stage="Каталог; Админка и отчётность ОРД">
+  <p><a href="#adm/channels">← Каналы</a></p>
+  <div class="cols">
+    <div class="w2">
+      <div class="box"><h4>Сведения</h4>
+        <p>Название · ссылка в MAX · состояние: <span class="tag">на модерации</span> · права бота</p>
+        <p>Блогер: ИП Иванов, ИНН · категория · описание · рейтинг: 100 из 100</p>
+        <p>Площадка в ОРД: <span class="tag">не зарегистрирована</span> (в очереди / зарегистрирована / ошибка → <a href="#adm/ord-errors">ошибки ОРД</a>)</p>
+      </div>
+      <div class="box"><h4>Метрики и флаги аномалий</h4>
+        <div class="ph">график за 30 дней</div>
+        <p>⚑ резкий рост подписчиков · ⚑ просмотры непропорциональны подписчикам</p>
+      </div>
+    </div>
+    <div>
+      <div class="box"><h4>Реестр РКН</h4>
+        <span class="if">от 10 000 подписчиков</span>
+        <p>Номер: 12345 · <u>открыть реестр</u></p>
+        <p>☐ Проверено вручную, номер действителен</p>
+      </div>
+      <div class="box"><h4>Решение</h4>
+        <span class="btn main">Одобрить</span>
+        <label>Причина отклонения</label><span class="in area">…</span>
+        <span class="btn">Отклонить</span>
+      </div>
+      <div class="box"><h4>Ручная операция</h4>
+        <label>Основание (обязательно)</label><span class="in wide">…</span>
+        <span class="btn">Заблокировать канал</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adm/orders" data-title="Заказы: очередь модерации постов" data-s="S-17" data-stage="Маркировка через Яндекс ОРД; Админка и отчётность ОРД">
+  <h3>Заказы</h3>
+  <div class="box">Вкладки: <span class="btn main">На модерации (3)</span><span class="btn">Маркировка</span><span class="btn">Все</span> · Поиск: <span class="in">№, ИНН</span></div>
+  <div class="box">
+    <table>
+      <tr><th>№</th><th>Рекламодатель</th><th>Категория рекламы</th><th>Каналов</th><th>Сумма</th><th>Состояние</th><th>Ждёт</th><th></th></tr>
+      <tr><td>1042</td><td>ООО «Ромашка»</td><td>Товары для дома</td><td>5</td><td>48 300 ₽</td><td><span class="tag">на модерации</span></td><td>3 ч <span class="if">больше 24 ч — выделено</span></td><td><a class="btn" href="#adm/order">Открыть</a></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adm/order" data-nav="adm/orders" data-title="Заказ: модерация поста" data-s="S-17, S-28" data-stage="Маркировка через Яндекс ОРД; Админка и отчётность ОРД">
+  <p><a href="#adm/orders">← Заказы</a></p>
+  <div class="cols">
+    <div class="box"><h4>Пост в итоговом виде</h4>
+      <div class="ph">изображения с плашкой</div>
+      <p>Текст поста…</p>
+      <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: <i>будет присвоен</i></p>
+      <span class="btn">Перейти на сайт</span>
+      <p>Все ссылки поста списком (с UTM) · версия поста: 2 · <span class="btn">Сравнить с версией 1</span></p>
+    </div>
+    <div>
+      <div class="box"><h4>Заказ № 1042</h4>
+        <p>Рекламодатель: ООО «Ромашка», ИНН · состояние: <span class="tag">на модерации</span></p>
+        <p>Категория рекламы: Товары для дома · требования категории · заполненные поля (возрастная метка и др.)</p>
+      </div>
+      <div class="box"><h4>Каналы заказа</h4>
+        <table><tr><th>Канал</th><th>Формат</th><th>Окно дат</th><th>Состояние</th><th>Сумма</th></tr><tr><td><a href="#adm/placement">Канал А</a></td><td>1/24</td><td>…</td><td>подготовка</td><td>5 750 ₽</td></tr></table>
+      </div>
+      <div class="box"><h4>Решение</h4>
+        <span class="btn main">Одобрить</span>
+        <label>Причина отклонения</label><span class="in area">…</span>
+        <span class="btn">Отклонить</span>
+      </div>
+      <div class="box"><h4>Маркировка</h4>
+        <p>Креатив в ОРД: <span class="tag">не отправлен</span> (в очереди / erid получен / ошибка → <a href="#adm/ord-errors">ошибки ОРД</a>) · erid · статус ЕРИР</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adm/placements" data-title="Размещения" data-s="S-19" data-stage="Админка и отчётность ОРД">
+  <h3>Размещения</h3>
+  <div class="box">Состояние: <span class="in">Все ▾</span> · Канал: <span class="in">…</span> · Заказ: <span class="in">№</span> · Период: <span class="in">…</span> · ☐ только с просроченным снятием</div>
+  <div class="box">
+    <table>
+      <tr><th>ID</th><th>Заказ</th><th>Канал</th><th>Формат</th><th>Состояние</th><th>Публикация</th><th>Снятие</th><th>Сумма</th><th></th></tr>
+      <tr><td>5531</td><td>1042</td><td>Канал В</td><td>1/24</td><td><span class="tag">опубликовано</span></td><td>13.10 10:00</td><td>14.10 10:00</td><td>6 900 ₽</td><td><a class="btn" href="#adm/placement">Открыть</a></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adm/placement" data-nav="adm/placements" data-title="Размещение: история и ручные операции" data-s="S-19" data-stage="Админка и отчётность ОРД">
+  <p><a href="#adm/placements">← Размещения</a></p>
+  <div class="cols">
+    <div class="w2">
+      <div class="box"><h4>Размещение 5531</h4>
+        <p>Заказ <a href="#adm/order">№ 1042</a> · рекламодатель · канал · блогер · формат · окно дат</p>
+        <p>Состояние: <span class="tag">опубликовано</span> · публикация 13.10 10:00 · снятие по плану 14.10 10:00 · часы в топе до 11:00</p>
+        <p>Публикация: <u>ссылка на пост</u> · просмотры 3 120 · версия поста 2 · erid</p>
+        <p>Деньги: цена блогера 6 000 ₽ · комиссия 900 ₽ · итог 6 900 ₽ · удержание: активно · выплата: —</p>
+      </div>
+      <div class="box"><h4>История состояний</h4>
+        <table><tr><th>Время</th><th>Из</th><th>В</th><th>Переход</th><th>Кто</th><th>Причина</th></tr><tr><td>13.10 10:00</td><td>запланировано</td><td>опубликовано</td><td>P-08</td><td>система</td><td>—</td></tr></table>
+      </div>
+      <div class="box"><h4>Нарушения и события канала</h4>
+        <table><tr><th>Время</th><th>Событие</th><th>Подробности</th></tr><tr><td>13.10 10:20</td><td>чужой пост в часы в топе</td><td>ссылка</td></tr></table>
+      </div>
+    </div>
+    <div class="box"><h4>Ручные операции</h4>
+      <label>Основание (обязательно)</label><span class="in area">…</span>
+      <p><span class="btn">Отменить размещение</span> <span class="if">подготовка, ожидает блогера, запланировано</span></p>
+      <p><span class="btn">Удалить пост из канала</span> <span class="if">опубликовано, спор с живой публикацией</span></p>
+      <p><span class="btn">Отметить снятым</span> + время <span class="if">опубликовано, бот не может удалить</span></p>
+      <p><span class="btn">Открыть спор</span> <span class="if">опубликовано, снято</span></p>
+      <p><span class="btn">Повторить выплату</span> <span class="if">принято, выплата не прошла</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adm/disputes" data-title="Споры" data-s="S-18" data-stage="Приёмка, споры и возвраты">
+  <h3>Споры</h3>
+  <div class="box">Вкладки: <span class="btn main">Открытые (2)</span><span class="btn">Решённые</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Размещение</th><th>Канал</th><th>Рекламодатель</th><th>Причина</th><th>Источник</th><th>Сумма</th><th>Открыт</th><th></th></tr>
+      <tr><td>5540</td><td>Канал Д</td><td>ООО «Ромашка»</td><td>снят раньше срока</td><td>система (претензия / администратор)</td><td>17 250 ₽</td><td>30 ч назад <span class="if">больше 72 ч — выделено</span></td><td><a class="btn" href="#adm/dispute">Открыть</a></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adm/dispute" data-nav="adm/disputes" data-title="Разбор спора" data-s="S-18" data-stage="Приёмка, споры и возвраты">
+  <p><a href="#adm/disputes">← Споры</a></p>
+  <div class="cols">
+    <div class="w2">
+      <div class="box"><h4>Спор по размещению <a href="#adm/placement">5540</a></h4>
+        <p>Причина: снят раньше срока · источник: система · текст претензии рекламодателя (если есть)</p>
+        <p>Опубликован 12.10 10:00 · снятие по плану 19.10 10:00 · фактически снят 15.10 16:00</p>
+      </div>
+      <div class="box"><h4>История состояний и события канала за период</h4><div class="ph" style="min-height:50px">две таблицы, как в размещении</div></div>
+      <div class="box"><h4>Переписка</h4>
+        <div class="ph" style="min-height:50px">сообщения: администратор ↔ блогер, администратор ↔ рекламодатель</div>
+        <label>Кому</label><span class="in">Блогеру ▾</span> <span class="in wide">Запрос пояснения…</span> <span class="btn">Отправить</span>
+      </div>
+    </div>
+    <div class="box"><h4>Решение</h4>
+      <p>◉ Полная выплата блогеру<br>○ Полный возврат рекламодателю<br>○ Пропорционально</p>
+      <label>Доля исполнения, % <span class="if">для «пропорционально»; подставлена по формуле, можно изменить</span></label><span class="in">46,43</span>
+      <p>Блогеру: 6 964 ₽ · Рекламодателю: 9 250 ₽ · Комиссия: 1 036 ₽</p>
+      <label>Обоснование</label><span class="in area">…</span>
+      <span class="btn main">Вынести решение</span>
+      <div class="note">Решение окончательное. Исправление — только отдельной ручной проводкой.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="adm/payments" data-title="Оплаты: выписка и счета" data-s="S-30" data-stage="Приём оплаты и учёт денег">
+  <h3>Оплаты</h3>
+  <div class="box"><h4>Банковская выписка</h4>
+    <span class="btn main">Загрузить файл выписки</span>
+    <p>Последняя загрузка: 12.10 09:00 · поступлений 14 · зачислено 12 · не сопоставлено 2 · повторов пропущено 3</p>
+  </div>
+  <div class="box"><h4>Несопоставленные поступления</h4>
+    <table>
+      <tr><th>Дата</th><th>Плательщик, ИНН</th><th>Сумма</th><th>Назначение платежа</th><th>Действие</th></tr>
+      <tr><td>11.10</td><td>ООО «Лютик», 7711111111</td><td>30 000 ₽</td><td>оплата рекламы</td><td><span class="in">Организация ▾</span> <span class="btn">Зачислить</span> <span class="btn">Постороннее</span></td></tr>
+    </table>
+  </div>
+  <div class="box"><h4>Счета</h4>
+    <p>Поиск: <span class="in">№, ИНН</span> · Состояние: <span class="in">Все ▾</span></p>
+    <table>
+      <tr><th>№ счёта</th><th>Организация</th><th>Сумма</th><th>Поступило</th><th>Состояние</th><th>Дата</th></tr>
+      <tr><td>СЧ-000123</td><td>ООО «Ромашка»</td><td>50 000 ₽</td><td>49 000 ₽</td><td><span class="tag">оплачен</span> расхождение −1 000 ₽</td><td>12.10</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adm/withdrawals" data-title="Заявки на вывод" data-s="S-33" data-stage="Приём оплаты и учёт денег">
+  <h3>Заявки на вывод остатка</h3>
+  <div class="box">
+    <table>
+      <tr><th>Дата</th><th>Организация</th><th>Сумма</th><th>Реквизиты</th><th>Состояние</th><th></th></tr>
+      <tr><td>12.10</td><td>ООО «Ромашка»</td><td>20 000 ₽</td><td>р/с …, БИК …</td><td><span class="tag">подана</span></td><td><span class="btn main">Отметить выполненной</span></td></tr>
+    </table>
+    <div class="note">Перевод администратор делает в банке вручную, затем отмечает заявку.</div>
+  </div>
+</section>
+
+<section class="screen" id="adm/payouts" data-title="Реестр выплат блогерам" data-s="S-15, S-19" data-stage="Выплаты блогерам через Рокет Ворк; Админка и отчётность ОРД">
+  <h3>Выплаты блогерам</h3>
+  <div class="box"><p>Депозит в Рокет Ворк: 250 000 ₽ · В работе: 3 выплаты на 19 000 ₽ · Не прошли: 1</p></div>
+  <div class="box">Состояние: <span class="in">Все ▾</span> · Блогер: <span class="in">ИНН, ФИО</span> · Период: <span class="in">…</span> · <span class="btn">Выгрузить CSV</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Дата</th><th>Блогер</th><th>Размещение</th><th>Попытка</th><th>Сумма</th><th>Состояние</th><th>Причина отказа</th><th>Чек</th><th></th></tr>
+      <tr><td>13.10</td><td>Иванов И. И.</td><td><a href="#adm/placement">5520</a></td><td>1</td><td>7 000 ₽</td><td><span class="tag">не прошла</span></td><td>утрачен статус самозанятого</td><td>—</td><td><span class="btn">Повторить</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="screen" id="adm/ledger" data-title="Проводки" data-s="S-19" data-stage="Приём оплаты и учёт денег; Админка и отчётность ОРД">
+  <h3>Журнал проводок</h3>
+  <div class="box"><p>Сверка: сумма по всем счетам учёта = 0 ✓ · Балансы рекламодателей · Удержано · К выплате · Комиссия</p></div>
+  <div class="box">Счёт учёта: <span class="in">Все ▾</span> · Организация: <span class="in">…</span> · Период: <span class="in">…</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Время</th><th>Операция</th><th>Дебет</th><th>Кредит</th><th>Сумма</th><th>Основание</th></tr>
+      <tr><td>12.10 15:00</td><td>удержание</td><td>баланс ООО «Ромашка»</td><td>удержания</td><td>5 750 ₽</td><td>размещение 5531</td></tr>
+    </table>
+  </div>
+  <div class="box"><h4>Корректирующая проводка</h4>
+    <label>Дебет</label><span class="in">счёт ▾</span> <label>Кредит</label><span class="in">счёт ▾</span> <label>Сумма, ₽</label><span class="in">…</span>
+    <label>Основание (обязательно)</label><span class="in area">…</span>
+    <span class="btn">Провести</span>
+  </div>
+</section>
+
+<section class="screen" id="adm/ord-errors" data-title="ОРД: ошибки синхронизации" data-s="S-20, S-28" data-stage="Маркировка через Яндекс ОРД; Админка и отчётность ОРД">
+  <h3>ОРД: ошибки</h3>
+  <div class="box">Тип объекта: <span class="in">Все ▾ (организация, договор, площадка, креатив, статистика, акт)</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Объект</th><th>Связан с</th><th>Ошибка ОРД</th><th>Попыток</th><th>Последняя</th><th></th></tr>
+      <tr><td>Организация</td><td>ООО «Ромашка»</td><td>неверный ИНН</td><td>5</td><td>12.10 15:10</td><td><span class="btn">Открыть</span></td></tr>
+    </table>
+  </div>
+  <div class="box"><h4>Открытая ошибка</h4>
+    <div class="cols"><div class="ph">запрос</div><div class="ph">ответ ОРД</div></div>
+    <p>Что стоит из-за ошибки: заказ № 1042 (маркировка)</p>
+    <a class="btn" href="#adm/orgs">Исправить данные организации</a> <span class="btn main">Повторить</span>
+  </div>
+</section>
+
+<section class="screen" id="adm/ord-reports" data-title="ОРД: ежемесячная отчётность" data-s="S-31" data-stage="Админка и отчётность ОРД">
+  <h3>ОРД: отчётность</h3>
+  <div class="box">Месяц: <span class="in">Сентябрь 2026 ▾</span> · Срок сдачи: до 30.10 · Состояние: <span class="tag">отправляется</span></div>
+  <div class="box"><h4>Статистика: креатив + площадка</h4>
+    <table>
+      <tr><th>erid</th><th>Канал</th><th>Просмотры</th><th>Показ с — по</th><th>Сумма</th><th>Состояние в ОРД</th></tr>
+      <tr><td>2Vtzq…</td><td>Канал Г</td><td>4 480</td><td>12.09 — 13.09</td><td>8 050 ₽</td><td><span class="tag">принято</span> (в очереди / ошибка)</td></tr>
+    </table>
+  </div>
+  <div class="box"><h4>Акты по договорам</h4>
+    <table>
+      <tr><th>Договор</th><th>Сторона</th><th>Сумма</th><th>Креативы</th><th>Состояние в ОРД</th></tr>
+      <tr><td>№ …</td><td>ООО «Ромашка»</td><td>48 300 ₽</td><td>2</td><td><span class="tag">ошибка</span> → <a href="#adm/ord-errors">ошибки</a></td></tr>
+    </table>
+    <span class="btn">Сформировать заново</span> <span class="btn main">Отправить в ОРД</span>
+  </div>
+</section>
+
+<section class="screen" id="adm/orgs" data-title="Организации и пользователи" data-s="S-20" data-stage="Админка и отчётность ОРД">
+  <h3>Организации</h3>
+  <div class="note">Отдельного сценария нет: экран нужен, чтобы исправлять ИНН и наименование при ошибках ОРД (S-20) и находить участника.</div>
+  <div class="box">Поиск: <span class="in">ИНН, наименование, почта</span> · Роль: <span class="in">Все ▾</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Организация</th><th>ИНН</th><th>Тип лица</th><th>Роль</th><th>Участник (почта)</th><th>Баланс / выплаты</th><th>ОРД</th><th></th></tr>
+      <tr><td>ООО «Ромашка»</td><td>7700000000</td><td>юрлицо</td><td>рекламодатель</td><td>name@company.ru</td><td>120 000 ₽</td><td>ошибка</td><td><span class="btn">Изменить</span></td></tr>
+    </table>
+  </div>
+  <div class="box"><h4>Карточка организации</h4>
+    <label>ИНН</label><span class="in">…</span> <label>Наименование</label><span class="in wide">…</span>
+    <label>Основание изменения</label><span class="in wide">…</span>
+    <span class="btn main">Сохранить и отправить в ОРД</span>
+    <p>Ссылки: заказы · каналы · проводки · принятые документы</p>
+  </div>
+</section>
+
+<section class="screen" id="adm/audit" data-title="Журнал действий" data-s="S-19" data-stage="Админка и отчётность ОРД">
+  <h3>Журнал действий</h3>
+  <div class="box">Кто: <span class="in">…</span> · Действие: <span class="in">Все ▾</span> · Объект: <span class="in">тип, ID</span> · Период: <span class="in">…</span> · ☐ только ручные операции</div>
+  <div class="box">
+    <table>
+      <tr><th>Время</th><th>Кто</th><th>Действие</th><th>Объект</th><th>Основание</th><th>Подробности</th></tr>
+      <tr><td>13.10 11:00</td><td>admin@…</td><td>admin_open_dispute</td><td>размещение 5531</td><td>жалоба по почте</td><td><span class="btn">Показать</span></td></tr>
+    </table>
+    <div class="note">Только чтение. Записи не правятся и не удаляются.</div>
+  </div>
+</section>
+
+<!-- ============================ ОБЩЕЕ И ВНЕ КАБИНЕТА ============================ -->
+
+<section class="screen" id="common/notifications" data-role="adv" data-nav="" data-title="Уведомления в кабинете" data-s="S-08, S-14, S-15" data-stage="Уведомления и отчёт по кампании">
+  <h3>Уведомления</h3>
+  <div class="note">Открывается по колокольчику в шапке. Есть у рекламодателя и администратора; блогер получает уведомления от бота MAX и на почту.</div>
+  <div class="box">☐ только непрочитанные · <span class="btn">Отметить все прочитанными</span></div>
+  <div class="box">
+    <table>
+      <tr><th>Время</th><th>Событие</th><th>Ссылка</th></tr>
+      <tr><td>13.10 18:00</td><td>● Пост снят в «Канал Г». Просмотры: 4 480. Примите размещение или подайте претензию до 14.10 18:00</td><td><a href="#adv/order">заказ № 1042</a></td></tr>
+      <tr><td>12.10 16:00</td><td>Блогер отклонил размещение в «Канал Е». 9 200 ₽ возвращены на баланс</td><td><a href="#adv/order">заказ № 1042</a></td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="box"><h4>Рекламодателю (кабинет и почта)</h4><ul><li>заказ одобрен / отклонён модератором</li><li>блогер принял, отклонил, не ответил, перенёс время</li><li>пост опубликован / публикация сорвалась</li><li>пост снят, итоговые просмотры</li><li>открыт спор / вынесено решение</li><li>баланс пополнен</li></ul></div>
+    <div class="box"><h4>Блогеру (бот MAX и почта)</h4><ul><li>новый запрос на размещение</li><li>пост опубликован / снят</li><li>канал одобрен, отклонён, приостановлен</li><li>у бота пропали права</li><li>открыт спор / вынесено решение</li><li>выплата выполнена, чек / выплата не прошла</li></ul></div>
+    <div class="box"><h4>Администратору (почта и чат дежурных)</h4><ul><li>модерация ждёт больше 24 ч</li><li>спор ждёт больше 72 ч</li><li>публикация сорвалась / снятие просрочено</li><li>ошибка ОРД после повторов</li><li>выплата не прошла</li></ul></div>
+  </div>
+</section>
+
+<section class="screen" id="ext/bot" data-title="Бот MAX: сообщения блогеру" data-s="S-10, S-12, S-14, S-15, S-25" data-stage="Подключение каналов; Уведомления и отчёт по кампании">
+  <div class="note">Это не экран кабинета, а диалог блогера с ботом платформы в MAX. Здесь — какие сообщения бот отправляет и какие кнопки под ними.</div>
+  <div class="cols">
+    <div class="box"><h4>Привязка аккаунта</h4>
+      <p>Блогер → боту: <code>K7Q2-9XPM</code></p>
+      <p>Бот: «Аккаунт привязан к name@mail.ru» / «Код неверен или просрочен» / «Этот аккаунт MAX уже привязан»</p>
+      <p class="if">пишет непривязанный пользователь</p> <p>Бот: инструкция по регистрации + <span class="btn">Открыть кабинет</span></p>
+    </div>
+    <div class="box"><h4>Канал</h4>
+      <p>«Канал подключён и отправлен на модерацию» <span class="btn">Настроить канал</span></p>
+      <p>«Не хватает прав: удаление сообщений»</p>
+      <p>«Канал одобрен» / «Канал отклонён: причина»</p>
+      <p>«У бота пропали права в канале — размещения приостановлены»</p>
+      <p>«Нужен номер реестра РКН — канал приостановлен»</p>
+    </div>
+    <div class="box"><h4>Размещения и выплаты</h4>
+      <p>«Новый запрос: Мой канал, 1/24, окно 15.10–18.10, к получению 5 000 ₽. Ответьте до 13.10 15:00» <a class="btn" href="#blg/placement">Открыть в кабинете</a></p>
+      <p>«Пост опубликован, часы в топе до 13:00» · «Пост снят»</p>
+      <p>«Открыт спор: причина» · «Решение по спору»</p>
+      <p>«Выплата 5 000 ₽ выполнена» <span class="btn">Чек</span> · «Выплата не прошла: причина»</p>
+    </div>
+  </div>
+  <div class="note">Принятие и отказ — только в кабинете: там нужно выбрать время публикации.</div>
+</section>
+
+</main>
+
+<script>
+const groups = { auth: 'Вход и регистрация', adv: 'Рекламодатель', blg: 'Блогер', adm: 'Администратор', common: 'Общее', ext: 'Вне кабинета' };
+const menus = {
+  adv: [['adv/catalog', 'Каталог'], ['adv/cart', 'Корзина (3)'], ['adv/posts', 'Посты'], ['adv/media', 'Медиатека'], ['adv/orders', 'Заказы'], ['adv/balance', 'Баланс'], ['adv/profile', 'Реквизиты']],
+  blg: [['blg/placements', 'Запросы и размещения (2)'], ['blg/channels', 'Каналы'], ['blg/payouts', 'Выплаты'], ['blg/profile', 'Реквизиты и MAX']],
+  adm: [['adm/channels', 'Каналы (4)'], ['adm/orders', 'Заказы (3)'], ['adm/placements', 'Размещения'], ['adm/disputes', 'Споры (2)'], ['adm/payments', 'Оплаты'], ['adm/withdrawals', 'Выводы'], ['adm/payouts', 'Выплаты'], ['adm/ledger', 'Проводки'], ['adm/ord-errors', 'ОРД: ошибки (1)'], ['adm/ord-reports', 'ОРД: отчётность'], ['adm/orgs', 'Организации'], ['adm/audit', 'Журнал действий']]
+};
+const tops = {
+  adv: 'ООО «Ромашка» · Свободно на балансе: 84 000 ₽ · <a href="#common/notifications">🔔 3</a> · Кабинет: <b>рекламодатель</b> / <a href="#blg/placements">блогер</a> · Выйти',
+  blg: 'ИП Иванов · Кабинет: <a href="#adv/catalog">рекламодатель</a> / <b>блогер</b> · Выйти',
+  adm: 'admin@platform.ru · Администратор · <a href="#common/notifications">🔔 5</a> · Выйти'
+};
+
+// Сценарии: путь по экранам. Шаг — [адрес экрана (@N — шаг внутри экрана), подпись].
+// Адрес сценария: #go/<ключ>/<номер шага>
+const flows = {
+  adv: { name: 'Рекламодатель: от входа до отчёта', about: 'Регистрация, выбор каналов, пост, оплата, приёмка', steps: [
+    ['auth/login@1', 'Вводит почту — пароля нет'],
+    ['auth/login@2', 'Вводит код из письма'],
+    ['auth/login@3', 'Новый пользователь выбирает «Рекламодатель»'],
+    ['auth/org-adv', 'Заполняет реквизиты и принимает документы'],
+    ['adv/catalog', 'Ищет каналы: фильтры и сортировка'],
+    ['adv/channel', 'Смотрит канал, выбирает формат и окно дат, кладёт в корзину'],
+    ['adv/post-edit', 'Готовит пост: текст, картинки, кнопка, категория рекламы'],
+    ['adv/balance', 'Пополняет баланс: получает счёт и платит переводом'],
+    ['adv/cart', 'Выбирает пост и оформляет заказ — деньги удерживаются'],
+    ['adv/order', 'Следит за каждым каналом; после снятия принимает или подаёт претензию'],
+    ['adv/report', 'Смотрит итог кампании и выгружает отчёт']
+  ] },
+  blg: { name: 'Блогер: от входа до выплаты', about: 'Регистрация, привязка MAX, канал, цены, заказ, деньги', steps: [
+    ['auth/login@1', 'Вводит почту — пароля нет'],
+    ['auth/login@2', 'Вводит код из письма'],
+    ['auth/login@3', 'Новый пользователь выбирает «Блогер»'],
+    ['auth/org-blg@1', 'Заполняет реквизиты и принимает документы'],
+    ['auth/org-blg@2', 'Получает код привязки аккаунта MAX'],
+    ['ext/bot', 'Отправляет код боту в MAX — аккаунт привязан'],
+    ['blg/channel-add', 'Добавляет бота администратором своего канала'],
+    ['blg/channel', 'Описывает канал и ставит цены по форматам'],
+    ['blg/payouts', 'Подключает выплаты через Рокет Ворк'],
+    ['blg/placements', 'Получает запрос на размещение'],
+    ['blg/placement', 'Смотрит пост, принимает и выбирает время — или отказывается'],
+    ['blg/payouts', 'После приёмки получает выплату и чек']
+  ] },
+  adm: { name: 'Администратор: день работы', about: 'Модерация каналов и постов, оплаты, споры, выплаты, ОРД', steps: [
+    ['adm/channels', 'Открывает очередь каналов на модерации'],
+    ['adm/channel', 'Проверяет канал и номер РКН, одобряет или отклоняет'],
+    ['adm/orders', 'Открывает очередь заказов'],
+    ['adm/order', 'Проверяет пост: одобряет — пост уходит на маркировку и блогерам'],
+    ['adm/payments', 'Загружает банковскую выписку, разбирает несопоставленные платежи'],
+    ['adm/disputes', 'Открывает список споров'],
+    ['adm/dispute', 'Разбирает спор и делит деньги'],
+    ['adm/payouts', 'Проверяет выплаты блогерам, повторяет неудачные'],
+    ['adm/ord-errors', 'Исправляет ошибки ОРД'],
+    ['adm/ord-reports', 'Раз в месяц сдаёт статистику и акты в ОРД']
+  ] }
+};
+
+const index = document.getElementById('index');
+const ovtable = document.getElementById('ovtable');
+const flowbar = document.getElementById('flow');
+const screens = [...document.querySelectorAll('.screen')];
+
+// сценарии: список слева и карточки на стартовой
+index.insertAdjacentHTML('beforeend', '<h2>Сценарии по шагам</h2>');
+for (const [key, f] of Object.entries(flows)) {
+  index.insertAdjacentHTML('beforeend', '<a class="flow" href="#go/' + key + '/1" data-flow="' + key + '">' + f.name + '</a>');
+  document.getElementById('flowcards').insertAdjacentHTML('beforeend',
+    '<a href="#go/' + key + '/1"><b>' + f.name + '</b><span>' + f.about + ' · ' + f.steps.length + ' шагов</span><em>Пройти по шагам →</em></a>');
+}
+
+let lastGroup = '';
+for (const s of screens) {
+  const group = s.id.split('/')[0];
+  const role = s.dataset.role || group;
+  const nav = s.dataset.nav ?? s.id;
+
+  // пошаговый экран: полоса шагов сверху, «Назад» снизу
+  const wizard = s.querySelector('.steps');
+  if (wizard) {
+    const names = [...wizard.querySelectorAll('.step')].map(e => e.dataset.step);
+    wizard.insertAdjacentHTML('afterbegin', '<div class="stepper">' +
+      names.map((n, i) => '<a href="#' + s.id + '@' + (i + 1) + '"><i>' + (i + 1) + '</i>' + n + '</a>').join('<span>→</span>') + '</div>');
+    wizard.insertAdjacentHTML('beforeend', '<div class="stepnav"><a class="btn" data-go="-1">← Назад</a><a class="btn" data-go="1">Далее →</a></div>');
+  }
+
+  // оболочка кабинета вокруг содержимого экрана
+  const body = s.innerHTML;
+  const shell = menus[role]
+    ? '<div class="top"><b>Биржа MAX</b><span class="sp"></span><span>' + tops[role] + '</span></div>' +
+      '<div class="shell"><div class="menu">' +
+      menus[role].map(([id, t]) => '<a href="#' + id + '"' + (id === nav ? ' class="on"' : '') + '>' + t + '</a>').join('') +
+      '</div><div class="content">' + body + '</div></div>'
+    : '<div class="top"><b>Биржа MAX</b></div><div class="content">' + body + '</div>';
+  s.innerHTML = '<div class="meta"><b>' + s.dataset.title + '</b> адрес <code>/' + s.id + '</code> · сценарии <code>' + s.dataset.s +
+    '</code> · этап: ' + s.dataset.stage + '</div><div class="frame">' + shell + '</div>';
+
+  // левый список и сводная таблица
+  if (group !== lastGroup) { index.insertAdjacentHTML('beforeend', '<h2>' + groups[group] + '</h2>'); lastGroup = group; }
+  const sub = s.dataset.nav !== undefined && s.dataset.nav !== '';
+  index.insertAdjacentHTML('beforeend', '<a href="#' + s.id + '"' + (sub ? ' class="sub"' : '') + '>' + s.dataset.title + '</a>');
+  ovtable.insertAdjacentHTML('beforeend', '<tr><td>' + groups[group] + '</td><td><a href="#' + s.id + '">' + s.dataset.title +
+    '</a></td><td><code>/' + s.id + '</code></td><td>' + s.dataset.s + '</td><td>' + s.dataset.stage + '</td></tr>');
+}
+
+// цвет состояния по смыслу: зелёный — хорошо, жёлтый — ждёт, красный — проблема
+const tone = [
+  ['bad', /спор|отклон|не прошла|ошибка|нет прав|сорван|истекло|отменен|отменён|заблокир|просроч|не зарегистр|возвращено/i],
+  ['warn', /ожида|модерац|запланир|подана|выставлен|подготовка|маркировка|отправля|не подключ|не отправлен|снято|в корзине|приглаш/i],
+  ['ok', /актив|опублик|принят|выплач|выполн|оплачен|готова|в работе|заверш/i]
+];
+document.querySelectorAll('.tag').forEach(t => { const hit = tone.find(([, re]) => re.test(t.textContent)); if (hit) t.classList.add(hit[0]); });
+
+function state() {
+  let h = decodeURIComponent(location.hash.slice(1)), flow = null, i = 0;
+  const m = h.match(/^go\/(\w+)\/(\d+)$/);
+  if (m && flows[m[1]]) {
+    flow = m[1];
+    i = Math.min(Math.max(+m[2], 1), flows[flow].steps.length);
+    h = flows[flow].steps[i - 1][0];
+  }
+  const [id, step] = h.split('@');
+  return { flow, i, id, step: +step || 1 };
+}
+
+function show() {
+  const st = state();
+  const target = document.getElementById(st.id);
+  const current = target && target.classList.contains('screen') ? target : document.getElementById('overview');
+  document.querySelectorAll('.screen, #overview').forEach(e => e.classList.toggle('on', e === current));
+
+  // шаг внутри пошагового экрана
+  const steps = [...current.querySelectorAll('.step')];
+  const n = Math.min(st.step, steps.length || 1);
+  steps.forEach((e, k) => e.classList.toggle('on', k === n - 1));
+  current.querySelectorAll('.stepper a').forEach((a, k) => { a.classList.toggle('on', k === n - 1); a.classList.toggle('done', k < n - 1); });
+  const back = current.querySelector('.stepnav [data-go="-1"]'), fwd = current.querySelector('.stepnav [data-go="1"]');
+  if (back) back.classList.toggle('off', !st.flow && n === 1);
+  if (fwd) fwd.classList.toggle('off', !st.flow && n === steps.length);
+
+  // панель сценария
+  flowbar.classList.toggle('on', !!st.flow);
+  if (st.flow) {
+    const f = flows[st.flow], total = f.steps.length;
+    flowbar.innerHTML =
+      '<a class="arrow' + (st.i === 1 ? ' off' : '') + '" data-go="-1" title="Предыдущий шаг (←)">←</a>' +
+      '<div class="mid"><div class="name">' + f.name + ' · шаг ' + st.i + ' из ' + total + '</div>' +
+      '<div class="cap">' + f.steps[st.i - 1][1] + '</div><div class="dots">' +
+      f.steps.map((s, k) => '<a href="#go/' + st.flow + '/' + (k + 1) + '" title="' + (k + 1) + '. ' + s[1] + '" class="' + (k + 1 === st.i ? 'on' : k + 1 < st.i ? 'done' : '') + '"></a>').join('') +
+      '</div></div><a class="close" href="#' + st.id + '">Выйти из сценария ✕</a>' +
+      '<a class="arrow' + (st.i === total ? ' off' : '') + '" data-go="1" title="Следующий шаг (→)">→</a>';
+  }
+
+  index.querySelectorAll('a').forEach(a => a.classList.toggle('on',
+    st.flow ? a.dataset.flow === st.flow : a.getAttribute('href') === '#' + (current.id === 'overview' ? '' : current.id)));
+  window.scrollTo(0, 0);
+}
+
+// стрелки: внутри сценария — по шагам сценария, иначе — по шагам экрана
+function go(d) {
+  const st = state();
+  if (st.flow) {
+    const k = st.i + d;
+    if (k >= 1 && k <= flows[st.flow].steps.length) location.hash = 'go/' + st.flow + '/' + k;
+    return;
+  }
+  const el = document.getElementById(st.id);
+  const total = el ? el.querySelectorAll('.step').length : 0;
+  const k = st.step + d;
+  if (k >= 1 && k <= total) location.hash = st.id + '@' + k;
+}
+document.addEventListener('click', e => { const a = e.target.closest('[data-go]'); if (a) { e.preventDefault(); go(+a.dataset.go); } });
+document.addEventListener('keydown', e => { if (e.key === 'ArrowRight') go(1); if (e.key === 'ArrowLeft') go(-1); });
+addEventListener('hashchange', show);
+show();
+</script>
+</body>
+</html>
