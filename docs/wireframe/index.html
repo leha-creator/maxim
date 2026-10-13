@@ -434,7 +434,7 @@
       <tr><td>Канал Д</td><td>7 дней</td><td>…</td><td><span class="tag">спор</span></td><td>…</td><td>…</td><td>…</td><td>…</td><td>17 250 ₽</td><td><span class="btn">Открыть спор</span> (переписка, запрос пояснений)</td></tr>
       <tr><td>Канал Е</td><td>2/48</td><td>…</td><td><span class="tag">отклонено блогером</span><br>причина</td><td>—</td><td>—</td><td>—</td><td>—</td><td>9 200 ₽ возвращено</td><td>—</td></tr>
     </table>
-    <div class="note">Остальные состояния строки: подготовка, принято, выплачено, истекло, отменено, сорвано, возвращено — без действий.</div>
+    <div class="note">Остальные состояния строки: подготовка, ожидает планирования, принято, выплачено, истекло, отменено, сорвано, возвращено — без действий.</div>
   </div>
   <div class="cols">
     <div class="box"><h4>Окно «Претензия»</h4>
@@ -549,7 +549,7 @@
 <section class="screen" id="blg/placements" data-title="Запросы и размещения" data-s="S-14" data-stage="Заказ и размещения">
   <h3>Запросы и размещения</h3>
   <p class="if">выплаты не подключены: «Чтобы принимать заказы, подключите выплаты»</p> <a class="btn" href="#blg/payouts">Подключить выплаты</a>
-  <div class="box">Вкладки: <span class="btn main">Новые запросы (2)</span><span class="btn">Запланированы</span><span class="btn">Опубликованы</span><span class="btn">Завершены</span> · Канал: <span class="in">Все ▾</span></div>
+  <div class="box">Вкладки: <span class="btn main">Новые запросы (2)</span><span class="btn">Ждут планирования</span><span class="btn">Запланированы</span><span class="btn">Опубликованы</span><span class="btn">Завершены</span> · Канал: <span class="in">Все ▾</span></div>
   <div class="box">
     <table>
       <tr><th>Канал</th><th>Формат</th><th>Окно дат (МСК)</th><th>Состояние</th><th>Публикация / снятие</th><th>К получению</th><th></th></tr>
@@ -566,7 +566,7 @@
   <div class="cols">
     <div>
       <h3>Запросы и размещения</h3>
-      <div class="box">Вкладки: <span class="btn main">Новые запросы (2)</span><span class="btn">Запланированы</span> … · Канал: <span class="in">Все ▾</span></div>
+      <div class="box">Вкладки: <span class="btn main">Новые запросы (2)</span><span class="btn">Ждут планирования</span><span class="btn">Запланированы</span> … · Канал: <span class="in">Все ▾</span></div>
       <div class="box">
         <table>
           <tr><th>Канал</th><th>Формат</th><th>Состояние</th><th></th></tr>
@@ -596,9 +596,12 @@
       </div>
       <div class="box"><h4>Шаг 2. Публикация</h4>
         <p class="if">после «Принять в работу»: вместо шага 1 появляются две кнопки</p>
+        <p>Состояние: <span class="tag">ожидает планирования</span> · запланировать или опубликовать до 14.10 15:00 (24 часа после принятия)</p>
         <label>Время публикации (внутри окна, не раньше чем через 1 час)</label><span class="in wide">16.10.2026 12:00</span>
         <div class="ph" style="min-height:40px">занятые интервалы канала в окне</div>
         <span class="btn main">Запланировать публикацию</span> <span class="btn">Опубликовать сейчас</span>
+        <p class="if">«Опубликовать сейчас» активна, только когда текущее время внутри окна дат и канал свободен</p>
+        <p class="if">за 24 часа публикация не запланирована: размещение истекает, деньги возвращаются рекламодателю</p>
         <p class="if">ошибка: время вне окна / раньше чем через час / пересекается с другим размещением</p>
       </div>
       <div class="box"><h4>После планирования и публикации</h4>

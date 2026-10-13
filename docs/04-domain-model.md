@@ -4,7 +4,7 @@
 
 **Связанные документы.** [glossary.md](glossary.md) — названия; [03-placement.md](03-placement.md) — состояния и суммы размещения; [05-integrations.md](05-integrations.md) — внешние объекты; [06-finance-legal.md](06-finance-legal.md) — проводки.
 
-**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, D-14, A-05, A-08, A-13, A-14, A-20, A-22, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, Q-33, Q-37.
+**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, D-14, D-15, A-05, A-08, A-13, A-14, A-20, A-22, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, Q-33, Q-37.
 
 ## 1. Общие правила
 
@@ -360,7 +360,8 @@ erDiagram
 | `fee_rate_bp` | `integer` | да | Ставка комиссии на момент создания |
 | `blogger_amount`, `fee_amount`, `total_amount` | `bigint` | да | Неизменяемы (I-05) |
 | `accept_deadline_at` | `timestamptz` | нет | T-01 |
-| `publish_at`, `remove_at` | `timestamptz` | нет | Заполняются при P-03 |
+| `schedule_deadline_at` | `timestamptz` | нет | T-13 |
+| `publish_at`, `remove_at` | `timestamptz` | нет | Заполняются при P-17 |
 | `published_at`, `removed_at` | `timestamptz` | нет | Факт |
 | `claim_deadline_at` | `timestamptz` | нет | T-05 |
 | `performance_share` | `integer` | нет | От 0 до 10000 (03 §7) |
@@ -688,7 +689,7 @@ erDiagram
 | `channel.rkn_status` | `not_required`, `pending`, `confirmed`, `rejected` |
 | `post_version.status` | `pending_moderation`, `rejected`, `approved`, `ready` |
 | `order.status` | `moderation`, `rejected`, `marking`, `in_progress`, `completed`, `cancelled` |
-| `placement.status` | `created`, `awaiting_blogger`, `scheduled`, `published`, `removed`, `disputed`, `accepted`, `paid`, `declined`, `expired`, `cancelled`, `failed`, `refunded` |
+| `placement.status` | `created`, `awaiting_blogger`, `awaiting_schedule`, `scheduled`, `published`, `removed`, `disputed`, `accepted`, `paid`, `declined`, `expired`, `cancelled`, `failed`, `refunded` |
 | `publication.removal_reason` | `schedule`, `external`, `admin`, `refund` |
 | `violation.kind` | `removed_early`, `content_modified`, `top_violated`, `bot_access_lost` |
 | `claim.reason` | `removed_early`, `top_violated`, `content_mismatch`, `other` |
@@ -707,7 +708,7 @@ erDiagram
 | `notification.channel` | `max_bot`, `email`, `cabinet` |
 | `actor_type` | `advertiser`, `blogger`, `admin`, `system` |
 
-Причины перехода (`placement.status_reason`, `placement_state_history.reason_code`): `advertiser_cancel`, `admin_cancel`, `channel_unavailable`, `window_elapsed`, `blogger_declined`, `accept_timeout`, `publish_error`, `precondition_failed`, `new_post_version`, `erir_rejected`, `auto_acceptance`.
+Причины перехода (`placement.status_reason`, `placement_state_history.reason_code`): `advertiser_cancel`, `admin_cancel`, `channel_unavailable`, `window_elapsed`, `blogger_declined`, `accept_timeout`, `schedule_timeout`, `publish_error`, `precondition_failed`, `new_post_version`, `erir_rejected`, `auto_acceptance`.
 
 ## 10. Персональные данные
 

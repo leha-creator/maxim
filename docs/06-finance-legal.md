@@ -70,7 +70,7 @@ flowchart LR
 |---|---|---|---|---|
 | `deposit` | Поступление по счёту сопоставлено (S-30, A-35) | `bank` | `advertiser_balance` рекламодателя | Фактическая сумма поступления |
 | `hold` | P-01; повторное удержание при новой версии поста после отклонения | `advertiser_balance` | `placement_hold` размещения | `total_amount` |
-| `hold_release` | P-04, P-05, P-06, P-09; P-15 с решением `full_refund`; отклонение версии поста модерацией | `placement_hold` | `advertiser_balance` | `total_amount` |
+| `hold_release` | P-04, P-05, P-06, P-09, P-18; P-15 с решением `full_refund`; отклонение версии поста модерацией | `placement_hold` | `advertiser_balance` | `total_amount` |
 | `settlement` | P-12, P-13; P-15 с решением `full_payout` или `proportional` | `placement_hold` | `blogger_payable` блогера | `payout_amount` |
 | | | `placement_hold` | `platform_revenue` | `fee_charged` |
 | | | `placement_hold` | `advertiser_balance` | `refund_amount`, если больше нуля |
@@ -82,7 +82,7 @@ flowchart LR
 | `withdrawal_cancel` | Заявка отменена | `withdrawal_pending` | `advertiser_balance` | Сумма заявки |
 | `manual` | Ручная корректировка (S-19) | Любой | Любой | Любая; основание обязательно |
 
-Переходы, которые денег не затрагивают: P-02, P-03, P-07, P-08, P-10, P-11, P-14.
+Переходы, которые денег не затрагивают: P-02, P-03, P-07, P-08, P-10, P-11, P-14, P-17.
 
 После `hold_release` и `settlement` остаток счёта `placement_hold` размещения равен нулю, а `hold.status` становится `released` или `distributed`. Это проверяется в той же транзакции (I-12).
 
