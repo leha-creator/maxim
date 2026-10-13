@@ -557,36 +557,51 @@
       <tr><td>Мой канал</td><td>2/48</td><td>…</td><td><span class="tag">запланировано</span></td><td>16.10 12:00 / 18.10 12:00</td><td>7 000 ₽</td><td><a class="btn" href="#blg/placement">Открыть</a></td></tr>
       <tr><td>Мой канал</td><td>1/24</td><td>…</td><td><span class="tag">выплачено</span></td><td>…</td><td>5 000 ₽</td><td><span class="btn">Открыть</span></td></tr>
     </table>
+    <div class="note">«Открыть» не уводит на другую страницу: справа раскрывается панель запроса на половину ширины, список остаётся на месте.</div>
   </div>
 </section>
 
-<section class="screen" id="blg/placement" data-nav="blg/placements" data-title="Запрос на размещение" data-s="S-14" data-stage="Заказ и размещения">
-  <p><a href="#blg/placements">← Запросы и размещения</a></p>
+<section class="screen" id="blg/placement" data-nav="blg/placements" data-title="Запрос на размещение (панель справа)" data-s="S-14" data-stage="Заказ и размещения">
+  <div class="note">Не отдельная страница. Панель открывается справа на экране «Запросы и размещения»: на всю высоту, на половину ширины. Список слева остаётся на месте.</div>
   <div class="cols">
-    <div class="box"><h4>Пост: как выйдет в канале</h4>
-      <div class="ph">изображения с плашкой</div>
-      <p>Текст поста с форматированием…</p>
-      <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: 2Vtzq…</p>
-      <span class="btn">Перейти на сайт</span>
-    </div>
     <div>
-      <div class="box"><h4>Условия</h4>
-        <p>Канал: Мой канал · Формат: 1/24 (1 час в топе, 24 часа в ленте)</p>
-        <p>Окно дат: 15.10 10:00 — 18.10 20:00 МСК</p>
-        <p><b>К получению: 5 000 ₽</b> · Состояние: <span class="tag">ожидает ответа</span> · ответить до 13.10 15:00</p>
+      <h3>Запросы и размещения</h3>
+      <div class="box">Вкладки: <span class="btn main">Новые запросы (2)</span><span class="btn">Запланированы</span> … · Канал: <span class="in">Все ▾</span></div>
+      <div class="box">
+        <table>
+          <tr><th>Канал</th><th>Формат</th><th>Состояние</th><th></th></tr>
+          <tr><td><b>Мой канал</b></td><td>1/24</td><td><span class="tag">ожидает ответа</span></td><td>открыт →</td></tr>
+          <tr><td>Мой канал</td><td>2/48</td><td><span class="tag">запланировано</span></td><td><span class="btn">Открыть</span></td></tr>
+        </table>
+        <div class="note">Под панелью видна левая половина списка; выбранная строка выделена.</div>
       </div>
-      <div class="box"><h4>Принять</h4>
-        <label>Время публикации (внутри окна, не раньше чем через 1 час)</label><span class="in wide">16.10.2026 12:00</span>
-        <div class="ph" style="min-height:40px">занятые интервалы канала в окне</div>
-        <span class="btn main">Принять</span>
-        <p class="if">ошибка: время вне окна / раньше чем через час / пересекается с другим размещением</p>
+    </div>
+    <div class="box"><h4>Запрос на размещение</h4>
+      <p><a href="#blg/placements">✕ Закрыть</a></p>
+      <p>Канал: Мой канал · Формат: 1/24 (1 час в топе, 24 часа в ленте)</p>
+      <p>Окно дат: 15.10 10:00 — 18.10 20:00 МСК</p>
+      <p><b>К получению: 5 000 ₽</b> · Состояние: <span class="tag">ожидает ответа</span> · ответить до 13.10 15:00</p>
+      <div class="box"><h4>Пост: как выйдет в канале</h4>
+        <div class="ph">изображения с плашкой</div>
+        <p>Текст поста с форматированием…</p>
+        <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: 2Vtzq…</p>
+        <span class="btn">Перейти на сайт</span>
+      </div>
+      <div class="box"><h4>Шаг 1. Ответ на запрос</h4>
+        <p class="if">состояние «ожидает ответа»: видны только эти действия</p>
+        <span class="btn main">Принять в работу</span>
+        <label>Причина отказа</label><span class="in wide">Выберите ▾</span>
+        <span class="btn">Отказаться</span>
         <p class="if">принятие недоступно: выплаты не подключены / канал не активен</p>
       </div>
-      <div class="box"><h4>Отказаться</h4>
-        <label>Причина</label><span class="in wide">Выберите ▾</span>
-        <span class="btn">Отказаться</span>
+      <div class="box"><h4>Шаг 2. Публикация</h4>
+        <p class="if">после «Принять в работу»: вместо шага 1 появляются две кнопки</p>
+        <label>Время публикации (внутри окна, не раньше чем через 1 час)</label><span class="in wide">16.10.2026 12:00</span>
+        <div class="ph" style="min-height:40px">занятые интервалы канала в окне</div>
+        <span class="btn main">Запланировать публикацию</span> <span class="btn">Опубликовать сейчас</span>
+        <p class="if">ошибка: время вне окна / раньше чем через час / пересекается с другим размещением</p>
       </div>
-      <div class="box"><h4>После принятия</h4>
+      <div class="box"><h4>После планирования и публикации</h4>
         <p><span class="if">запланировано, до публикации больше 1 часа</span> <span class="btn">Перенести время</span></p>
         <p><span class="if">опубликовано</span> ссылка на пост, время снятия, просмотры, «часы в топе до 13:00 — не публикуйте другие посты»</p>
         <p><span class="if">спор</span> причина, переписка с администратором, решение</p>
@@ -602,9 +617,10 @@
   <div class="box">
     <table>
       <tr><th>Канал</th><th>Состояние</th><th>Подписчики</th><th>Цены</th><th>Что требуется</th><th></th></tr>
-      <tr><td>◻ Мой канал</td><td><span class="tag">активен</span></td><td>24 300</td><td>3 формата</td><td>—</td><td><a class="btn" href="#blg/channel">Настроить</a></td></tr>
-      <tr><td>◻ Второй канал</td><td><span class="tag">нет прав</span></td><td>3 100</td><td>—</td><td>Дайте боту право удалять сообщения</td><td><a class="btn" href="#blg/channel">Настроить</a></td></tr>
+      <tr><td>◻ Мой канал</td><td><span class="tag">активен</span></td><td>24 300</td><td>3 формата</td><td>—</td><td><a class="btn main" href="#blg/placements">Заявки (2)</a> <a class="btn" href="#blg/channel">Настроить</a></td></tr>
+      <tr><td>◻ Второй канал</td><td><span class="tag">нет прав</span></td><td>3 100</td><td>—</td><td>Дайте боту право удалять сообщения</td><td><a class="btn" href="#blg/placements">Заявки (0)</a> <a class="btn" href="#blg/channel">Настроить</a></td></tr>
     </table>
+    <div class="note">«Заявки (N)» открывает «Запросы и размещения» с фильтром по этому каналу. N — число новых запросов, ожидающих ответа.</div>
     <div class="note">Состояния канала: нет прав, на модерации, активен, отклонён (причина), приостановлен (причина: права бота, нужен номер РКН), отключён, заблокирован.</div>
   </div>
 </section>

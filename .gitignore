@@ -16,3 +16,7 @@
 # ОС
 .DS_Store
 Thumbs.db
+
+# draw.io desktop backup and temp files
+.$*.bkp
+~$*.dtmp

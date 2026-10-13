@@ -46,7 +46,7 @@
 | 13 | `adv/balance` | Баланс | не разобран |
 | 14 | `adv/profile` | Реквизиты рекламодателя в кабинете | не разобран |
 | 15 | `blg/placements` | Запросы и размещения | не разобран |
-| 16 | `blg/placement` | Запрос на размещение | не разобран |
+| 16 | `blg/placement` | Запрос на размещение — панель справа на экране `blg/placements`, не отдельная страница | не разобран |
 | 17 | `blg/channels` | Каналы | не разобран |
 | 18 | `blg/channel-add` | Добавление канала | не разобран |
 | 19 | `blg/channel` | Настройка канала: описание, цены, недоступность | не разобран |
@@ -109,6 +109,7 @@ flowchart LR
     channels[blg/channels] --> channel_add[blg/channel-add]
     channel_add --> channel[blg/channel]
     channels --> channel
+    channels -->|заявки канала| placements
     placements[blg/placements] --> placement[blg/placement]
     placements --> payouts[blg/payouts]
     payouts --> placement
