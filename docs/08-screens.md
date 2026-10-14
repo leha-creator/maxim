@@ -4,7 +4,7 @@
 
 **Связанные документы.** [02-scenarios.md](02-scenarios.md) — сценарии, которые экран обслуживает; [03-placement.md](03-placement.md) — состояния; [04-domain-model.md](04-domain-model.md) — поля; [wireframe/index.html](wireframe/index.html) — кликабельный прототип, иллюстрация к этой схеме; [wireframe/screens.drawio](wireframe/screens.drawio) — макет в draw.io: карта переходов и по странице на экран, рабочий черновик для разбора.
 
-**Затронутые записи реестра.** D-14, D-16, D-17, D-18, D-19, D-20, A-05, A-13, Q-37.
+**Затронутые записи реестра.** D-14, D-16, D-17, D-18, D-19, D-20, D-22, A-05, A-13, Q-37.
 
 ## 1. Как читать
 
