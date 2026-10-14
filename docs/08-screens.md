@@ -4,7 +4,7 @@
 
 **Связанные документы.** [02-scenarios.md](02-scenarios.md) — сценарии, которые экран обслуживает; [03-placement.md](03-placement.md) — состояния; [04-domain-model.md](04-domain-model.md) — поля; [wireframe/index.html](wireframe/index.html) — кликабельный прототип, иллюстрация к этой схеме; [wireframe/screens.drawio](wireframe/screens.drawio) — макет в draw.io: карта переходов и по странице на экран, рабочий черновик для разбора.
 
-**Затронутые записи реестра.** D-14, A-05, A-13, Q-37.
+**Затронутые записи реестра.** D-14, D-16, D-17, D-18, D-19, D-20, A-05, A-13, Q-37.
 
 ## 1. Как читать
 
@@ -34,11 +34,11 @@
 | 1 | `auth/login` | Вход по почте (3 шага: почта, код, роль) | согласован |
 | 2 | `auth/org-adv` | Реквизиты рекламодателя | на разборе |
 | 3 | `auth/org-blg` | Реквизиты блогера и привязка MAX (2 шага) | на разборе |
-| 4 | `adv/catalog` | Каталог | не разобран |
+| 4 | `adv/catalog` | Каталог | на разборе |
 | 5 | `adv/channel` | Карточка канала | не разобран |
-| 6 | `adv/cart` | Корзина | не разобран |
-| 7 | `adv/posts` | Посты | не разобран |
-| 8 | `adv/post-edit` | Редактор поста и предпросмотр | не разобран |
+| 6 | `adv/cart` | Корзина | на разборе |
+| 7 | `adv/campaigns` | Кампании: библиотека кампаний (заменила «Посты», D-16) | на разборе |
+| 8 | `adv/post-edit` | Редактор поста — убран, пост редактируется на `adv/campaign-post` (D-16) | убран |
 | 9 | `adv/media` | Медиатека | не разобран |
 | 10 | `adv/orders` | Заказы | не разобран |
 | 11 | `adv/order` | Заказ и его размещения (с окнами «Претензия» и «Спор») | не разобран |
@@ -70,6 +70,8 @@
 | 37 | `adm/audit` | Журнал действий | не разобран |
 | 38 | `common/notifications` | Уведомления в кабинете | не разобран |
 | 39 | `ext/bot` | Бот MAX: сообщения блогеру (не экран кабинета) | не разобран |
+| 40 | `adv/campaign-new` | Единый пост для всех каналов: новая кампания | на разборе |
+| 41 | `adv/campaign-post` | Пост кампании, общие требования, токен креатива, оплата | на разборе |
 
 ## 3. Карта переходов
 
@@ -89,17 +91,18 @@ flowchart LR
 flowchart LR
     catalog[adv/catalog] --> channel[adv/channel]
     channel --> cart[adv/cart]
-    posts[adv/posts] --> post_edit[adv/post-edit]
-    post_edit --> media[adv/media]
-    cart --> post_edit
-    cart --> balance[adv/balance]
-    cart -->|оформить| order[adv/order]
+    cart -->|продолжить| campaign_new[adv/campaign-new]
+    campaign_new --> campaign_post[adv/campaign-post]
+    campaign_post -->|оплатить| order[adv/order]
+    campaign_post -->|пополнить баланс| balance[adv/balance]
+    campaign_post -->|выбрать из медиатеки| media[adv/media]
+    campaign_post -->|заполнить реквизиты| profile[adv/profile]
+    campaigns[adv/campaigns] -->|открыть кампанию| campaign_post
+    campaigns -->|заказ кампании| order
     orders[adv/orders] --> order
-    order --> post_edit
+    order -->|изменить пост| campaign_post
     order --> report[adv/report]
     cart -->|добавить каналы| catalog
-    cart -->|заполнить реквизиты| profile[adv/profile]
-    posts -->|заказ с этим постом| order
     profile -->|стать блогером| org_blg[auth/org-blg]
     notifications[common/notifications] -->|ссылка на заказ| order
 ```

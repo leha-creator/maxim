@@ -268,19 +268,19 @@
       <label>Категория канала</label><span class="in wide">Все ▾</span>
       <label>Подписчики</label><span class="in" style="min-width:70px">от</span> <span class="in" style="min-width:70px">до</span>
       <label>Цена, ₽</label><span class="in" style="min-width:70px">от</span> <span class="in" style="min-width:70px">до</span>
-      <label>Формат</label><span class="in wide">Любой ▾ (1/24, 2/48, 3/72, 7 дней)</span>
+      <label>Формат</label><span class="in wide">Любой ▾ (1/24, 2/48, 3/72)</span>
       <p><span class="btn">Сбросить</span></p>
     </div>
     <div class="w2">
-      <div class="box">Найдено: 128 · Сортировка: <span class="in">Подписчики ▾ (просмотры, цена, цена за 1000 просмотров)</span></div>
+      <div class="box">Найдено: 128 · Сортировка: <span class="in">Подписчики ▾ (просмотры, ERR, цена, CPV)</span></div>
       <div class="box"><h4>Строка канала (повторяется)</h4>
         <table>
-          <tr><th>Канал</th><th>Категория</th><th>Подписчики</th><th>Средние просмотры</th><th>Вовлечённость</th><th>Постов в неделю</th><th>Цены с комиссией</th><th></th></tr>
-          <tr><td>◻ значок · <a href="#adv/channel">Название канала</a></td><td>Технологии</td><td>24 300</td><td>6 100</td><td>25 %</td><td>9</td><td>1/24 — 5 750 ₽<br>2/48 — 8 050 ₽<br>3/72 — нет<br>7 дней — 17 250 ₽</td><td><a class="btn" href="#adv/channel">Открыть</a><br><span class="tag">в корзине</span></td></tr>
+          <tr><th>Канал</th><th>Категория</th><th>Подписчики</th><th>Просмотры</th><th>ERR %</th><th>Постов в неделю</th><th>Формат</th><th>Цена с комиссией</th><th>CPV</th><th></th></tr>
+          <tr><td>◻ значок · <a href="#adv/channel">Название канала</a></td><td>Технологии</td><td>24 300</td><td>6 100</td><td>25 %</td><td>9</td><td><span class="in">1/24 ▾</span><br>2/48, 3/72</td><td>5 750 ₽</td><td>0,94 ₽</td><td><a class="btn" href="#adv/channel">Открыть</a><br><span class="tag">в корзине</span></td></tr>
         </table>
       </div>
       <div class="box">Постраничная навигация: ‹ 1 2 3 … ›</div>
-      <div class="note">В каталоге только каналы в состоянии active. Цена — итоговая: цена блогера плюс комиссия.</div>
+      <div class="note">В каталоге только каналы в состоянии active. Цена — итоговая: цена блогера плюс комиссия. ERR — средние просмотры к подписчикам; CPV — цена выбранного формата, делённая на средние просмотры.</div>
     </div>
   </div>
 </section>
@@ -303,96 +303,107 @@
         <tr><th></th><th>Формат</th><th>В топе</th><th>Срок</th><th>Цена</th></tr>
         <tr><td>◉</td><td>1/24</td><td>1 ч</td><td>24 ч</td><td>5 750 ₽</td></tr>
         <tr><td>○</td><td>2/48</td><td>2 ч</td><td>48 ч</td><td>8 050 ₽</td></tr>
-        <tr><td>○</td><td>7 дней</td><td>3 ч</td><td>168 ч</td><td>17 250 ₽</td></tr>
+        <tr><td>○</td><td>3/72</td><td>3 ч</td><td>72 ч</td><td>не продаётся</td></tr>
       </table>
-      <label>Окно дат: начало (дата, час, МСК)</label><span class="in wide">15.10.2026 10:00</span>
-      <label>Окно дат: конец</label><span class="in wide">18.10.2026 20:00</span>
-      <div class="note">Точное время внутри окна выберет блогер. Начало — не раньше чем через 24 часа; длина окна от 24 часов до 14 суток.</div>
+      <div class="note">Сроки публикации задаются один раз на кампанию — на шаге «Единый пост для всех каналов».</div>
       <a class="btn main" href="#adv/cart">В корзину</a>
       <p class="if">канал уже в корзине: вместо кнопки — «В корзине» и ссылка на корзину</p>
     </div>
   </div>
 </section>
 
-<section class="screen" id="adv/cart" data-title="Корзина" data-s="S-03, S-06" data-stage="Заказ и размещения">
+<section class="screen" id="adv/cart" data-title="Корзина" data-s="S-03" data-stage="Заказ и размещения">
   <h3>Корзина</h3>
-  <div class="box"><h4>Позиции</h4>
+  <div class="box"><h4>Каналы</h4>
     <table>
-      <tr><th>Канал</th><th>Формат</th><th>Окно дат (МСК)</th><th>Сумма</th><th></th></tr>
-      <tr><td><a href="#adv/channel">Название канала</a></td><td><span class="in">1/24 ▾</span></td><td><span class="in">15.10 10:00 — 18.10 20:00</span></td><td>5 750 ₽</td><td><span class="btn">Удалить</span></td></tr>
-      <tr><td>Другой канал<br><span class="if">цена изменилась: было 8 050 ₽, стало 9 200 ₽</span> <span class="btn">Подтвердить</span></td><td><span class="in">2/48 ▾</span></td><td><span class="in">16.10 09:00 — 20.10 09:00</span></td><td>9 200 ₽</td><td><span class="btn">Удалить</span></td></tr>
-      <tr><td>Третий канал<br><span class="if">канал недоступен — удалите позицию</span></td><td>—</td><td>—</td><td>—</td><td><span class="btn">Удалить</span></td></tr>
+      <tr><th>Канал</th><th>Подписчики</th><th>Просмотры</th><th>ERR %</th><th>Формат</th><th>Цена</th><th>CPV</th><th></th></tr>
+      <tr><td><a href="#adv/channel">Название канала</a></td><td>24 300</td><td>6 100</td><td>25 %</td><td><span class="in">1/24 ▾</span></td><td>5 750 ₽</td><td>0,94 ₽</td><td><span class="btn">Удалить</span></td></tr>
+      <tr><td>Другой канал<br><span class="if">цена изменилась: было 8 050 ₽, стало 9 200 ₽</span> <span class="btn">Подтвердить</span></td><td>27 400</td><td>6 300</td><td>23 %</td><td><span class="in">2/48 ▾</span></td><td>9 200 ₽</td><td>1,46 ₽</td><td><span class="btn">Удалить</span></td></tr>
+      <tr><td>Третий канал<br><span class="if">канал недоступен — удалите позицию</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="btn">Удалить</span></td></tr>
     </table>
-    <p><b>Итого: 14 950 ₽</b> · <a href="#adv/catalog">Добавить каналы</a></p>
+    <p><a href="#adv/catalog">Добавить каналы</a></p>
+    <div class="note">Формат выбирается в строке: 1/24, 2/48, 3/72. Цена и CPV пересчитываются сразу.</div>
   </div>
+  <div class="box"><h4>Итого</h4>
+    <p>Каналов: 2 · Подписчиков: 51 700 · Просмотров: 12 400 · <b>Итоговая цена: 14 950 ₽</b></p>
+    <a class="btn main" href="#adv/campaign-new">Продолжить</a>
+    <p class="if">в корзине недоступный канал или неподтверждённая цена — «Продолжить» неактивна</p>
+  </div>
+  <div class="note">Пост в корзине не формируется. Пост, сроки и оплата — на следующих шагах: «Единый пост для всех каналов».</div>
+</section>
+<section class="screen" id="adv/campaign-new" data-nav="adv/cart" data-title="Единый пост для всех каналов" data-s="S-03" data-stage="Заказ и размещения">
+  <p><a href="#adv/cart">← Корзина</a></p>
+  <h3>Единый пост для всех каналов</h3>
   <div class="cols">
-    <div class="box"><h4>Пост для заказа</h4>
-      <span class="in wide">Выберите пост ▾</span>
-      <p><a class="btn" href="#adv/post-edit">Создать пост</a> <span class="btn">Предпросмотр</span></p>
-      <p class="if">у поста не выбрана категория рекламы или не заполнены поля категории — список ошибок</p>
+    <div class="box"><h4>Новая кампания</h4>
+      <label>Наименование кампании</label><span class="in wide">Осенняя акция</span>
+      <a class="btn main" href="#adv/campaign-post">Продолжить</a>
     </div>
-    <div class="box"><h4>Оплата с баланса</h4>
-      <p>Свободно на балансе: 84 000 ₽ · К удержанию: 14 950 ₽</p>
-      <p class="if">не хватает: «Недостаёт 6 000 ₽»</p> <a class="btn" href="#adv/balance">Пополнить баланс</a>
-      <p class="if">не заполнены реквизиты или не приняты документы</p> <a class="btn" href="#adv/profile">Заполнить</a>
-      <p><a class="btn main" href="#adv/order">Оформить заказ</a></p>
-      <div class="note">После оформления: заказ уходит на модерацию, сумма по каждому каналу удерживается, корзина очищается.</div>
-    </div>
+    <div></div>
   </div>
 </section>
-
-<section class="screen" id="adv/posts" data-title="Посты" data-s="S-04" data-stage="Медиатека и редактор поста">
-  <h3>Посты</h3>
-  <p><a class="btn main" href="#adv/post-edit">Создать пост</a></p>
-  <div class="box">
-    <table>
-      <tr><th>Название (внутреннее)</th><th>Пост</th><th>Категория рекламы</th><th>Последняя версия</th><th>Изменён</th><th>Заказы</th><th></th></tr>
-      <tr><td>Осенняя акция</td><td>◻ превью · начало текста…</td><td>Товары для дома</td><td>— (черновик)</td><td>12.10 14:20</td><td>—</td><td><a class="btn" href="#adv/post-edit">Открыть</a> <span class="btn">В архив</span></td></tr>
-      <tr><td>Запуск сервиса</td><td>◻ превью · начало текста…</td><td>Онлайн-сервисы</td><td><span class="tag">версия 2: готова</span> erid получен</td><td>10.10 09:00</td><td><a href="#adv/order">№ 1042</a></td><td><a class="btn" href="#adv/post-edit">Открыть</a> <span class="btn">В архив</span></td></tr>
-    </table>
-    <div class="note">Состояния версии: на модерации, отклонена (причина), одобрена — идёт маркировка, готова — erid получен. ☐ Показывать архивные.</div>
-  </div>
-</section>
-
-<section class="screen" id="adv/post-edit" data-nav="adv/posts" data-title="Редактор поста и предпросмотр" data-s="S-04, S-05, S-29" data-stage="Медиатека и редактор поста">
-  <p><a href="#adv/posts">← Посты</a></p>
-  <p class="if">пост уже в заказе: «Правка создаст новую версию. Неопубликованные размещения вернутся на модерацию, блогеры примут заказ заново.» + список размещений, которые будут отменены, если окно дат заканчивается раньше чем через 24 часа</p>
+<section class="screen" id="adv/campaign-post" data-nav="adv/cart" data-title="Пост кампании и оплата" data-s="S-03, S-04, S-06" data-stage="Медиатека и редактор поста; Заказ и размещения">
+  <p><a href="#adv/campaign-new">← Кампания</a></p>
+  <h3>Кампания «Осенняя акция»: пост для всех каналов</h3>
   <div class="cols">
     <div class="w2">
-      <div class="box"><h4>Название</h4>
-        <label>Внутреннее название — видно только вам</label><span class="in wide">Осенняя акция</span>
-      </div>
-      <div class="box"><h4>Текст</h4>
-        <p><span class="btn">Ж</span><span class="btn">К</span><span class="btn">Ч</span><span class="btn">Зачёркнутый</span><span class="btn">Моно</span><span class="btn">Ссылка</span><span class="btn">Выделение</span><span class="btn">Заголовок</span><span class="btn">Цитата</span></p>
+      <div class="box"><h4>Редактор поста</h4>
+        <label>Медиафайлы</label>
+        <div class="cols"><div class="ph">1</div><div class="ph">2</div><div class="ph">+ добавить</div></div>
+        <p><span class="btn">Загрузить</span> <a class="btn" href="#adv/media">Выбрать из медиатеки</a></p>
+        <label>Текст поста — стили и ссылки</label>
+        <p><span class="btn">Ж</span><span class="btn">К</span><span class="btn">Ч</span><span class="btn">Зачёркнутый</span><span class="btn">Моно</span><span class="btn">Ссылка</span></p>
         <span class="in area">Текст поста…</span>
         <p>Символов: 1 240 из 3 800</p>
-        <div class="note">Только форматирование MAX. Списков и спойлеров нет. 200 символов зарезервировано под строку маркировки.</div>
       </div>
-      <div class="box"><h4>Изображения (0–10)</h4>
-        <div class="cols"><div class="ph">1</div><div class="ph">2</div><div class="ph">3</div><div class="ph">+ добавить</div></div>
-        <p><a class="btn" href="#adv/media">Выбрать из медиатеки</a> <span class="btn">Загрузить</span> · порядок меняется перетаскиванием · у каждой картинки «убрать»</p>
-        <p>☑ Плашка с названием и ИНН рекламодателя на изображениях</p>
-      </div>
-      <div class="box"><h4>Кнопка-ссылка (не более одной)</h4>
-        <label>Текст (до 64 символов)</label><span class="in wide">Перейти на сайт</span>
-        <label>Адрес (https://)</label><span class="in wide">https://…</span>
-      </div>
-      <div class="box"><h4>Категория рекламы</h4>
+      <div class="box"><h4>Маркировка: категория рекламы</h4>
         <span class="in wide">Выберите категорию ▾ (закрытые категории недоступны)</span>
         <p class="if">после выбора: требования категории и дополнительные поля</p>
         <label>Возрастная метка</label><span class="in">18+ ▾</span>
         <label>Реквизиты продавца</label><span class="in wide">…</span>
         <label>Сроки акции</label><span class="in wide">…</span>
       </div>
-      <span class="btn main">Сохранить</span> <span class="btn">Предпросмотр</span>
+      <div class="box"><h4>Общие требования</h4>
+        <label>Даты публикации — период</label><span class="in">с 15.10.2026</span> <span class="in">по 18.10.2026</span>
+        <label>Время публикации — период, отдельно от дат</label><span class="in">с 10:00</span> <span class="in">до 20:00</span>
+        <div class="note">Запустить можно уже сегодня: период может начинаться сразу после оплаты. Первая публикация выйдет после модерации поста, получения erid и принятия блогером.</div>
+        <label>Дополнительные требования — необязательно</label><span class="in area">Комментарий исполнителю…</span>
+      </div>
+      <div class="box"><h4>Токен креатива</h4>
+        <label>Где располагается токен креатива — пометка «Реклама», название и ИНН</label>
+        <p>◉ В тексте поста &nbsp;&nbsp; ○ В медиафайле поста</p>
+        <label>Где располагается сам токен — erid</label>
+        <p>○ В ссылке &nbsp;&nbsp; ○ Над постом &nbsp;&nbsp; ◉ Под постом</p>
+        <p class="if">«В медиафайле» недоступно без изображений, «В ссылке» — без ссылок в посте</p>
+      </div>
     </div>
-    <div class="box"><h4>Предпросмотр: как выйдет в канале</h4>
-      <div class="ph">изображения альбомом, с плашкой</div>
-      <p>Текст поста с форматированием…</p>
-      <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: <i>будет присвоен</i></p>
-      <span class="btn">Перейти на сайт</span>
-      <div class="note">Строку маркировки и плашку добавляет система. Ссылкам при оформлении заказа добавляются UTM-метки.</div>
+    <div>
+      <div class="box"><h4>Предпросмотр</h4>
+        <div class="ph">медиафайлы альбомом</div>
+        <p>Текст поста с форматированием…</p>
+        <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: <i>будет присвоен</i></p>
+      </div>
+      <div class="box"><h4>Оплата</h4>
+        <p>Каналов: 2 · <b>Итоговая цена: 14 950 ₽</b></p>
+        <p>Свободно на балансе: 84 000 ₽</p>
+        <a class="btn main" href="#adv/order">Оплатить</a>
+        <p class="if">не хватает: «Недостаёт 6 000 ₽»</p> <a class="btn" href="#adv/balance">Пополнить баланс</a>
+        <p class="if">не заполнены реквизиты или не приняты документы</p> <a class="btn" href="#adv/profile">Заполнить</a>
+      </div>
     </div>
+  </div>
+</section>
+
+<section class="screen" id="adv/campaigns" data-title="Кампании" data-s="S-04, S-07" data-stage="Медиатека и редактор поста; Заказ и размещения">
+  <h3>Кампании</h3>
+  <p><a class="btn main" href="#adv/catalog">Новая кампания: подобрать каналы</a></p>
+  <div class="box">
+    <table>
+      <tr><th>Кампания</th><th>Пост</th><th>Каналов</th><th>Период публикации</th><th>Состояние</th><th>Заказ</th><th></th></tr>
+      <tr><td>Осенняя акция</td><td>◻ превью · начало текста…</td><td>2</td><td>15.10–18.10, 10:00–20:00</td><td><span class="tag">черновик</span></td><td>—</td><td><a class="btn" href="#adv/campaign-post">Открыть</a> <span class="btn">В архив</span></td></tr>
+      <tr><td>Запуск сервиса</td><td>◻ превью · начало текста…</td><td>5</td><td>12.10–16.10, 09:00–21:00</td><td><span class="tag">оплачена</span></td><td><a href="#adv/order">№ 1042</a></td><td><a class="btn" href="#adv/order">Открыть</a> <span class="btn">В архив</span></td></tr>
+    </table>
+    <div class="note">Кампания может включать несколько заказов; в первой версии у кампании один заказ. ☐ Показывать архивные.</div>
   </div>
 </section>
 
@@ -421,7 +432,7 @@
   <p><a href="#adv/orders">← Заказы</a></p>
   <div class="box"><h4>Заказ № 1042</h4>
     <p>Состояние: <span class="tag">в работе</span> (на модерации / отклонён / маркировка / в работе / завершён / отменён) · Создан 12.10 15:00 МСК · Сумма 48 300 ₽ · Удержано 26 450 ₽ · Возвращено 9 200 ₽</p>
-    <p>Пост: версия 2, erid: 2Vtzq… · <span class="btn">Предпросмотр</span> <a class="btn" href="#adv/post-edit">Изменить пост</a> <span class="btn">Отменить заказ</span> <a class="btn" href="#adv/report">Отчёт</a></p>
+    <p>Пост: версия 2, erid: 2Vtzq… · <span class="btn">Предпросмотр</span> <a class="btn" href="#adv/campaign-post">Изменить пост</a> <span class="btn">Отменить заказ</span> <a class="btn" href="#adv/report">Отчёт</a></p>
     <p class="if">заказ отклонён модератором: причина отклонения и кнопка «Изменить пост»</p>
   </div>
   <div class="box"><h4>Размещения</h4>
@@ -431,7 +442,7 @@
       <tr><td>Канал Б</td><td>2/48</td><td>…</td><td><span class="tag">запланировано</span></td><td>16.10 12:00</td><td>18.10 12:00</td><td>—</td><td>—</td><td>9 200 ₽</td><td><span class="if">отмены нет — «написать в поддержку»</span></td></tr>
       <tr><td>Канал В</td><td>1/24</td><td>…</td><td><span class="tag">опубликовано</span></td><td>13.10 10:00</td><td>14.10 10:00</td><td><u>ссылка</u></td><td>3 120</td><td>6 900 ₽</td><td><span class="btn">Подать претензию</span></td></tr>
       <tr><td>Канал Г</td><td>1/24</td><td>…</td><td><span class="tag">снято</span><br>автоприёмка через 20 ч</td><td>12.10 18:00</td><td>13.10 18:00</td><td>удалён</td><td>4 480</td><td>8 050 ₽</td><td><span class="btn main">Принять</span> <span class="btn">Подать претензию</span></td></tr>
-      <tr><td>Канал Д</td><td>7 дней</td><td>…</td><td><span class="tag">спор</span></td><td>…</td><td>…</td><td>…</td><td>…</td><td>17 250 ₽</td><td><span class="btn">Открыть спор</span> (переписка, запрос пояснений)</td></tr>
+      <tr><td>Канал Д</td><td>3/72</td><td>…</td><td><span class="tag">спор</span></td><td>…</td><td>…</td><td>…</td><td>…</td><td>17 250 ₽</td><td><span class="btn">Открыть спор</span> (переписка, запрос пояснений)</td></tr>
       <tr><td>Канал Е</td><td>2/48</td><td>…</td><td><span class="tag">отклонено блогером</span><br>причина</td><td>—</td><td>—</td><td>—</td><td>—</td><td>9 200 ₽ возвращено</td><td>—</td></tr>
     </table>
     <div class="note">Остальные состояния строки: подготовка, ожидает планирования, принято, выплачено, истекло, отменено, сорвано, возвращено — без действий.</div>
@@ -664,7 +675,6 @@
         <tr><td>☑</td><td>1/24</td><td><span class="in" style="min-width:70px">5 000</span></td><td>5 750 ₽</td></tr>
         <tr><td>☑</td><td>2/48</td><td><span class="in" style="min-width:70px">7 000</span></td><td>8 050 ₽</td></tr>
         <tr><td>☐</td><td>3/72</td><td>—</td><td>—</td></tr>
-        <tr><td>☑</td><td>7 дней</td><td><span class="in" style="min-width:70px">15 000</span></td><td>17 250 ₽</td></tr>
       </table>
       <div class="note">От 100 ₽ до 10 000 000 ₽. Без хотя бы одной цены канал не выходит в каталог. Новая цена не меняет оформленные заказы.</div>
       <span class="btn main">Сохранить</span>
@@ -783,9 +793,11 @@
   <div class="box">Вкладки: <span class="btn main">На модерации (3)</span><span class="btn">Маркировка</span><span class="btn">Все</span> · Поиск: <span class="in">№, ИНН</span></div>
   <div class="box">
     <table>
-      <tr><th>№</th><th>Рекламодатель</th><th>Категория рекламы</th><th>Каналов</th><th>Сумма</th><th>Состояние</th><th>Ждёт</th><th></th></tr>
-      <tr><td>1042</td><td>ООО «Ромашка»</td><td>Товары для дома</td><td>5</td><td>48 300 ₽</td><td><span class="tag">на модерации</span></td><td>3 ч <span class="if">больше 24 ч — выделено</span></td><td><a class="btn" href="#adm/order">Открыть</a></td></tr>
+      <tr><th>№</th><th>Рекламодатель</th><th>Категория рекламы</th><th>Каналов</th><th>Сумма</th><th>Начало публикации</th><th>Состояние</th><th>Ждёт</th><th></th></tr>
+      <tr><td>1051</td><td>ООО «Лютик»</td><td>Онлайн-сервисы</td><td>3</td><td>21 000 ₽</td><td>сегодня 16:00<br><span class="tag bad">срочно</span></td><td><span class="tag">на модерации</span></td><td>20 мин</td><td><a class="btn main" href="#adm/order">Открыть</a></td></tr>
+      <tr><td>1042</td><td>ООО «Ромашка»</td><td>Товары для дома</td><td>5</td><td>48 300 ₽</td><td>15.10 10:00</td><td><span class="tag">на модерации</span></td><td>3 ч <span class="if">больше 24 ч — выделено</span></td><td><a class="btn" href="#adm/order">Открыть</a></td></tr>
     </table>
+    <div class="note">Очередь отсортирована по началу публикации, затем по времени ожидания. «Срочно» — до начала публикации меньше 6 часов или период уже начался; срок модерации 1 час.</div>
   </div>
 </section>
 
@@ -1035,7 +1047,7 @@
   <div class="cols">
     <div class="box"><h4>Рекламодателю (кабинет и почта)</h4><ul><li>заказ одобрен / отклонён модератором</li><li>блогер принял, отклонил, не ответил, перенёс время</li><li>пост опубликован / публикация сорвалась</li><li>пост снят, итоговые просмотры</li><li>открыт спор / вынесено решение</li><li>баланс пополнен</li></ul></div>
     <div class="box"><h4>Блогеру (бот MAX и почта)</h4><ul><li>новый запрос на размещение</li><li>пост опубликован / снят</li><li>канал одобрен, отклонён, приостановлен</li><li>у бота пропали права</li><li>открыт спор / вынесено решение</li><li>выплата выполнена, чек / выплата не прошла</li></ul></div>
-    <div class="box"><h4>Администратору (почта и чат дежурных)</h4><ul><li>модерация ждёт больше 24 ч</li><li>спор ждёт больше 72 ч</li><li>публикация сорвалась / снятие просрочено</li><li>ошибка ОРД после повторов</li><li>выплата не прошла</li></ul></div>
+    <div class="box"><h4>Администратору (почта и чат дежурных)</h4><ul><li>срочный пост поступил на модерацию</li><li>модерация ждёт больше 24 ч (срочный пост — больше 1 ч)</li><li>спор ждёт больше 72 ч</li><li>публикация сорвалась / снятие просрочено</li><li>ошибка ОРД после повторов</li><li>выплата не прошла</li></ul></div>
   </div>
 </section>
 
@@ -1069,7 +1081,7 @@
 <script>
 const groups = { auth: 'Вход и регистрация', adv: 'Рекламодатель', blg: 'Блогер', adm: 'Администратор', common: 'Общее', ext: 'Вне кабинета' };
 const menus = {
-  adv: [['adv/catalog', 'Каталог'], ['adv/cart', 'Корзина (3)'], ['adv/posts', 'Посты'], ['adv/media', 'Медиатека'], ['adv/orders', 'Заказы'], ['adv/balance', 'Баланс'], ['adv/profile', 'Реквизиты']],
+  adv: [['adv/catalog', 'Каталог'], ['adv/cart', 'Корзина (3)'], ['adv/campaigns', 'Кампании'], ['adv/media', 'Медиатека'], ['adv/orders', 'Заказы'], ['adv/balance', 'Баланс'], ['adv/profile', 'Реквизиты']],
   blg: [['blg/placements', 'Запросы и размещения (2)'], ['blg/channels', 'Каналы'], ['blg/payouts', 'Выплаты'], ['blg/profile', 'Реквизиты и MAX']],
   adm: [['adm/channels', 'Каналы (4)'], ['adm/orders', 'Заказы (3)'], ['adm/placements', 'Размещения'], ['adm/disputes', 'Споры (2)'], ['adm/payments', 'Оплаты'], ['adm/withdrawals', 'Выводы'], ['adm/payouts', 'Выплаты'], ['adm/ledger', 'Проводки'], ['adm/ord-errors', 'ОРД: ошибки (1)'], ['adm/ord-reports', 'ОРД: отчётность'], ['adm/orgs', 'Организации'], ['adm/audit', 'Журнал действий']]
 };
@@ -1089,9 +1101,10 @@ const flows = {
     ['auth/org-adv', 'Заполняет реквизиты и принимает документы'],
     ['adv/catalog', 'Ищет каналы: фильтры и сортировка'],
     ['adv/channel', 'Смотрит канал, выбирает формат и окно дат, кладёт в корзину'],
-    ['adv/post-edit', 'Готовит пост: текст, картинки, кнопка, категория рекламы'],
+    ['adv/cart', 'Проверяет корзину: форматы и итог по каналам, подписчикам, просмотрам и цене'],
+    ['adv/campaign-new', 'Называет кампанию'],
     ['adv/balance', 'Пополняет баланс: получает счёт и платит переводом'],
-    ['adv/cart', 'Выбирает пост и оформляет заказ — деньги удерживаются'],
+    ['adv/campaign-post', 'Готовит единый пост, задаёт сроки и место токена, оплачивает — деньги удерживаются'],
     ['adv/order', 'Следит за каждым каналом; после снятия принимает или подаёт претензию'],
     ['adv/report', 'Смотрит итог кампании и выгружает отчёт']
   ] },

@@ -4,7 +4,7 @@
 
 **Связанные документы.** [glossary.md](glossary.md) — названия; [03-placement.md](03-placement.md) — состояния и суммы размещения; [05-integrations.md](05-integrations.md) — внешние объекты; [06-finance-legal.md](06-finance-legal.md) — проводки.
 
-**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, D-14, D-15, A-05, A-08, A-13, A-14, A-20, A-22, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, Q-33, Q-37.
+**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, D-14, D-15, D-16, D-17, D-18, A-05, A-08, A-13, A-14, A-20, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, A-38, A-39, Q-33, Q-37.
 
 ## 1. Общие правила
 
@@ -229,7 +229,8 @@ erDiagram
 erDiagram
     organization ||--o{ media_file : owns
     media_file ||--o{ media_derivative : produces
-    organization ||--o{ post : owns
+    organization ||--o{ campaign : owns
+    campaign ||--|| post : has
     post ||--o{ post_version : has
     post_version ||--o{ post_version_media : includes
     media_file ||--o{ post_version_media : source
@@ -264,14 +265,27 @@ erDiagram
 | `public_url` | `text` | нет | Постоянная публичная ссылка. Обязательна для `labeled` и `plain`: её получает ОРД как образец (05 §3.4) |
 | `width`, `height`, `size_bytes` | | да | |
 
+### campaign
+
+Кампания: наименование, единый пост для всех каналов и общие требования к публикации (D-16, D-17).
+
+| Поле | Тип | Об. | Пояснение |
+|---|---|---|---|
+| `organization_id` | `uuid` | да | |
+| `name` | `text` | да | Наименование кампании |
+| `status` | `text` | да | `draft` — до оплаты; `ordered` — оплачена, есть заказ; `archived`. В кампании может быть несколько заказов; в первой версии — один |
+| `date_from`, `date_to` | `date` | нет | Период дат публикации (A-39). Обязательны к оплате |
+| `time_from`, `time_to` | `time` | нет | Период времени суток, МСК (A-39). Обязательны к оплате |
+| `extra_requirements` | `text` | нет | «Дополнительные требования» — комментарий исполнителю |
+
 ### post
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
 | `organization_id` | `uuid` | да | |
-| `title` | `text` | да | Внутреннее название для рекламодателя |
+| `campaign_id` | `uuid` | да | Уникально: у кампании один пост (D-16) |
 | `status` | `text` | да | `draft`, `archived` |
-| `draft` | `jsonb` | да | Текущее редактируемое содержимое: документ редактора, идентификаторы файлов по порядку, кнопка, категория рекламы и её поля, признак плашки |
+| `draft` | `jsonb` | да | Текущее редактируемое содержимое: документ редактора, идентификаторы файлов по порядку, кнопка, категория рекламы и её поля, место токена |
 
 ### post_version
 
@@ -283,12 +297,13 @@ erDiagram
 | `number` | `integer` | да | Уникально в паре с `post_id`, с 1 |
 | `status` | `text` | да | `pending_moderation`, `rejected`, `approved`, `ready` (03 §1.1) |
 | `content_doc` | `jsonb` | да | Документ редактора |
-| `body` | `text` | да | Текст в формате API MAX без строки маркировки. Не более 3800 символов (A-22) |
-| `final_text` | `text` | нет | `body` плюс строка маркировки с erid. Заполняется при переходе в `ready`. Не более 4000 символов |
+| `body` | `text` | да | Текст в формате API MAX без строки маркировки. Не более 3800 символов (A-38) |
+| `final_text` | `text` | нет | Итоговый текст: `body`, тексты категории и строка маркировки по месту токена (05 §2.5). Заполняется при переходе в `ready`. Не более 4000 символов |
 | `button_text`, `button_url` | `text` | нет | Оба или ни одного |
 | `ad_category_id` | `uuid` | да | |
 | `category_fields` | `jsonb` | да | Значения обязательных полей категории |
-| `label_enabled` | `boolean` | да | |
+| `token_carrier` | `text` | да | Где пометка «Реклама» с названием и ИНН: `text` или `media` (D-18, A-38) |
+| `token_position` | `text` | да | Где erid: `link`, `above`, `below` (D-18, A-38) |
 | `advertiser_name`, `advertiser_inn` | `text` | да | Снимок реквизитов на момент создания версии |
 | `moderated_by`, `moderated_at` | | нет | |
 | `rejection_reason` | `text` | нет | |
@@ -309,6 +324,7 @@ erDiagram
 erDiagram
     organization ||--o{ cart_item : has
     organization ||--o{ order : places
+    campaign ||--o{ order : groups
     post ||--o{ order : used
     order ||--o{ placement : contains
     channel ||--o{ placement : hosts
@@ -329,7 +345,6 @@ erDiagram
 |---|---|---|---|
 | `organization_id`, `channel_id` | `uuid` | да | Уникальная пара |
 | `format_id` | `text` | да | |
-| `window_start`, `window_end` | `timestamptz` | да | Окно дат |
 | `shown_total_amount` | `bigint` | да | Итог, показанный рекламодателю при добавлении. Сравнивается при оформлении |
 
 ### order
@@ -338,6 +353,7 @@ erDiagram
 |---|---|---|---|
 | `number` | `bigint` | да | Человекочитаемый номер, уникальный, из последовательности |
 | `organization_id` | `uuid` | да | Рекламодатель |
+| `campaign_id` | `uuid` | да | В первой версии у кампании один заказ (D-16) |
 | `post_id` | `uuid` | да | |
 | `current_post_version_id` | `uuid` | да | Последняя версия |
 | `status` | `text` | да | Производное (03 §1.2): `moderation`, `rejected`, `marking`, `in_progress`, `completed`, `cancelled` |
@@ -352,7 +368,8 @@ erDiagram
 | `blogger_organization_id` | `uuid` | да | Снимок владельца канала при создании |
 | `format_id` | `text` | да | |
 | `top_hours`, `duration_hours` | `integer` | да | Снимок формата |
-| `window_start`, `window_end` | `timestamptz` | да | |
+| `window_start`, `window_end` | `timestamptz` | да | Снимок периода дат кампании: начало первого и конец последнего дня |
+| `time_from`, `time_to` | `time` | да | Снимок периода времени суток кампании (D-17) |
 | `post_version_id` | `uuid` | да | Версия, с которой выйдет или вышло размещение |
 | `status` | `text` | да | 03 §3 |
 | `status_changed_at` | `timestamptz` | да | |
@@ -688,6 +705,9 @@ erDiagram
 | `channel.status` | `unclaimed` — бот добавлен неизвестным пользователем; `pending_rights` — не хватает прав или канал закрытый; `moderation`; `active`; `rejected`; `suspended` — временно недоступен (права, РКН); `disconnected` — бот удалён; `blocked` — заблокирован администратором |
 | `channel.rkn_status` | `not_required`, `pending`, `confirmed`, `rejected` |
 | `post_version.status` | `pending_moderation`, `rejected`, `approved`, `ready` |
+| `campaign.status` | `draft`, `ordered`, `archived` |
+| `post_version.token_carrier` | `text`, `media` |
+| `post_version.token_position` | `link`, `above`, `below` |
 | `order.status` | `moderation`, `rejected`, `marking`, `in_progress`, `completed`, `cancelled` |
 | `placement.status` | `created`, `awaiting_blogger`, `awaiting_schedule`, `scheduled`, `published`, `removed`, `disputed`, `accepted`, `paid`, `declined`, `expired`, `cancelled`, `failed`, `refunded` |
 | `publication.removal_reason` | `schedule`, `external`, `admin`, `refund` |
