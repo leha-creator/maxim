@@ -14,7 +14,15 @@ type ctxKey struct{}
 // New создаёт JSON-журнал с полем component=mockapi. Уровень — из строки
 // LOG_LEVEL: debug, info, warn, error; пустое или неизвестное значение — debug.
 func New(w io.Writer, level string) *slog.Logger {
-	h := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: ParseLevel(level)})
+	h := slog.NewJSONHandler(w, &slog.HandlerOptions{
+		Level: ParseLevel(level),
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey && len(groups) == 0 {
+				a.Value = slog.TimeValue(a.Value.Time().UTC()) // 07 §5.1: время в UTC
+			}
+			return a
+		},
+	})
 	return slog.New(h).With("component", "mockapi")
 }
 

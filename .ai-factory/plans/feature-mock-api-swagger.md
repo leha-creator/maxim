@@ -43,7 +43,7 @@ Constraints, важные для API:
 | Ошибки | Единый объект `{"error":{"code","message","details"},"request_id"}`; коды: `validation_failed`, `unauthorized`, `forbidden`, `not_found`, `invalid_transition`, `conflict` | Один формат для всех операций |
 | Списки | `?limit=&cursor=` → `{"items":[...],"next_cursor":...}` | |
 | Внешние системы | Webhook MAX и Рокет Ворк описаны, отвечают `200` и ничего не делают; ОРД, банк, почта не вызываются | Заглушка без сети |
-| Swagger UI | `GET /docs` — страница Swagger UI (скрипт с cdnjs), `GET /openapi.yaml` — встроенная через `embed` спецификация | Открывается браузером, установки не требует |
+| Swagger UI | `GET /docs` — страница Swagger UI (скрипт с cdnjs), `GET /openapi.json` — встроенная спецификация (сделано так вместо `/openapi.yaml`: oapi-codegen встраивает её в JSON) | Открывается браузером, установки не требует |
 
 ## Состав API
 
@@ -114,11 +114,11 @@ Constraints, важные для API:
 
 ### Phase 3: Проверка и запуск
 
-- [ ] **Task 8: Тесты** (depends on 7). `mockapi/internal/server/contract_test.go`: поднять сервер через `httptest`, войти каждым из трёх пользователей; для каждой операции из спецификации (перебор `paths` из встроенной спецификации) выполнить запрос с данными из `example` и id из начальных данных; ответ проверить `openapi3filter.ValidateResponse`; тест падает, если какая-то операция не покрыта. Отдельно: сквозной сценарий «корзина → кампания → пост → оформление → `_mock/advance` P-02 → блогер принимает и планирует → `_mock/clock` → `advance` P-08, P-10 → рекламодатель принимает»; повторный `accept` даёт `409`. Тест на `api/openapi.yaml`: `openapi3.NewLoader().LoadFromFile` + `Validate`.
+- [x] **Task 8: Тесты** (depends on 7). `mockapi/internal/server/contract_test.go`: поднять сервер через `httptest`, войти каждым из трёх пользователей; для каждой операции из спецификации (перебор `paths` из встроенной спецификации) выполнить запрос с данными из `example` и id из начальных данных; ответ проверить `openapi3filter.ValidateResponse`; тест падает, если какая-то операция не покрыта. Отдельно: сквозной сценарий «корзина → кампания → пост → оформление → `_mock/advance` P-02 → блогер принимает и планирует → `_mock/clock` → `advance` P-08, P-10 → рекламодатель принимает»; повторный `accept` даёт `409`. Тест на `api/openapi.yaml`: `openapi3.NewLoader().LoadFromFile` + `Validate`.
   Логирование: в тестах уровень `warn`, чтобы вывод не засорялся; при падении печатать `request_id` и тело ответа.
   Файлы: `mockapi/internal/server/contract_test.go`, `mockapi/internal/server/scenario_test.go`, `mockapi/internal/api/spec_test.go`.
 
-- [ ] **Task 9: Запуск и README** (depends on 7). `mockapi/README.md`: что это и чем не является (не каркас продукта, данные выдуманные, всё в памяти), установка Go, `go generate ./...`, `go run ./cmd/mockapi`, адрес Swagger UI, готовые пользователи и код `000000`, как пройти сквозной сценарий из задачи 8 через Swagger UI, что не реализовано (CSRF, реальные проверки, файлы, внешние системы). Строка в `docs/README.md` — ссылка на `api/openapi.yaml` и `mockapi/README.md` с пометкой «при расхождении правы документы 01–08». `Makefile` не заводить; команды — в README. Добавить в `.gitignore` бинарник `mockapi/mockapi.exe`.
+- [x] **Task 9: Запуск и README** (depends on 7). `mockapi/README.md`: что это и чем не является (не каркас продукта, данные выдуманные, всё в памяти), установка Go, `go generate ./...`, `go run ./cmd/mockapi`, адрес Swagger UI, готовые пользователи и код `000000`, как пройти сквозной сценарий из задачи 8 через Swagger UI, что не реализовано (CSRF, реальные проверки, файлы, внешние системы). Строка в `docs/README.md` — ссылка на `api/openapi.yaml` и `mockapi/README.md` с пометкой «при расхождении правы документы 01–08». `Makefile` не заводить; команды — в README. Добавить в `.gitignore` бинарник `mockapi/mockapi.exe`.
   Логирование: в README описать `LOG_LEVEL` и пример строки журнала.
   Файлы: `mockapi/README.md`, `docs/README.md`, `.gitignore`.
 
