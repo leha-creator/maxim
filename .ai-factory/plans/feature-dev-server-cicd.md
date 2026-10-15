@@ -96,7 +96,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary)
   Логирование: Caddy пишет журнал доступа в JSON в stdout, Docker его ротирует (задача 2). Уровень журнала заглушки задаёт `LOG_LEVEL` из `.env`.
   Файлы: `deploy/compose.yml`, `deploy/Caddyfile`, `deploy/.env.example`.
 
-- [ ] **Task 5: Образ заглушки** (depends on —). `mockapi/Dockerfile` (multi-stage):
+- [x] **Task 5: Образ заглушки** (depends on —). `mockapi/Dockerfile` (multi-stage):
   - сборка: `golang:<версия из mockapi/go.mod>-alpine` (точный тег), `WORKDIR /src`, сначала `COPY mockapi/go.mod mockapi/go.sum`, затем `go mod download` (с кэшем BuildKit `--mount=type=cache`), потом `COPY mockapi/ ./` и `COPY api/ /api/`; `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/mockapi ./cmd/mockapi`;
   - запуск: `gcr.io/distroless/static-debian12:nonroot`, `USER nonroot`, `EXPOSE 8080`, `ENTRYPOINT ["/mockapi"]`;
   - `ARG VERSION`, `LABEL org.opencontainers.image.source=https://github.com/leha-creator/maxim`. Метка связывает пакет GHCR с репозиторием, и `GITHUB_TOKEN` получает право на `pull`.
@@ -107,7 +107,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary)
 
 ### Фаза 4. CI/CD
 
-- [ ] **Task 6: Workflow GitHub Actions** (depends on 4, 5). `.github/workflows/deploy.yml`:
+- [x] **Task 6: Workflow GitHub Actions** (depends on 4, 5). `.github/workflows/deploy.yml`:
   - Триггеры: `push` в `master`; `pull_request` в `master` (только проверки, без деплоя); `workflow_dispatch` с необязательным входом `tag` (откат на `sha-xxxxxxx` без сборки).
   - `concurrency: { group: deploy-dev, cancel-in-progress: false }` — деплои не наслаиваются друг на друга.
   - `permissions: contents: read, packages: write`.
