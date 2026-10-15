@@ -1,0 +1,44 @@
+# Тестовый стенд заглушки API (см. deploy/README.md).
+# На сервере лежит в /opt/maxim рядом с Caddyfile и .env; копируется workflow деплоя.
+name: maxim
+
+services:
+  mockapi:
+    image: ghcr.io/leha-creator/maxim-mockapi:${MOCKAPI_TAG:-master}
+    restart: unless-stopped
+    environment:
+      MOCKAPI_ADDR: ":8080"
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      MOCKAPI_COOKIE_SECURE: "true"
+    # Порт наружу не публикуется: доступ только через Caddy во внутренней сети.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    networks:
+      - maxim
+
+  caddy:
+    image: caddy:2.11.7
+    restart: unless-stopped
+    # Без depends_on: Caddy поднимается и отвечает 503, даже когда заглушки нет.
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 128m
+    networks:
+      - maxim
+
+networks:
+  maxim: {}
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
