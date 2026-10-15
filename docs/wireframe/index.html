@@ -103,6 +103,10 @@
   th, td { border-bottom: 1px solid var(--line); padding: 8px 8px; text-align: left; vertical-align: top; }
   th { font-weight: 500; color: var(--muted); font-size: 12.5px; }
   tr:last-child td { border-bottom: 0; }
+  table.compact th, table.compact td { padding: 7px 5px; font-size: 13.5px; }
+  table.compact td { white-space: nowrap; }
+  table.compact td:first-child { white-space: normal; }
+  table.compact .in { min-width: 0; }
 
   /* пошаговый экран: один шаг на всю рабочую область */
   .stepper { display: flex; gap: 6px; align-items: center; justify-content: center; margin: 4px 0 22px; flex-wrap: wrap; }
@@ -191,26 +195,14 @@
 
 <section class="screen" id="auth/org-adv" data-title="Реквизиты рекламодателя" data-s="S-01" data-stage="Каркас и аккаунты">
   <div class="box"><h4>Организация</h4>
-    <label>Тип лица</label><span class="btn">Юрлицо</span><span class="btn">ИП</span>
-    <label>ИНН (10 цифр для юрлица, 12 для ИП)</label><span class="in wide">7700000000</span>
-    <label>КПП (9 цифр) <span class="if">юрлицо</span></label><span class="in wide">770001001</span>
+    <label>Тип лица</label><span class="btn">Юрлицо</span><span class="btn">ИП</span><span class="btn">Самозанятый</span>
+    <label>ИНН (10 цифр для юрлица, 12 для ИП и самозанятого)</label><span class="in wide">7700000000</span>
     <label>Сокращённое наименование организации <span class="if">юрлицо</span></label><span class="in wide">ООО «Ромашка»</span>
-    <label>ФИО <span class="if">ИП</span></label><span class="in wide">Фамилия Имя Отчество</span>
+    <label>ФИО <span class="if">ИП или самозанятый</span></label><span class="in wide">Фамилия Имя Отчество</span>
     <label>Адрес (юридический для юрлица, регистрации для ИП)</label><span class="in wide">…</span>
-    <label>Режим налогообложения</label><span class="in wide">Выберите ▾ (список зависит от типа лица)</span>
-    <label>Ставка НДС</label><span class="in wide">Выберите ▾ (список зависит от режима)</span>
-    <label>Документ, подтверждающий систему налогообложения</label>
-    <div class="ph" style="min-height:50px">загрузить файл</div>
     <label>Контактное лицо</label><span class="in wide">Имя Фамилия</span>
     <label>Телефон</label><span class="in wide">+7 …</span>
     <p class="if">ошибка: ИНН не прошёл проверку / ИНН уже занят — обратитесь в поддержку</p>
-  </div>
-  <div class="box"><h4>Данные подписанта</h4>
-    <p class="if">юрлицо</p>
-    <label>Должность</label><span class="in wide">Генеральный директор</span>
-    <label>ФИО</label><span class="in wide">Фамилия Имя Отчество</span>
-    <label>Документ, на основании которого действует: название</label><span class="in wide">Устав</span>
-    <label>Документ, на основании которого действует: номер</label><span class="in wide">№ …</span>
   </div>
   <div class="box"><h4>Документы</h4>
     <p>☐ Принимаю оферту рекламодателя (ссылка)</p>
@@ -220,9 +212,8 @@
   <a class="btn main" href="#adv/catalog">Сохранить и перейти в каталог</a>
 </section>
 
-<section class="screen" id="auth/org-blg" data-title="Реквизиты блогера и привязка MAX" data-s="S-10" data-stage="Каркас и аккаунты">
-  <div class="steps">
-    <div class="step" data-step="Реквизиты">
+<section class="screen" id="auth/org-blg" data-title="Реквизиты блогера" data-s="S-10" data-stage="Каркас и аккаунты">
+  <div class="step on" style="max-width:560px">
       <h4>Расскажите о себе</h4>
       <p class="lead">Реквизиты нужны для договора, маркировки и выплат.</p>
       <label>Тип лица</label><span class="btn">Самозанятый</span><span class="btn">ИП</span><span class="btn">Юрлицо</span>
@@ -244,18 +235,8 @@
         <label>Документ, на основании которого действует: номер</label><span class="in wide">№ …</span>
       </div>
       <p>☐ Принимаю оферту блогера (ссылка)<br>☐ Принимаю правила площадки (ссылка)<br>☐ Согласен с политикой персональных данных (ссылка)</p>
-      <p><a class="btn main big" data-go="1">Сохранить и продолжить →</a></p>
+      <p><a class="btn main big" href="#blg/channel-add">Сохранить и добавить канал →</a></p>
       <p><span class="if">ИНН не прошёл проверку или уже занят — текст ошибки под полем</span></p>
-    </div>
-    <div class="step" data-step="Аккаунт MAX">
-      <h4>Привяжите аккаунт MAX</h4>
-      <p class="lead">Так бот узнает вас, когда вы добавите его в канал, и сможет присылать заказы.</p>
-      <p>Отправьте этот код боту платформы личным сообщением:</p>
-      <div class="ph" style="min-height:60px;font-size:24px;letter-spacing:.1em">K7Q2-9XPM</div>
-      <p>Код действует 15 минут. <span class="btn">Получить новый код</span> <span class="btn">Скопировать</span></p>
-      <p><a class="btn main big" href="#ext/bot">Открыть бота в MAX</a></p>
-      <p><span class="if">привязка прошла — «Аккаунт MAX привязан» и кнопка</span> <a class="btn" href="#blg/channel-add">Добавить канал →</a></p>
-    </div>
   </div>
 </section>
 
@@ -274,9 +255,9 @@
     <div class="w2">
       <div class="box">Найдено: 128 · Сортировка: <span class="in">Подписчики ▾ (просмотры, ERR, цена, CPV)</span></div>
       <div class="box"><h4>Строка канала (повторяется)</h4>
-        <table>
-          <tr><th>Канал</th><th>Категория</th><th>Подписчики</th><th>Просмотры</th><th>ERR %</th><th>Постов в неделю</th><th>Формат</th><th>Цена с комиссией</th><th>CPV</th><th></th></tr>
-          <tr><td>◻ значок · <a href="#adv/channel">Название канала</a></td><td>Технологии</td><td>24 300</td><td>6 100</td><td>25 %</td><td>9</td><td><span class="in">1/24 ▾</span><br>2/48, 3/72</td><td>5 750 ₽</td><td>0,94 ₽</td><td><a class="btn" href="#adv/channel">Открыть</a><br><span class="tag">в корзине</span></td></tr>
+        <table class="compact">
+          <tr><th>Канал</th><th>Категория</th><th>Подписчики</th><th>Просмотры</th><th>ERR</th><th>Формат</th><th>Цена с комиссией</th><th>CPV</th><th></th></tr>
+          <tr><td>◻ <a href="#adv/channel">Название канала</a></td><td>Технологии</td><td>24 300</td><td>6 100</td><td>25 %</td><td><span class="in">1/24 ▾</span><br>2/48, 3/72</td><td>5 750 ₽</td><td>0,94 ₽</td><td><a class="btn" href="#adv/channel">Открыть</a><br><span class="tag">в корзине</span></td></tr>
         </table>
       </div>
       <div class="box">Постраничная навигация: ‹ 1 2 3 … ›</div>
@@ -357,13 +338,6 @@
         <p>Символов: 1 240 из 3 800</p>
         <div class="note">Ссылки — кнопкой «Ссылка» или вставкой адреса https://… — система распознаёт адрес в тексте. К каждой ссылке добавляются UTM-метки и erid, если выбран токен «в ссылке». Кнопки под постом нет.</div>
       </div>
-      <div class="box"><h4>Маркировка: категория рекламы</h4>
-        <span class="in wide">Выберите категорию ▾ (закрытые категории недоступны)</span>
-        <p class="if">после выбора: требования категории и дополнительные поля</p>
-        <label>Возрастная метка</label><span class="in">18+ ▾</span>
-        <label>Реквизиты продавца</label><span class="in wide">…</span>
-        <label>Сроки акции</label><span class="in wide">…</span>
-      </div>
       <div class="box"><h4>Общие требования</h4>
         <label>Даты публикации — период</label><span class="in">с 15.10.2026</span> <span class="in">по 18.10.2026</span>
         <label>Время публикации — период, отдельно от дат</label><span class="in">с 10:00</span> <span class="in">до 20:00</span>
@@ -372,17 +346,18 @@
       </div>
       <div class="box"><h4>Токен креатива</h4>
         <label>Где располагается токен креатива — пометка «Реклама», название и ИНН</label>
-        <p>◉ В тексте поста &nbsp;&nbsp; ○ В медиафайле поста</p>
+        <p>○ В тексте поста &nbsp;&nbsp; ◉ В медиафайле поста</p>
         <label>Где располагается сам токен — erid</label>
         <p>○ В ссылке &nbsp;&nbsp; ○ Над постом &nbsp;&nbsp; ◉ Под постом</p>
         <p class="if">«В медиафайле» недоступно без изображений, «В ссылке» — без ссылок в посте</p>
+        <div class="note">По умолчанию: пометка «Реклама», название и ИНН — в медиафайле, erid — под постом.</div>
       </div>
     </div>
     <div>
       <div class="box"><h4>Предпросмотр</h4>
         <div class="ph">медиафайлы альбомом</div>
         <p>Текст поста с форматированием…</p>
-        <p style="color:#666">Реклама. ООО «Ромашка», ИНН 7700000000. erid: <i>будет присвоен</i></p>
+        <p style="color:#666">В медиафайле: «Реклама. ООО «Ромашка», ИНН 7700000000»<br>Под постом: erid: <i>будет присвоен</i></p>
       </div>
       <div class="box"><h4>Оплата</h4>
         <p>Каналов: 2 · <b>Итоговая цена: 14 950 ₽</b></p>
@@ -467,18 +442,18 @@
   <p><a href="#adv/order">← Заказ № 1042</a></p>
   <h3>Отчёт по заказу № 1042</h3>
   <div class="box"><h4>Итог</h4>
-    <p>Просмотры: 12 480 · Потрачено: 30 100 ₽ · Возвращено: 9 200 ₽ · Цена за 1000 просмотров: 2 412 ₽</p>
+    <p>Просмотры: 12 480 · Потрачено: 30 100 ₽ · Возвращено: 9 200 ₽ · Цена за 1 просмотр (CPV): 2,4 ₽</p>
     <span class="btn">Выгрузить CSV</span>
   </div>
   <div class="box"><h4>По размещениям</h4>
     <table>
-      <tr><th>Канал</th><th>Ссылка на пост (с UTM)</th><th>Опубликован</th><th>Снят</th><th>Просмотры на момент снятия</th><th>Сумма</th><th>Исход</th></tr>
-      <tr><td>Канал Г</td><td><u>ссылка</u></td><td>12.10 18:00</td><td>13.10 18:00</td><td>4 480</td><td>8 050 ₽</td><td>принято</td></tr>
+      <tr><th>Канал</th><th>Ссылка на пост (с UTM)</th><th>Опубликован</th><th>Снят</th><th>Просмотры на момент снятия</th><th>Сумма</th><th>CPV</th><th>Исход</th></tr>
+      <tr><td>Канал Г</td><td><u>ссылка</u></td><td>12.10 18:00</td><td>13.10 18:00</td><td>4 480</td><td>8 050 ₽</td><td>1,80 ₽</td><td>принято</td></tr>
     </table>
   </div>
 </section>
 
-<section class="screen" id="adv/balance" data-title="Баланс" data-s="S-06, S-33" data-stage="Приём оплаты и учёт денег">
+<section class="screen" id="adv/balance" data-title="Баланс" data-s="S-06" data-stage="Приём оплаты и учёт денег">
   <h3>Баланс</h3>
   <div class="cols">
     <div class="box"><h4>Состояние</h4>
@@ -488,12 +463,12 @@
       <label>Сумма, ₽</label><span class="in">50 000</span> <span class="btn main">Сформировать счёт</span>
       <div class="note">Счёт в PDF с реквизитами. Оплата банковским переводом; зачисление после загрузки выписки администратором.</div>
     </div>
-    <div class="box"><h4>Вывести остаток</h4>
-      <label>Сумма, ₽ (не больше свободного)</label><span class="in">…</span>
+    <div class="box"><h4>Банковские реквизиты</h4>
       <label>Расчётный счёт</label><span class="in wide">…</span>
+      <label>Банк</label><span class="in wide">…</span>
+      <label>Корр. счёт</label><span class="in wide">…</span>
       <label>БИК</label><span class="in wide">…</span>
-      <span class="btn">Подать заявку</span>
-      <div class="note">Сумма блокируется до перевода. Перевод делает администратор.</div>
+      <span class="btn main">Сохранить</span>
     </div>
   </div>
   <div class="box"><h4>Счета</h4>
@@ -508,15 +483,10 @@
       <tr><td>12.10 15:00</td><td>Удержание</td><td>Заказ № 1042, Канал А</td><td>−5 750 ₽</td></tr>
       <tr><td>12.10 09:00</td><td>Пополнение</td><td>Счёт СЧ-000120</td><td>+100 000 ₽</td></tr>
     </table>
-    <p>Виды: пополнение, удержание, снятие удержания, списание, возврат, вывод.</p>
+    <p>Виды: пополнение, удержание, снятие удержания, списание, возврат.</p>
   </div>
-  <div class="cols">
-    <div class="box"><h4>Заявки на вывод</h4>
-      <table><tr><th>Дата</th><th>Сумма</th><th>Счёт, БИК</th><th>Состояние</th></tr><tr><td>12.10</td><td>20 000 ₽</td><td>…</td><td><span class="tag">подана</span> (выполнена / отменена)</td></tr></table>
-    </div>
-    <div class="box"><h4>Закрывающие документы</h4>
-      <table><tr><th>Период</th><th>№ акта</th><th>Услуги блогеров</th><th>Вознаграждение платформы</th><th></th></tr><tr><td>сентябрь 2026</td><td>А-000045</td><td>42 000 ₽</td><td>6 300 ₽</td><td><span class="btn">Скачать PDF</span></td></tr></table>
-    </div>
+  <div class="box"><h4>Закрывающие документы</h4>
+    <table><tr><th>Период</th><th>№ акта</th><th>Услуги блогеров</th><th>Вознаграждение платформы</th><th></th></tr><tr><td>сентябрь 2026</td><td>А-000045</td><td>42 000 ₽</td><td>6 300 ₽</td><td><span class="btn">Скачать PDF</span></td></tr></table>
   </div>
 </section>
 
@@ -524,27 +494,10 @@
   <h3>Реквизиты и аккаунт</h3>
   <div class="cols">
     <div class="box"><h4>Организация</h4>
-      <p>Тип лица · ИНН · КПП <span class="if">юрлицо</span> · Наименование или ФИО — <i>после заказов меняются через поддержку</i></p>
+      <p>Тип лица · ИНН · Наименование или ФИО — <i>после заказов меняются через поддержку</i></p>
       <label>Адрес (юридический для юрлица, регистрации для ИП)</label><span class="in wide">…</span>
       <label>Контактное лицо</label><span class="in wide">…</span>
       <label>Телефон</label><span class="in wide">…</span>
-      <span class="btn main">Сохранить</span>
-    </div>
-    <div class="box"><h4>Налоги</h4>
-      <label>Режим налогообложения</label><span class="in wide">УСН ▾ (список зависит от типа лица)</span>
-      <label>Ставка НДС</label><span class="in wide">Без НДС ▾ (список зависит от режима)</span>
-      <label>Документ, подтверждающий систему налогообложения</label>
-      <div class="ph" style="min-height:50px">загруженный файл: имя · дата</div>
-      <span class="btn">Заменить файл</span> <span class="btn main">Сохранить</span>
-    </div>
-  </div>
-  <div class="cols">
-    <div class="box"><h4>Данные подписанта</h4>
-      <p class="if">юрлицо</p>
-      <label>Должность</label><span class="in wide">…</span>
-      <label>ФИО</label><span class="in wide">…</span>
-      <label>Документ, на основании которого действует: название</label><span class="in wide">…</span>
-      <label>Документ, на основании которого действует: номер</label><span class="in wide">…</span>
       <span class="btn main">Сохранить</span>
     </div>
     <div class="box"><h4>Аккаунт</h4>
@@ -642,7 +595,6 @@
 <section class="screen" id="blg/channel-add" data-nav="blg/channels" data-title="Добавление канала" data-s="S-12" data-stage="Подключение каналов">
   <p><a href="#blg/channels">← Каналы</a></p>
   <h3>Добавить канал</h3>
-  <p class="if">аккаунт MAX не привязан: сначала привязка</p> <a class="btn" href="#blg/profile">Привязать MAX</a>
   <div class="box"><h4>Инструкция</h4>
     <ol>
       <li>Откройте настройки канала в MAX → Администраторы.</li>
@@ -704,7 +656,7 @@
   </div>
 </section>
 
-<section class="screen" id="blg/profile" data-title="Реквизиты и MAX" data-s="S-10" data-stage="Каркас и аккаунты; Подключение каналов">
+<section class="screen" id="blg/profile" data-title="Реквизиты" data-s="S-10" data-stage="Каркас и аккаунты">
   <h3>Реквизиты и аккаунт</h3>
   <div class="cols">
     <div class="box"><h4>Реквизиты</h4>
@@ -729,16 +681,10 @@
       <span class="btn main">Сохранить</span>
     </div>
   </div>
-  <div class="cols">
-    <div class="box"><h4>Аккаунт MAX</h4>
-      <p class="if">привязан</p> <p>Привязан: Имя в MAX · уведомления приходят от бота</p>
-      <p class="if">не привязан</p> <p>Код привязки: <b>K7Q2-9XPM</b> (15 минут) · <span class="btn">Новый код</span> <a class="btn" href="#ext/bot">Открыть бота</a></p>
-    </div>
-    <div class="box"><h4>Аккаунт</h4>
-      <p>Почта · принятые документы (версия, дата)</p>
-      <p class="if">у пользователя нет кабинета рекламодателя</p> <a class="btn" href="#auth/org-adv">Стать рекламодателем</a>
-      <p><span class="btn">Выйти</span></p>
-    </div>
+  <div class="box"><h4>Аккаунт</h4>
+    <p>Почта · принятые документы (версия, дата)</p>
+    <p class="if">у пользователя нет кабинета рекламодателя</p> <a class="btn" href="#auth/org-adv">Стать рекламодателем</a>
+    <p><span class="btn">Выйти</span></p>
   </div>
 </section>
 
@@ -926,17 +872,6 @@
   </div>
 </section>
 
-<section class="screen" id="adm/withdrawals" data-title="Заявки на вывод" data-s="S-33" data-stage="Приём оплаты и учёт денег">
-  <h3>Заявки на вывод остатка</h3>
-  <div class="box">
-    <table>
-      <tr><th>Дата</th><th>Организация</th><th>Сумма</th><th>Реквизиты</th><th>Состояние</th><th></th></tr>
-      <tr><td>12.10</td><td>ООО «Ромашка»</td><td>20 000 ₽</td><td>р/с …, БИК …</td><td><span class="tag">подана</span></td><td><span class="btn main">Отметить выполненной</span></td></tr>
-    </table>
-    <div class="note">Перевод администратор делает в банке вручную, затем отмечает заявку.</div>
-  </div>
-</section>
-
 <section class="screen" id="adm/payouts" data-title="Реестр выплат блогерам" data-s="S-15, S-19" data-stage="Выплаты блогерам через Рокет Ворк; Админка и отчётность ОРД">
   <h3>Выплаты блогерам</h3>
   <div class="box"><p>Депозит в Рокет Ворк: 250 000 ₽ · В работе: 3 выплаты на 19 000 ₽ · Не прошли: 1</p></div>
@@ -1053,11 +988,6 @@
 <section class="screen" id="ext/bot" data-title="Бот MAX: сообщения блогеру" data-s="S-10, S-12, S-14, S-15, S-25" data-stage="Подключение каналов; Уведомления и отчёт по кампании">
   <div class="note">Это не экран кабинета, а диалог блогера с ботом платформы в MAX. Здесь — какие сообщения бот отправляет и какие кнопки под ними.</div>
   <div class="cols">
-    <div class="box"><h4>Привязка аккаунта</h4>
-      <p>Блогер → боту: <code>K7Q2-9XPM</code></p>
-      <p>Бот: «Аккаунт привязан к name@mail.ru» / «Код неверен или просрочен» / «Этот аккаунт MAX уже привязан»</p>
-      <p class="if">пишет непривязанный пользователь</p> <p>Бот: инструкция по регистрации + <span class="btn">Открыть кабинет</span></p>
-    </div>
     <div class="box"><h4>Канал</h4>
       <p>«Канал подключён и отправлен на модерацию» <span class="btn">Настроить канал</span></p>
       <p>«Не хватает прав: удаление сообщений»</p>
@@ -1081,8 +1011,8 @@
 const groups = { auth: 'Вход и регистрация', adv: 'Рекламодатель', blg: 'Блогер', adm: 'Администратор', common: 'Общее', ext: 'Вне кабинета' };
 const menus = {
   adv: [['adv/catalog', 'Каталог'], ['adv/cart', 'Корзина (3)'], ['adv/campaigns', 'Кампании'], ['adv/media', 'Медиатека'], ['adv/orders', 'Заказы'], ['adv/balance', 'Баланс'], ['adv/profile', 'Реквизиты']],
-  blg: [['blg/placements', 'Запросы и размещения (2)'], ['blg/channels', 'Каналы'], ['blg/payouts', 'Выплаты'], ['blg/profile', 'Реквизиты и MAX']],
-  adm: [['adm/channels', 'Каналы (4)'], ['adm/orders', 'Заказы (3)'], ['adm/placements', 'Размещения'], ['adm/disputes', 'Споры (2)'], ['adm/payments', 'Оплаты'], ['adm/withdrawals', 'Выводы'], ['adm/payouts', 'Выплаты'], ['adm/ledger', 'Проводки'], ['adm/ord-errors', 'ОРД: ошибки (1)'], ['adm/ord-reports', 'ОРД: отчётность'], ['adm/orgs', 'Организации'], ['adm/audit', 'Журнал действий']]
+  blg: [['blg/placements', 'Запросы и размещения (2)'], ['blg/channels', 'Каналы'], ['blg/payouts', 'Выплаты'], ['blg/profile', 'Реквизиты']],
+  adm: [['adm/channels', 'Каналы (4)'], ['adm/orders', 'Заказы (3)'], ['adm/placements', 'Размещения'], ['adm/disputes', 'Споры (2)'], ['adm/payments', 'Оплаты'],['adm/payouts', 'Выплаты'], ['adm/ledger', 'Проводки'], ['adm/ord-errors', 'ОРД: ошибки (1)'], ['adm/ord-reports', 'ОРД: отчётность'], ['adm/orgs', 'Организации'], ['adm/audit', 'Журнал действий']]
 };
 const tops = {
   adv: 'ООО «Ромашка» · Свободно на балансе: 84 000 ₽ · <a href="#common/notifications">🔔 3</a> · Кабинет: <b>рекламодатель</b> / <a href="#blg/placements">блогер</a> · Выйти',
@@ -1107,13 +1037,11 @@ const flows = {
     ['adv/order', 'Следит за каждым каналом; после снятия принимает или подаёт претензию'],
     ['adv/report', 'Смотрит итог кампании и выгружает отчёт']
   ] },
-  blg: { name: 'Блогер: от входа до выплаты', about: 'Регистрация, привязка MAX, канал, цены, заказ, деньги', steps: [
+  blg: { name: 'Блогер: от входа до выплаты', about: 'Регистрация, канал, цены, заказ, деньги', steps: [
     ['auth/login@1', 'Вводит почту — пароля нет'],
     ['auth/login@2', 'Вводит код из письма'],
     ['auth/login@3', 'Новый пользователь выбирает «Блогер»'],
-    ['auth/org-blg@1', 'Заполняет реквизиты и принимает документы'],
-    ['auth/org-blg@2', 'Получает код привязки аккаунта MAX'],
-    ['ext/bot', 'Отправляет код боту в MAX — аккаунт привязан'],
+    ['auth/org-blg', 'Заполняет реквизиты и принимает документы'],
     ['blg/channel-add', 'Добавляет бота администратором своего канала'],
     ['blg/channel', 'Описывает канал и ставит цены по форматам'],
     ['blg/payouts', 'Подключает выплаты через Рокет Ворк'],

@@ -4,7 +4,7 @@
 
 **Связанные документы.** [glossary.md](glossary.md) — названия; [03-placement.md](03-placement.md) — состояния и суммы размещения; [05-integrations.md](05-integrations.md) — внешние объекты; [06-finance-legal.md](06-finance-legal.md) — проводки.
 
-**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-12, D-14, D-15, D-16, D-17, D-18, D-22, D-23, A-05, A-08, A-13, A-14, A-20, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, A-38, A-39, Q-33, Q-37.
+**Затронутые записи реестра.** D-02, D-03, D-04, D-07, D-10, D-11, D-14, D-15, D-16, D-17, D-18, D-22, D-23, D-24, D-25, D-26, D-27, D-29, D-30, A-05, A-08, A-13, A-14, A-20, A-23, A-24, A-25, A-26, A-31, A-32, A-33, A-35, A-36, A-38, A-39, A-41, A-42, Q-33, Q-37, Q-38, Q-39.
 
 ## 1. Общие правила
 
@@ -41,23 +41,23 @@ erDiagram
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
 | `email` | `citext` | да | Уникально. Единственный идентификатор для входа (A-13) |
-| `max_user_id` | `bigint` | нет | Идентификатор пользователя MAX. Уникально. Заполняется при привязке (S-10) |
-| `max_dialog_chat_id` | `bigint` | нет | Идентификатор диалога с ботом — для уведомлений |
 | `admin_role` | `text` | нет | `moderator`, `senior`. Пусто — не администратор |
 | `status` | `text` | да | `active`, `blocked` |
 | `last_login_at` | `timestamptz` | нет | |
 
+Идентификатора пользователя MAX у `user` нет: привязки аккаунта MAX нет (D-25). Бот пишет блогеру по `channel.added_by_max_user_id` (A-41, Q-38).
+
 ### auth_code
 
-Одноразовые коды: вход по почте и привязка MAX.
+Одноразовые коды: вход по почте и подключение канала (A-41).
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
-| `purpose` | `text` | да | `login`, `max_link` |
+| `purpose` | `text` | да | `login`, `channel_link` |
 | `email` | `citext` | нет | Для `login` |
-| `user_id` | `uuid` | нет | Для `max_link` |
+| `organization_id` | `uuid` | нет | Для `channel_link` — организация блогера, к которой привяжется канал |
 | `code_hash` | `text` | да | Хеш кода; сам код не хранится |
-| `expires_at` | `timestamptz` | да | 10 минут для `login`, 15 для `max_link` |
+| `expires_at` | `timestamptz` | да | 10 минут для `login`, 60 для `channel_link` |
 | `attempts` | `integer` | да | Не более 5 |
 | `consumed_at` | `timestamptz` | нет | |
 
@@ -87,11 +87,11 @@ erDiagram
 | `tax_document_storage_key`, `tax_document_sha256` | `text` | нет | Файл документа, подтверждающего режим налогообложения |
 | `signer_position`, `signer_name` | `text` | нет | Подписант: должность и ФИО. Только для `legal_entity` |
 | `signer_basis_name`, `signer_basis_number` | `text` | нет | Документ, на основании которого действует подписант: название и номер. Только для `legal_entity` |
-| `bank_account`, `bank_bik` | `text` | нет | Реквизиты для вывода остатка баланса (S-33) |
+| `bank_account`, `bank_name`, `bank_corr_account`, `bank_bik` | `text` | нет | Банковские реквизиты рекламодателя: расчётный счёт, банк, корреспондентский счёт, БИК. Вводятся в разделе «Баланс», печатаются в счёте как реквизиты плательщика (D-26) |
 | `is_platform` | `boolean` | да | `true` у единственной строки — самой платформы (ИП-владельца). Нужна как сторона договоров ОРД |
 | `status` | `text` | да | `active`, `blocked` |
 
-Поля от `kpp` до `signer_basis_number` заполняются при регистрации рекламодателя (S-01, 08 §4.2) и блогера (S-10, 08 §4.3) и обязательны в пределах своего типа лица: `tax_regime`, `vat_rate` и файл документа — всем; `address` — `sole_proprietor` и `legal_entity`; `kpp` и поля подписанта — `legal_entity`.
+`address` заполняется при регистрации рекламодателя (S-01, 08 §4.2) и блогера (S-10, 08 §4.3) и обязателен для `sole_proprietor` и `legal_entity`. Поля `kpp`, `tax_regime`, `vat_rate`, файл документа и поля подписанта заполняются только у блогера (D-24) и обязательны в пределах его типа лица: `tax_regime`, `vat_rate` и файл документа — всем; `kpp` и поля подписанта — `legal_entity`. У организации, которая только рекламодатель, они пустые; если такая организация позже становится блогером, кабинет запрашивает их при подключении роли.
 
 Допустимые сочетания — рабочие, проверить с бухгалтером (Q-37).
 
@@ -124,7 +124,7 @@ erDiagram
 | `advertiser_profile` | — | — | — | Дополнительных полей нет. Баланс берётся из счёта учёта |
 | `blogger_profile` | `full_name` | `text` | нет | ФИО для обращения и выплат. Обязательно для `self_employed` и `sole_proprietor`; у `legal_entity` пусто |
 
-Ограничение: `advertiser_profile` допустим при `legal_type` из `legal_entity`, `sole_proprietor` (A-05); `blogger_profile` — при любом `legal_type` (D-14). Для блогера с `legal_entity` запись `rocketwork_contractor` не создаётся: выплаты идут вне Рокет Ворк (A-36).
+Ограничение: `advertiser_profile` и `blogger_profile` допустимы при любом `legal_type` (D-24, D-14). Для блогера с `legal_entity` запись `rocketwork_contractor` не создаётся: выплаты идут вне Рокет Ворк (A-36).
 
 ### legal_document, legal_acceptance
 
@@ -163,7 +163,7 @@ erDiagram
 | `max_chat_id` | `bigint` | да | Уникально |
 | `title`, `max_description`, `icon_url`, `link` | `text` | нет | Из MAX, обновляются суточно и по событию `chat_title_changed` |
 | `is_public` | `boolean` | да | Из MAX |
-| `added_by_max_user_id` | `bigint` | да | Кто добавил бота (из `bot_added`) |
+| `added_by_max_user_id` | `bigint` | да | Кто добавил бота (из `bot_added`). Адресат личных сообщений бота блогеру (A-41) |
 | `description` | `text` | нет | Описание для каталога, пишет блогер |
 | `category_id` | `uuid` | нет | Обязательно для выхода из `moderation` |
 | `status` | `text` | да | См. §9 |
@@ -191,7 +191,7 @@ erDiagram
 | `subscribers_count` | `integer` | да | |
 | `avg_views` | `integer` | нет | Средние просмотры поста; расчёт — 05 §2.7 |
 | `engagement_bp` | `integer` | нет | `avg_views / subscribers_count`, в базисных пунктах |
-| `posts_per_week` | `numeric(6,2)` | нет | |
+| `posts_per_week` | `numeric(6,2)` | нет | Показывается в карточке канала, в строке каталога — нет (D-29) |
 | `anomaly_flags` | `text[]` | да | `subscribers_spike`, `views_disproportion` |
 
 ### channel_category
@@ -235,7 +235,6 @@ erDiagram
     post_version ||--o{ post_version_media : includes
     media_file ||--o{ post_version_media : source
     media_derivative ||--o{ post_version_media : sent
-    ad_category ||--o{ post_version : classifies
     post_version ||--o| creative : registered
 ```
 
@@ -285,7 +284,7 @@ erDiagram
 | `organization_id` | `uuid` | да | |
 | `campaign_id` | `uuid` | да | Уникально: у кампании один пост (D-16) |
 | `status` | `text` | да | `draft`, `archived` |
-| `draft` | `jsonb` | да | Текущее редактируемое содержимое: документ редактора, идентификаторы файлов по порядку, категория рекламы и её поля, место токена |
+| `draft` | `jsonb` | да | Текущее редактируемое содержимое: документ редактора, идентификаторы файлов по порядку, место токена |
 
 ### post_version
 
@@ -298,11 +297,9 @@ erDiagram
 | `status` | `text` | да | `pending_moderation`, `rejected`, `approved`, `ready` (03 §1.1) |
 | `content_doc` | `jsonb` | да | Документ редактора |
 | `body` | `text` | да | Текст в формате API MAX без строки маркировки. Не более 3800 символов (A-38) |
-| `final_text` | `text` | нет | Итоговый текст: `body`, тексты категории и строка маркировки по месту токена (05 §2.5). Заполняется при переходе в `ready`. Не более 4000 символов |
-| `ad_category_id` | `uuid` | да | |
-| `category_fields` | `jsonb` | да | Значения обязательных полей категории |
-| `token_carrier` | `text` | да | Где пометка «Реклама» с названием и ИНН: `text` или `media` (D-18, A-38) |
-| `token_position` | `text` | да | Где erid: `link`, `above`, `below` (D-18, A-38) |
+| `final_text` | `text` | нет | Итоговый текст: `body` и строка маркировки по месту токена (05 §2.5). Заполняется при переходе в `ready`. Не более 4000 символов |
+| `token_carrier` | `text` | да | Где пометка «Реклама» с названием и ИНН: `text` или `media` (D-18, A-38). По умолчанию `media`, без изображений — `text` (D-30) |
+| `token_position` | `text` | да | Где erid: `link`, `above`, `below` (D-18, A-38). По умолчанию `below` (D-30) |
 | `advertiser_name`, `advertiser_inn` | `text` | да | Снимок реквизитов на момент создания версии |
 | `moderated_by`, `moderated_at` | | нет | |
 | `rejection_reason` | `text` | нет | |
@@ -487,19 +484,7 @@ erDiagram
 
 Договор `initial`: клиент — рекламодатель, исполнитель — платформа. Договор `publisher`: клиент — платформа, исполнитель — блогер (A-31). Параметры договоров для ОРД — A-33.
 
-### ad_category
-
-Справочник категорий рекламы (D-12). Содержание — 06 §7.
-
-| Поле | Тип | Об. | Пояснение |
-|---|---|---|---|
-| `slug` | `text` | да | Уникально |
-| `name` | `text` | да | |
-| `restriction` | `text` | да | `none`, `light`, `document_required`, `forbidden` |
-| `is_enabled` | `boolean` | да | Можно ли выбрать при создании поста. Для `forbidden` всегда `false` |
-| `kktu_codes` | `text[]` | да | Коды ККТУ для ОРД |
-| `required_fields` | `text[]` | да | Из набора: `age_rating`, `seller_details`, `promo_terms` |
-| `disclaimer_text` | `text` | нет | Текст, который система добавляет в пост |
+Справочника категорий рекламы нет: категорий в первой версии нет (D-27). Код ККТУ для регистрации креатива в ОРД берётся из конфигурации, один для всех креативов (A-42, Q-39).
 
 ## 7. Деньги
 
@@ -514,7 +499,6 @@ erDiagram
     placement ||--o{ payout : pays
     organization ||--o| rocketwork_contractor : mirrored
     rocketwork_contractor ||--o{ payout : receives
-    organization ||--o{ balance_withdrawal : requests
     organization ||--o{ closing_act : receives
 ```
 
@@ -529,6 +513,8 @@ erDiagram
 | `expires_at` | `timestamptz` | да | 14 суток от выставления |
 | `paid_at`, `paid_amount` | | нет | Фактическая сумма может отличаться |
 | `pdf_storage_key` | `text` | да | |
+
+В PDF счёта как реквизиты плательщика печатаются наименование, ИНН и банковские реквизиты организации на момент выставления (`organization.bank_*`, D-26). Если банковские реквизиты не сохранены, в счёте только наименование и ИНН.
 
 ### bank_statement, bank_transaction
 
@@ -549,7 +535,7 @@ erDiagram
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
 | `kind` | `text` | да | 06 §2.1 |
-| `organization_id` | `uuid` | нет | Для `advertiser_balance`, `blogger_payable`, `withdrawal_pending` |
+| `organization_id` | `uuid` | нет | Для `advertiser_balance`, `blogger_payable` |
 | `placement_id` | `uuid` | нет | Для `placement_hold` |
 | `balance` | `bigint` | да | Кеш суммы проводок; может быть отрицательным только у счетов-активов по правилам 06 §2.2. Обновляется в транзакции с проводкой |
 
@@ -562,9 +548,9 @@ erDiagram
 | Таблица | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|---|
 | `ledger_transaction` | `kind` | `text` | да | Вид операции (06 §2.3) |
-| | `placement_id`, `invoice_id`, `payout_id`, `bank_transaction_id`, `balance_withdrawal_id` | `uuid` | нет | Основание; заполняется подходящее |
+| | `placement_id`, `invoice_id`, `payout_id`, `bank_transaction_id` | `uuid` | нет | Основание; заполняется подходящее |
 | | `actor_type`, `actor_user_id` | | да / нет | `system`, `admin`, `advertiser` |
-| | `reason` | `text` | нет | Обязателен для `manual` |
+| | `reason` | `text` | нет | Обязателен для `manual` и `balance_return` |
 | | `idempotency_key` | `text` | да | Уникально |
 | `ledger_entry` | `ledger_transaction_id` | `uuid` | да | |
 | | `debit_account_id`, `credit_account_id` | `uuid` | да | Разные счета |
@@ -609,9 +595,7 @@ erDiagram
 | `idempotency_key` | `text` | да | Уникально. Передаётся в Рокет Ворк |
 | `lock_version` | `integer` | да | |
 
-### balance_withdrawal
-
-`organization_id uuid`, `amount bigint`, `status text` (`requested`, `completed`, `cancelled`), `bank_account text`, `bank_bik text`, `processed_by uuid`, `processed_at timestamptz`.
+Заявок на вывод остатка нет (D-26): возврат остатка — проводка `balance_return`, которую администратор вводит по обращению в поддержку (06 §2.3).
 
 ### closing_act
 
@@ -701,7 +685,7 @@ erDiagram
 | `organization.legal_type` | `legal_entity`, `sole_proprietor`, `self_employed` |
 | `organization.tax_regime` | `osno` — общая система; `usn` — упрощённая; `ausn` — автоматизированная упрощённая; `eshn` — единый сельхозналог; `psn` — патент; `npd` — налог на профессиональный доход |
 | `organization.vat_rate` | `none` — без НДС; `vat_5`; `vat_7`; `vat_22` |
-| `channel.status` | `unclaimed` — бот добавлен неизвестным пользователем; `pending_rights` — не хватает прав или канал закрытый; `moderation`; `active`; `rejected`; `suspended` — временно недоступен (права, РКН); `disconnected` — бот удалён; `blocked` — заблокирован администратором |
+| `channel.status` | `unclaimed` — бот добавлен, канал ещё не связан с организацией кодом подключения (A-41); `pending_rights` — не хватает прав или канал закрытый; `moderation`; `active`; `rejected`; `suspended` — временно недоступен (права, РКН); `disconnected` — бот удалён; `blocked` — заблокирован администратором |
 | `channel.rkn_status` | `not_required`, `pending`, `confirmed`, `rejected` |
 | `post_version.status` | `pending_moderation`, `rejected`, `approved`, `ready` |
 | `campaign.status` | `draft`, `ordered`, `archived` |
@@ -714,14 +698,12 @@ erDiagram
 | `claim.reason` | `removed_early`, `top_violated`, `content_mismatch`, `other` |
 | `dispute.reason` | `removed_early`, `content_modified`, `top_violated`, `bot_access_lost`, `content_mismatch`, `other`, `admin` |
 | `dispute.resolution` | `full_payout`, `proportional`, `full_refund` |
-| `ad_category.restriction` | `none`, `light`, `document_required`, `forbidden` |
 | `sync_status` | `pending`, `sent`, `synced`, `error` |
 | `creative.erir_status` | `pending`, `success`, `error` |
 | `invoice.status` | `issued`, `paid`, `expired`, `cancelled` |
 | `hold.status` | `active`, `released`, `distributed` |
 | `payout.status` | `created`, `sent`, `succeeded`, `failed` |
 | `rocketwork_contractor.status` | `invited`, `pending`, `active`, `blocked` |
-| `balance_withdrawal.status` | `requested`, `completed`, `cancelled` |
 | `job.status` | `pending`, `running`, `succeeded`, `failed`, `cancelled` |
 | `inbound_event.status` | `received`, `processed`, `ignored`, `failed` |
 | `notification.channel` | `max_bot`, `email`, `cabinet` |
@@ -734,13 +716,13 @@ erDiagram
 | Что хранится | Где | Зачем |
 |---|---|---|
 | Почта | `user.email` | Вход, уведомления |
-| Идентификатор пользователя MAX | `user.max_user_id` | Привязка канала, уведомления |
+| Идентификатор пользователя MAX | `channel.added_by_max_user_id` | Сообщения бота блогеру (A-41) |
 | ФИО | `organization.name`, `organization.contact_name`, `organization.signer_name`, `blogger_profile.full_name` | Договор, маркировка, выплаты |
 | ИНН | `organization.inn` | Договор, ОРД, выплаты |
 | Телефон | `organization.phone` | Связь |
 | Адрес регистрации ИП | `organization.address` | Договор, закрывающие документы |
 | Документ о режиме налогообложения | `organization.tax_document_storage_key` | Подтверждение режима и ставки НДС |
-| Банковские реквизиты рекламодателя | `organization.bank_account`, `bank_bik` | Возврат остатка |
+| Банковские реквизиты рекламодателя | `organization.bank_account`, `bank_name`, `bank_corr_account`, `bank_bik` | Реквизиты плательщика в счёте, возврат остатка через поддержку (D-26) |
 | IP-адрес | `session.ip`, `legal_acceptance.ip`, `audit_log.ip` | Безопасность, доказательство принятия документов |
 
 Не хранится: паспортные данные, фотографии документов, удостоверяющих личность, банковские карты и счета блогеров — всё это находится в Рокет Ворк (A-24). В `outbound_request` и журнале приложения персональные данные маскируются (07 §5).
