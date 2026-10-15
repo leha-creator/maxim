@@ -126,7 +126,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary)
   Проверка: `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest` без замечаний.
   Файлы: `.github/workflows/deploy.yml`.
 
-- [ ] **Task 7: Секреты GitHub и первый деплой** (depends on 1, 3, 6).
+- [x] **Task 7: Секреты GitHub и первый деплой** (depends on 1, 3, 6).
   1. Секреты репозитория: `DEPLOY_HOST=95.163.229.132`, `DEPLOY_USER=deploy`, `DEPLOY_SSH_KEY` (содержимое `~/.ssh/maxim_deploy`), `DEPLOY_KNOWN_HOSTS` (строка `ssh-keyscan -t ed25519 95.163.229.132`, сверенная с отпечатком из задачи 3). Переменная `DEPLOY_DOMAIN=dev.plwedding.ru`.
      Способ: `gh` на машине не установлен. Предложить `winget install GitHub.cli` и вход пользователя командой `! gh auth login`, затем `gh secret set DEPLOY_SSH_KEY < ~/.ssh/maxim_deploy` и т. д. Если пользователь против `gh`, дать пошаговую инструкцию для Settings → Secrets and variables → Actions. Приватный ключ в чат не выводить.
   2. Создать окружение `dev` (Settings → Environments), защитные правила не нужны.
