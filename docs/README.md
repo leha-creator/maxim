@@ -23,6 +23,8 @@
 
 Исходные материалы: [RESEARCH.md](../.ai-factory/RESEARCH.md) — исследование с источниками; [ROADMAP.md](../.ai-factory/ROADMAP.md) — этапы.
 
+Тестовый стенд заглушки API: <https://dev.plwedding.ru/docs>. Как он устроен и обновляется — [deploy/README.md](../deploy/README.md).
+
 ## Порядок чтения
 
 1. `glossary.md` и `01-concept.md` — общая картина и словарь.

@@ -138,12 +138,13 @@ Source: .ai-factory/RESEARCH.md (Active Summary)
 
 ### Фаза 5. Документация и согласование
 
-- [ ] **Task 8: README стенда и правки плана заглушки** (depends on 6).
+- [x] **Task 8: README стенда и правки плана заглушки** (depends on 6).
   - `deploy/README.md`: схема (GitHub → GHCR → сервер, Caddy → mockapi); что лежит на сервере и где; как работает деплой; как откатиться (`workflow_dispatch` с `tag=sha-xxxxxxx`); как посмотреть журналы (`ssh deploy@... 'cd /opt/maxim && docker compose logs -f mockapi'`); как перезапустить; повторная подготовка нового сервера через `bootstrap.sh`; список секретов и переменных GitHub; ограничения (тестовый стенд, данные в памяти пропадают при каждом деплое, группа `docker` = root, нет мониторинга и бэкапов); что делать, если Docker Hub недоступен (`--registry-mirror`).
   - `docs/README.md`: строка со ссылкой на `deploy/README.md` и адресом `https://dev.plwedding.ru/docs`.
   - `.ai-factory/plans/feature-mock-api-swagger.md`: внести пункты из раздела «Что нужно от плана заглушки» — `servers` с `/api/v1`, `GET /healthz`, `MOCKAPI_COOKIE_SECURE`, версия первой строкой журнала, `mockapi/Dockerfile` уже есть (задача 9 заглушки не должна создавать его заново), ссылку `README` заглушки на стенд.
   Логирование: не требуется (только документация); в README описать, где искать журналы и в каком формате.
-  Файлы: `deploy/README.md`, `docs/README.md`, `.ai-factory/plans/feature-mock-api-swagger.md`.
+  Файлы: `deploy/README.md`, `docs/README.md`.
+  Как сделано: план заглушки не правился — его в это время вела другая сессия. Требования переданы ей сообщением. `servers: /api/v1` там уже относительный; проверка после деплоя использует существующий `GET /openapi.json` (переменная `SMOKE_PATH`), а не `/healthz`; `Secure` у cookie и `main.version` необязательны.
 
 ## Commit Plan
 
