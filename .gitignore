@@ -20,3 +20,7 @@ Thumbs.db
 # draw.io desktop backup and temp files
 .$*.bkp
 ~$*.dtmp
+
+# Тестовый сервер API
+mockapi/mockapi
+mockapi/mockapi.exe

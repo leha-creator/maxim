@@ -1,0 +1,11 @@
+# Генерация кода тестового сервера из ../api/openapi.yaml.
+# Запуск: go generate ./...
+package: api
+output: api.gen.go  # относительно internal/api, где запускается go:generate
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  skip-prune: true

@@ -21,6 +21,8 @@
 
 Прототип экранов: [wireframe/index.html](wireframe/index.html) — кликабельная иллюстрация к `08-screens.md`. Открывается в браузере, сборка не нужна. При расхождении с документами 01–08 правы документы.
 
+Черновик HTTP API кабинетов: [api/openapi.yaml](../api/openapi.yaml); тестовый сервер с выдуманными данными и Swagger UI — [mockapi/README.md](../mockapi/README.md). При расхождении с документами 01–08 правы документы.
+
 Исходные материалы: [RESEARCH.md](../.ai-factory/RESEARCH.md) — исследование с источниками; [ROADMAP.md](../.ai-factory/ROADMAP.md) — этапы.
 
 Тестовый стенд заглушки API: <https://dev.plwedding.ru/docs>. Как он устроен и обновляется — [deploy/README.md](../deploy/README.md).

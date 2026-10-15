@@ -107,6 +107,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /auth/logout:
     post:
@@ -121,6 +122,7 @@ paths:
               description: Очищенная cookie `session`
               schema: { type: string }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /me:
     get:
       tags: [auth]
@@ -135,6 +137,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ---------------------------------------------------------------- organizations
   /organizations:
@@ -173,6 +176,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Organization' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /organizations/current:
@@ -187,6 +191,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Organization' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [organizations]
@@ -206,6 +211,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Organization' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
 
@@ -228,6 +234,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/LegalDocument' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /legal-acceptances:
     post:
       tags: [legal]
@@ -242,6 +249,7 @@ paths:
       responses:
         '204': { description: Принято }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
 
@@ -273,6 +281,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /notifications/{id}/read:
     post:
       tags: [notifications]
@@ -283,6 +292,7 @@ paths:
       responses:
         '204': { description: Отмечено }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- catalog
@@ -339,6 +349,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/CatalogChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /catalog/channels/{id}:
     get:
@@ -354,6 +365,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CatalogChannelDetail' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /channel-categories:
     get:
@@ -373,6 +385,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/ChannelCategory' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /placement-formats:
     get:
       tags: [catalog]
@@ -391,6 +404,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/PlacementFormat' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ---------------------------------------------------------------- cart
   /cart:
@@ -406,6 +420,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Cart' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /cart/items:
     post:
       tags: [cart]
@@ -425,6 +440,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Cart' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -448,6 +464,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Cart' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
     delete:
@@ -463,6 +480,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Cart' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- campaigns
@@ -492,6 +510,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/Campaign' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [campaigns]
       operationId: createCampaign
@@ -516,6 +535,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Campaign' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /campaigns/{id}:
     get:
@@ -531,6 +551,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Campaign' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [campaigns]
@@ -552,6 +573,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Campaign' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -569,6 +591,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PostDraft' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [campaigns]
@@ -608,6 +631,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PostDraft' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /campaigns/{id}/post/preview:
@@ -627,6 +651,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PostPreview' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /campaigns/{id}/checkout:
     post:
@@ -648,6 +673,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Order' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -676,6 +702,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/MediaFile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [media]
       operationId: uploadMedia
@@ -701,6 +728,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MediaFile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /media/{id}:
     delete:
@@ -713,6 +741,7 @@ paths:
       responses:
         '204': { description: Удалён }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- orders
@@ -742,6 +771,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/OrderSummary' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /orders/{id}:
     get:
       tags: [orders]
@@ -756,6 +786,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Order' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /orders/{id}/post-versions:
     post:
@@ -775,6 +806,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Order' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -792,6 +824,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OrderReport' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /placements/{id}/cancel:
     post:
@@ -808,6 +841,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AdvertiserPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
   /placements/{id}/accept:
@@ -825,6 +859,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AdvertiserPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
   /placements/{id}/claims:
@@ -850,6 +885,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AdvertiserPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -867,6 +903,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Balance' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /balance/transactions:
     get:
       tags: [balance]
@@ -890,6 +927,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/BalanceTransaction' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /invoices:
     get:
       tags: [balance]
@@ -913,6 +951,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/Invoice' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [balance]
       operationId: createInvoice
@@ -931,6 +970,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /invoices/{id}/pdf:
     get:
@@ -948,6 +988,7 @@ paths:
                 type: string
                 format: binary
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- blogger channels
@@ -1001,6 +1042,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [blogger-channels]
@@ -1024,6 +1066,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /blogger/channels/{id}/prices:
@@ -1051,6 +1094,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /blogger/channels/{id}/unavailability:
@@ -1073,6 +1117,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /blogger/channels/{id}/unavailability/{unavailabilityId}:
@@ -1093,6 +1138,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- blogger placements
@@ -1141,6 +1187,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /blogger/placements/{id}/accept:
     post:
@@ -1157,6 +1204,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
   /blogger/placements/{id}/decline:
@@ -1179,6 +1227,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
   /blogger/placements/{id}/schedule:
@@ -1205,6 +1254,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -1229,6 +1279,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BloggerPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidTransition' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -1523,7 +1574,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
-      description: Нет нужного кабинета
+      description: Нет нужного кабинета или не заполнены реквизиты
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1588,16 +1639,17 @@ components:
       type: object
       required: [error, request_id]
       properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code: { $ref: '#/components/schemas/ErrorCode' }
-            message: { type: string, description: Короткое описание на английском }
-            details:
-              type: object
-              additionalProperties: true
+        error: { $ref: '#/components/schemas/ErrorBody' }
         request_id: { type: string }
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message: { type: string, description: Короткое описание на английском }
+        details:
+          type: object
+          additionalProperties: true
     PageMeta:
       type: object
       properties:
@@ -1701,15 +1753,9 @@ components:
         code: { type: string, pattern: '^[0-9]{6}$' }
     Me:
       type: object
-      required: [user, organizations]
+      required: [user, organizations, pending_legal_document_ids]
       properties:
-        user:
-          type: object
-          required: [id, email]
-          properties:
-            id: { $ref: '#/components/schemas/Uuid' }
-            email: { type: string, format: email }
-            last_login_at: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/User' }
         organizations:
           type: array
           description: В первой версии — не больше одной
@@ -1718,6 +1764,13 @@ components:
           type: array
           description: Документы, которые нужно принять для работы в открытых кабинетах
           items: { $ref: '#/components/schemas/Uuid' }
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string, format: email }
+        last_login_at: { type: string, format: date-time }
 
     # ------------------------------------------------ organizations
     OrganizationBrief:
@@ -1872,16 +1925,17 @@ components:
             metrics_history:
               type: array
               description: Суточные снимки за 30 дней
-              items:
-                type: object
-                required: [date, subscribers_count]
-                properties:
-                  date: { type: string, format: date }
-                  subscribers_count: { type: integer }
-                  avg_views: { type: integer }
+              items: { $ref: '#/components/schemas/ChannelMetricsPoint' }
             unavailability:
               type: array
               items: { $ref: '#/components/schemas/Unavailability' }
+    ChannelMetricsPoint:
+      type: object
+      required: [date, subscribers_count]
+      properties:
+        date: { type: string, format: date }
+        subscribers_count: { type: integer }
+        avg_views: { type: integer }
 
     # ------------------------------------------------ cart
     CartItemCreate:
@@ -1897,7 +1951,7 @@ components:
         format_id: { $ref: '#/components/schemas/PlacementFormatId' }
     CartItem:
       type: object
-      required: [id, channel, format_id, shown_total_amount, available]
+      required: [id, channel, format_id, shown_total_amount, price_changed, available]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         channel: { $ref: '#/components/schemas/ChannelRef' }
@@ -2013,12 +2067,13 @@ components:
         problems:
           type: array
           description: Нарушения автоматических проверок; пусто — пост можно оплачивать
-          items:
-            type: object
-            required: [code, message]
-            properties:
-              code: { type: string, enum: [empty_text, body_too_long, too_many_media, link_not_https, media_required_for_token] }
-              message: { type: string }
+          items: { $ref: '#/components/schemas/PostProblem' }
+    PostProblem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [empty_text, body_too_long, too_many_media, link_not_https, media_required_for_token] }
+        message: { type: string }
     PostVersion:
       type: object
       required: [id, number, status, token_carrier, token_position, created_at]
@@ -2113,13 +2168,7 @@ components:
             performance_share: { type: integer, minimum: 0, maximum: 10000 }
             publication_url: { type: string, format: uri }
             views: { type: integer }
-            claim:
-              type: object
-              required: [reason, text, created_at]
-              properties:
-                reason: { $ref: '#/components/schemas/ClaimReason' }
-                text: { type: string }
-                created_at: { type: string, format: date-time }
+            claim: { $ref: '#/components/schemas/PlacementClaim' }
             history:
               type: array
               items: { $ref: '#/components/schemas/PlacementHistoryEntry' }
@@ -2127,6 +2176,13 @@ components:
               type: array
               description: Действия, допустимые сейчас
               items: { $ref: '#/components/schemas/AdvertiserPlacementAction' }
+    PlacementClaim:
+      type: object
+      required: [reason, text, created_at]
+      properties:
+        reason: { $ref: '#/components/schemas/ClaimReason' }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
     PlacementHistoryEntry:
       type: object
       required: [transition, to_status, actor_type, created_at]
@@ -2150,29 +2206,31 @@ components:
         order_id: { $ref: '#/components/schemas/Uuid' }
         order_number: { type: integer, format: int64 }
         campaign_name: { type: string }
-        totals:
-          type: object
-          required: [placements, published, views, spent_amount, refunded_amount]
-          properties:
-            placements: { type: integer }
-            published: { type: integer, description: 'Размещения, которые выходили в канал' }
-            views: { type: integer }
-            spent_amount: { $ref: '#/components/schemas/Money' }
-            refunded_amount: { $ref: '#/components/schemas/Money' }
+        totals: { $ref: '#/components/schemas/OrderReportTotals' }
         rows:
           type: array
-          items:
-            type: object
-            required: [placement_id, channel, status]
-            properties:
-              placement_id: { $ref: '#/components/schemas/Uuid' }
-              channel: { $ref: '#/components/schemas/ChannelRef' }
-              status: { $ref: '#/components/schemas/PlacementStatus' }
-              published_at: { type: string, format: date-time }
-              removed_at: { type: string, format: date-time }
-              views: { type: integer }
-              publication_url: { type: string, format: uri }
-              utm_campaign: { type: string, example: order_1001 }
+          items: { $ref: '#/components/schemas/OrderReportRow' }
+    OrderReportTotals:
+      type: object
+      required: [placements, published, views, spent_amount, refunded_amount]
+      properties:
+        placements: { type: integer }
+        published: { type: integer, description: 'Размещения, которые выходили в канал' }
+        views: { type: integer }
+        spent_amount: { $ref: '#/components/schemas/Money' }
+        refunded_amount: { $ref: '#/components/schemas/Money' }
+    OrderReportRow:
+      type: object
+      required: [placement_id, channel, status]
+      properties:
+        placement_id: { $ref: '#/components/schemas/Uuid' }
+        channel: { $ref: '#/components/schemas/ChannelRef' }
+        status: { $ref: '#/components/schemas/PlacementStatus' }
+        published_at: { type: string, format: date-time }
+        removed_at: { type: string, format: date-time }
+        views: { type: integer }
+        publication_url: { type: string, format: uri }
+        utm_campaign: { type: string, example: order_1001 }
 
     # ------------------------------------------------ balance
     Balance:
@@ -2285,13 +2343,14 @@ components:
         prices:
           type: array
           minItems: 1
-          items:
-            type: object
-            required: [format_id, amount, is_enabled]
-            properties:
-              format_id: { $ref: '#/components/schemas/PlacementFormatId' }
-              amount: { type: integer, format: int64, minimum: 10000, maximum: 1000000000 }
-              is_enabled: { type: boolean }
+          items: { $ref: '#/components/schemas/ChannelPriceInput' }
+    ChannelPriceInput:
+      type: object
+      required: [format_id, amount, is_enabled]
+      properties:
+        format_id: { $ref: '#/components/schemas/PlacementFormatId' }
+        amount: { type: integer, format: int64, minimum: 10000, maximum: 1000000000 }
+        is_enabled: { type: boolean }
     ChannelLinkCode:
       type: object
       required: [code, expires_at, bot_name, instruction]
@@ -2384,13 +2443,14 @@ components:
         transitions:
           type: array
           description: Переходы, выполненные таймерами при сдвиге
-          items:
-            type: object
-            required: [placement_id, transition, to_status]
-            properties:
-              placement_id: { $ref: '#/components/schemas/Uuid' }
-              transition: { type: string }
-              to_status: { $ref: '#/components/schemas/PlacementStatus' }
+          items: { $ref: '#/components/schemas/MockTransition' }
+    MockTransition:
+      type: object
+      required: [placement_id, transition, to_status]
+      properties:
+        placement_id: { $ref: '#/components/schemas/Uuid' }
+        transition: { type: string }
+        to_status: { $ref: '#/components/schemas/PlacementStatus' }
     MockClockShift:
       type: object
       required: [hours]
