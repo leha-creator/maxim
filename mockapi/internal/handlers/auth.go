@@ -45,8 +45,8 @@ func (h *Handlers) Login(ctx context.Context, req api.LoginRequestObject) (api.L
 	u.LastLoginAt = &now
 	token := tx.CreateSession(u.ID)
 	h.logger(ctx).Info("user logged in", "op", "Auth.Login", "user_id", u.ID)
-	// Secure не ставится: тестовый сервер работает по http на localhost.
-	cookie := fmt.Sprintf("%s=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d", SessionCookie, token, 30*24*3600)
+	// Secure — только при MOCKAPI_COOKIE_SECURE=true: локально сервер работает по http.
+	cookie := h.cookie(token, 30*24*3600)
 	return api.Login200JSONResponse{Body: me(tx, u), Headers: api.Login200ResponseHeaders{SetCookie: &cookie}}, nil
 }
 
@@ -59,7 +59,7 @@ func (h *Handlers) Logout(ctx context.Context, req api.LogoutRequestObject) (api
 	}
 	tx.DeleteSession(tokenFrom(ctx))
 	h.logger(ctx).Info("user logged out", "op", "Auth.Logout", "user_id", u.ID)
-	cookie := SessionCookie + "=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+	cookie := h.cookie("", 0)
 	return api.Logout204Response{Headers: api.Logout204ResponseHeaders{SetCookie: &cookie}}, nil
 }
 

@@ -36,7 +36,9 @@ var noBodyMarker = struct{}{}
 
 func id(u fmt.Stringer) map[string]string { return map[string]string{"id": u.String()} }
 
-func at(d time.Duration) string { return time.Now().UTC().Add(d).Truncate(time.Second).Format(time.RFC3339) }
+func at(d time.Duration) string {
+	return time.Now().UTC().Add(d).Truncate(time.Second).Format(time.RFC3339)
+}
 
 func pngBytes() []byte {
 	var b bytes.Buffer
@@ -55,7 +57,9 @@ func multipartFile(name string, data []byte) ([]byte, string) {
 
 // checkoutDraft оформляет заказ черновой кампании и возвращает его идентификатор.
 func checkoutDraft(e *env) string {
-	var o struct{ ID string `json:"id"` }
+	var o struct {
+		ID string `json:"id"`
+	}
 	r := e.do(e.client(adv), http.MethodPost, "/campaigns/"+seed.CampaignDraft.String()+"/checkout", nil, "")
 	if r.status != http.StatusCreated {
 		e.t.Fatalf("checkout: %d %s", r.status, r.body)
@@ -66,11 +70,11 @@ func checkoutDraft(e *env) string {
 
 var cases = map[string]opCase{
 	// auth и общие
-	"requestLoginCode": {},
-	"login":            {},
-	"logout":           {user: adv, noBody: true},
-	"getMe":            {user: adv},
-	"createOrganization": {user: blg}, // блогер открывает кабинет рекламодателя
+	"requestLoginCode":          {},
+	"login":                     {},
+	"logout":                    {user: adv, noBody: true},
+	"getMe":                     {user: adv},
+	"createOrganization":        {user: blg}, // блогер открывает кабинет рекламодателя
 	"getCurrentOrganization":    {user: adv},
 	"updateCurrentOrganization": {user: adv},
 	"listLegalDocuments":        {user: adv},
@@ -78,7 +82,9 @@ var cases = map[string]opCase{
 	"listNotifications":         {user: adv, query: "unread=true"},
 	"markNotificationRead": {user: adv, prepare: func(e *env) (map[string]string, any) {
 		var page struct {
-			Items []struct{ ID string `json:"id"` } `json:"items"`
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
 		}
 		e.do(e.client(adv), http.MethodGet, "/notifications", nil, "").json(e.t, &page)
 		return map[string]string{"id": page.Items[0].ID}, noBodyMarker
@@ -126,10 +132,10 @@ var cases = map[string]opCase{
 	"getInvoicePdf":           {user: adv, params: id(seed.InvoicePaid)},
 
 	// блогер
-	"listBloggerChannels":    {user: blg},
-	"createChannelLinkCode":  {user: blg, noBody: true},
-	"getBloggerChannel":      {user: blg, params: id(seed.ChannelBlogger1)},
-	"updateBloggerChannel":   {user: blg, params: id(seed.ChannelModerate)},
+	"listBloggerChannels":     {user: blg},
+	"createChannelLinkCode":   {user: blg, noBody: true},
+	"getBloggerChannel":       {user: blg, params: id(seed.ChannelBlogger1)},
+	"updateBloggerChannel":    {user: blg, params: id(seed.ChannelModerate)},
 	"setBloggerChannelPrices": {user: blg, params: id(seed.ChannelBlogger1)},
 	"addChannelUnavailability": {user: blg, params: id(seed.ChannelBlogger1),
 		body: map[string]any{"starts_at": at(240 * time.Hour), "ends_at": at(264 * time.Hour)}},
@@ -151,8 +157,8 @@ var cases = map[string]opCase{
 	"rocketworkWebhook": {},
 
 	// _mock
-	"mockReset":     {noBody: true},
-	"mockGetClock":  {},
+	"mockReset":      {noBody: true},
+	"mockGetClock":   {},
 	"mockShiftClock": {},
 	"mockApproveOrderPost": {prepare: func(e *env) (map[string]string, any) {
 		return map[string]string{"id": checkoutDraft(e)}, noBodyMarker
@@ -163,7 +169,9 @@ var cases = map[string]opCase{
 	"mockAdvancePlacement": {params: id(seed.PlacementScheduled)},
 	"mockPayInvoice":       {params: id(seed.InvoiceIssued), noBody: true},
 	"mockLinkChannel": {prepare: func(e *env) (map[string]string, any) {
-		var lc struct{ Code string `json:"code"` }
+		var lc struct {
+			Code string `json:"code"`
+		}
 		e.do(e.client(blg), http.MethodPost, "/blogger/channels/link-code", nil, "").json(e.t, &lc)
 		return nil, map[string]any{"code": lc.Code, "title": "Канал из теста", "subscribers_count": 500}
 	}},

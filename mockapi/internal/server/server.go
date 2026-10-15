@@ -26,7 +26,7 @@ import (
 const BaseURL = "/api/v1"
 
 // New возвращает корневой обработчик.
-func New(log *slog.Logger, st *store.Store) (http.Handler, error) {
+func New(log *slog.Logger, st *store.Store, opts handlers.Options) (http.Handler, error) {
 	spec, err := api.GetSwagger()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded spec: %w", err)
@@ -37,7 +37,7 @@ func New(log *slog.Logger, st *store.Store) (http.Handler, error) {
 	}
 	log = log.With("module", "http")
 
-	h := handlers.New(log, st)
+	h := handlers.New(log, st, opts)
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			writeError(w, r, &store.Error{Status: http.StatusUnprocessableEntity, Code: "validation_failed", Message: err.Error()})

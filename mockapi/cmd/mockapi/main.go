@@ -3,8 +3,9 @@
 //
 // Переменные окружения:
 //
-//	MOCKAPI_ADDR — адрес, по умолчанию :8080
-//	LOG_LEVEL    — debug (по умолчанию), info, warn, error
+//	MOCKAPI_ADDR          — адрес, по умолчанию :8080
+//	LOG_LEVEL             — debug (по умолчанию), info, warn, error
+//	MOCKAPI_COOKIE_SECURE — true: cookie сессии с признаком Secure (стенд по HTTPS)
 package main
 
 import (
@@ -13,15 +14,20 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"maxim/mockapi/internal/clock"
+	"maxim/mockapi/internal/handlers"
 	"maxim/mockapi/internal/logx"
 	"maxim/mockapi/internal/seed"
 	"maxim/mockapi/internal/server"
 	"maxim/mockapi/internal/store"
 )
+
+// version задаётся при сборке: -ldflags "-X main.version=<sha>".
+var version = "dev"
 
 func main() {
 	log := logx.New(os.Stdout, os.Getenv("LOG_LEVEL"))
@@ -29,9 +35,10 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
+	cookieSecure, _ := strconv.ParseBool(os.Getenv("MOCKAPI_COOKIE_SECURE"))
 
 	st := store.New(clock.New(), log, seed.Load)
-	handler, err := server.New(log, st)
+	handler, err := server.New(log, st, handlers.Options{CookieSecure: cookieSecure})
 	if err != nil {
 		log.Error("server init failed", "op", "Main.Start", "error", err.Error())
 		os.Exit(1)
@@ -45,7 +52,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Info("server started", "op", "Main.Start", "addr", addr, "docs", "http://localhost"+portOf(addr)+"/docs")
+		log.Info("server started", "op", "Main.Start", "addr", addr, "version", version,
+			"cookie_secure", cookieSecure, "docs", "http://localhost"+portOf(addr)+"/docs")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server failed", "op", "Main.Start", "error", err.Error())
 			os.Exit(1)

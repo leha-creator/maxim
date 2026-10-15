@@ -57,7 +57,7 @@ type Tx struct {
 	Now time.Time
 	// Fired — переходы, выполненные таймерами при открытии транзакции.
 	Fired []TimerResult
-	log *slog.Logger
+	log   *slog.Logger
 }
 
 // Begin берёт блокировку, выполняет просроченные таймеры и возвращает Tx.

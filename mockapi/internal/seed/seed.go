@@ -227,7 +227,7 @@ func Load(d *store.Data, now time.Time) {
 		return &store.Campaign{
 			ID: id, OrgID: OrgAdvertiser, Name: name, Status: status, DateFrom: &df, DateTo: &dt,
 			TimeFrom: ptr("00:00"), TimeTo: ptr("23:59"), ExtraRequirements: ptr("Не публиковать рядом с рекламой конкурентов"),
-			Post: store.PostDraft{Doc: post, MediaIDs: []uuid.UUID{MediaFirst}, TokenCarrier: "media", TokenPosition: "below", UpdatedAt: created},
+			Post:      store.PostDraft{Doc: post, MediaIDs: []uuid.UUID{MediaFirst}, TokenCarrier: "media", TokenPosition: "below", UpdatedAt: created},
 			CreatedAt: created, UpdatedAt: created,
 		}
 	}
@@ -257,7 +257,7 @@ func Load(d *store.Data, now time.Time) {
 		v := &store.PostVersion{
 			ID: versionID, Number: 1, Status: "ready", Doc: camp.Post.Doc, Body: body, Erid: erid,
 			FinalText: store.FinalText(body, "media", "below", adv.Name, adv.INN, erid),
-			MediaIDs: camp.Post.MediaIDs, TokenCarrier: "media", TokenPosition: "below",
+			MediaIDs:  camp.Post.MediaIDs, TokenCarrier: "media", TokenPosition: "below",
 			AdvertiserName: adv.Name, AdvertiserINN: adv.INN, CreatedAt: created,
 		}
 		return &store.Order{ID: id, Number: number, OrgID: OrgAdvertiser, CampaignID: camp.ID,

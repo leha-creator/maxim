@@ -19,6 +19,7 @@ import (
 
 	"maxim/mockapi/internal/api"
 	"maxim/mockapi/internal/clock"
+	"maxim/mockapi/internal/handlers"
 	"maxim/mockapi/internal/logx"
 	"maxim/mockapi/internal/seed"
 	"maxim/mockapi/internal/server"
@@ -42,7 +43,7 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	log := logx.New(os.Stderr, "warn")
 	st := store.New(clock.New(), log, seed.Load)
-	h, err := server.New(log, st)
+	h, err := server.New(log, st, handlers.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

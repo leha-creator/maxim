@@ -20,17 +20,33 @@ import (
 // SessionCookie — имя cookie сессии (07 §4).
 const SessionCookie = "session"
 
+// Options — настройки обработчиков.
+type Options struct {
+	// CookieSecure добавляет признак Secure к cookie сессии; включается на стенде с HTTPS.
+	CookieSecure bool
+}
+
 // Handlers — реализация всех операций спецификации.
 type Handlers struct {
-	log *slog.Logger
-	st  *store.Store
+	log  *slog.Logger
+	st   *store.Store
+	opts Options
 }
 
 var _ api.StrictServerInterface = (*Handlers)(nil)
 
 // New создаёт обработчики.
-func New(log *slog.Logger, st *store.Store) *Handlers {
-	return &Handlers{log: log.With("module", "handlers"), st: st}
+func New(log *slog.Logger, st *store.Store, opts Options) *Handlers {
+	return &Handlers{log: log.With("module", "handlers"), st: st, opts: opts}
+}
+
+// cookie собирает заголовок Set-Cookie для сессии (07 §4).
+func (h *Handlers) cookie(value string, maxAge int) string {
+	c := fmt.Sprintf("%s=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d", SessionCookie, value, maxAge)
+	if h.opts.CookieSecure {
+		c += "; Secure"
+	}
+	return c
 }
 
 // ---------------------------------------------------------------- сессия в context
