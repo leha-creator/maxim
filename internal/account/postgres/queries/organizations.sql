@@ -66,3 +66,27 @@ SELECT EXISTS (SELECT 1 FROM organization WHERE inn = @inn)::boolean;
 -- name: GetOrganizationRequisites :one
 -- Название и ИНН для маркировки поста (модуль post, R-14); без блокировки.
 SELECT name, inn FROM organization WHERE id = @id;
+
+-- name: GetPlatformOrganization :one
+-- Организация-платформа — единственная строка (04 §2, R-5 этапа «Маркировка»).
+SELECT id, legal_type, inn, name FROM organization WHERE is_platform;
+
+-- name: InsertPlatformOrganization :exec
+INSERT INTO organization (id, legal_type, inn, name, contact_name, phone, is_platform, status, created_at, updated_at)
+VALUES (@id, @legal_type, @inn, @name, @name, @phone, true, 'active', @now, @now);
+
+-- name: RenamePlatformOrganization :exec
+UPDATE organization SET name = @name, contact_name = @name, updated_at = @now WHERE id = @id AND is_platform;
+
+-- name: GetOrganizationForMarking :one
+-- Реквизиты для ОРД (модуль marking); без блокировки.
+SELECT id, legal_type, inn, name, kpp, is_platform FROM organization WHERE id = @id;
+
+-- name: FirstOfferAcceptance :one
+-- Первое принятие оферты вида: дата договора и версия для номера (R-7 этапа «Маркировка»).
+SELECT la.accepted_at, ld.version
+FROM legal_acceptance la
+JOIN legal_document ld ON ld.id = la.legal_document_id
+WHERE la.organization_id = @organization_id AND ld.kind = @kind
+ORDER BY la.accepted_at, ld.version
+LIMIT 1;

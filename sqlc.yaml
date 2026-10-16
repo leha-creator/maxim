@@ -105,3 +105,9 @@ sql:
       go:
         <<: *gen
         out: internal/placement/postgres/sqlc
+  - <<: *entry
+    queries: internal/marking/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/marking/postgres/sqlc

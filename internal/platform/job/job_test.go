@@ -268,3 +268,35 @@ func TestRetryDelay(t *testing.T) {
 		}
 	}
 }
+
+func TestPostponeDoesNotCountAttempts(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if err := e.queue.Enqueue(ctx, job.Job{Kind: "waiting", MaxAttempts: 1}); err != nil {
+		t.Fatal(err)
+	}
+	w := e.worker()
+	var calls atomic.Int32
+	w.Register("waiting", func(context.Context, job.Running) error {
+		if calls.Add(1) < 4 {
+			return job.Postpone(errors.New("dependency not ready"), 30*time.Second)
+		}
+		return nil
+	}, job.HandlerOptions{})
+	for i := range 3 {
+		if n, _ := w.RunOnce(ctx); n != 1 {
+			t.Fatalf("run %d did not happen", i+1)
+		}
+		j := e.jobs(t)[0]
+		if j.Status != "pending" || j.Attempts != 0 || !j.RunAt.Equal(e.clk.Now().Add(30*time.Second)) {
+			t.Fatalf("after postpone %d: %+v", i+1, j)
+		}
+		e.clk.Advance(30 * time.Second)
+	}
+	if n, _ := w.RunOnce(ctx); n != 1 {
+		t.Fatal("final run did not happen")
+	}
+	if j := e.jobs(t)[0]; j.Status != "succeeded" {
+		t.Fatalf("max_attempts 1 exhausted by postpones: %+v", j)
+	}
+}

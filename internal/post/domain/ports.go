@@ -82,6 +82,8 @@ type Versions interface {
 	ListByPost(ctx context.Context, postID uuid.UUID) ([]Version, error)
 	// UpdateStatus сохраняет переход версии.
 	UpdateStatus(ctx context.Context, v Version) error
+	// Organization — организация-рекламодатель версии (этап «Маркировка»).
+	Organization(ctx context.Context, versionID uuid.UUID) (uuid.UUID, error)
 }
 
 // VersionChange — смена состояния версии поста (03 §1.1).

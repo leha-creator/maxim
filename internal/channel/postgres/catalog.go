@@ -60,6 +60,8 @@ func baseQuery(a *args, f domain.CatalogFilter, feeRateBP, rknThreshold int, id 
 	}
 	where := []string{
 		"c.status = 'active'",
+		// R-14 этапа «Маркировка»: площадка канала зарегистрирована в ОРД.
+		"c.ord_platform_ready_at IS NOT NULL",
 		"(c.subscribers_count < " + a.Add(int32(rknThreshold)) + " OR c.rkn_status = 'confirmed')",
 	}
 	if id != nil {

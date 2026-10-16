@@ -47,7 +47,7 @@ func Approve(t testing.TB, pool *pgxpool.Pool, channelID uuid.UUID) {
 			INSERT INTO channel_price (id, channel_id, format_id, amount, is_enabled, created_at, updated_at)
 			VALUES ($3, $1, 'f_1_24', $4, true, now(), now())
 			ON CONFLICT (channel_id, format_id) DO UPDATE SET is_enabled = true)
-		UPDATE channel SET status = 'active', status_reason = NULL,
+		UPDATE channel SET status = 'active', status_reason = NULL, ord_platform_ready_at = coalesce(ord_platform_ready_at, now()),
 			category_id = coalesce(category_id, $2), moderated_at = now(), lock_version = lock_version + 1
 		WHERE id = $1`, channelID, CategoryFood, ids.New(), PriceAmount)
 	if err != nil {

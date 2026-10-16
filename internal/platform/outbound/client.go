@@ -141,6 +141,10 @@ type Call struct {
 	// Redact — поля этого вызова, скрываемые в outbound_request сверх Options.Redact
 	// (адрес подписки Webhook с секретной частью пути).
 	Redact []string
+	// RecordBody — тело запроса для outbound_request вместо отправленного: адаптер сам
+	// маскирует поля, которые нельзя просто скрыть (ИНН маскированным, длина текста).
+	// Поля Redact к нему тоже применяются.
+	RecordBody []byte
 }
 
 // Response — ответ внешней системы.
@@ -357,6 +361,9 @@ func (c *Client) send(req *http.Request, call Call) attemptResult {
 func (c *Client) record(ctx context.Context, call Call, attempt int, req *http.Request, body []byte,
 	res attemptResult, started time.Time, dur time.Duration) {
 	red := c.redactor.with(call.Redact)
+	if call.RecordBody != nil {
+		body = call.RecordBody
+	}
 	request, _ := json.Marshal(map[string]any{
 		"method":  call.Method,
 		"url":     red.url(call.URL),

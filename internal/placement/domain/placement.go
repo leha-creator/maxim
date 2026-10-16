@@ -110,6 +110,8 @@ const (
 	NoticeRescheduled  = "placement.rescheduled"
 	NoticeReturned     = "placement.returned"
 	NoticePostRejected = "order.post_rejected"
+	// NoticeErirRejected — ЕРИР отклонил креатив заказа (этап «Маркировка», R-17).
+	NoticeErirRejected = "order.erir_rejected"
 	// Этап «Автопостинг и контроль» (R-19).
 	NoticePublished      = "placement.published"
 	NoticeFailed         = "placement.failed"

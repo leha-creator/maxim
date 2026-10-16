@@ -35,3 +35,7 @@ UPDATE post_version SET
     status = @status, final_text = @final_text, erid = @erid, moderated_by = @moderated_by,
     moderated_at = @moderated_at, rejection_reason = @rejection_reason, lock_version = @lock_version
 WHERE id = @id AND lock_version = @prev_lock_version;
+
+-- name: GetVersionOrganization :one
+-- Организация-рекламодатель версии: креатив в ОРД (этап «Маркировка», R-8).
+SELECT p.organization_id FROM post_version v JOIN post p ON p.id = v.post_id WHERE v.id = @id;

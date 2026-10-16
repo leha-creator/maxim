@@ -35,6 +35,9 @@ type Channels interface {
 	// ListForMetrics — каналы в moderation, active, suspended с id больше after,
 	// порцией по id (R-13).
 	ListForMetrics(ctx context.Context, after uuid.UUID, limit int) ([]uuid.UUID, error)
+	// SetOrdPlatformReady отмечает регистрацию площадки в ОРД, если она ещё не отмечена (R-14
+	// этапа «Маркировка»); false — канала нет или отметка уже есть. Версию строки не меняет.
+	SetOrdPlatformReady(ctx context.Context, id uuid.UUID, at time.Time) (bool, error)
 }
 
 // LinkCodes — коды подключения (R-15: строки auth_code с purpose = channel_link).
@@ -213,4 +216,20 @@ type ChannelPost struct {
 // модуль размещений; без него bootstrap подставляет пустую. Вызывается вне транзакции канала.
 type ChannelPostListener interface {
 	ChannelPostCreated(ctx context.Context, p ChannelPost) error
+}
+
+// ApprovedChannel — канал, одобренный модератором: площадка в ОРД (S-16 шаг 3, этап
+// «Маркировка», R-13).
+type ApprovedChannel struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	Title          string
+	Link           string
+}
+
+// ChannelApprovalListener — канал одобрен: регистрация площадки, контрагента блогера и
+// договора с блогером в ОРД (R-13). Вызывается в транзакции одобрения; ошибка откатывает
+// одобрение. Реализация — marking/app; без неё канал сразу виден в каталоге (R-18).
+type ChannelApprovalListener interface {
+	ChannelApproved(ctx context.Context, ch ApprovedChannel) error
 }

@@ -49,3 +49,8 @@ SELECT * FROM "order" WHERE id = @id;
 UPDATE "order" SET status = @status, current_post_version_id = @current_post_version_id,
     post_version_idempotency_key = @post_version_idempotency_key, updated_at = @updated_at
 WHERE id = @id;
+
+-- name: FindOrderByPlacementVersion :one
+-- Этап «Маркировка», R-12: заказ размещений версии поста (версия может быть уже не текущей).
+SELECT o.* FROM "order" o
+WHERE o.id = (SELECT p.order_id FROM placement p WHERE p.post_version_id = @version_id LIMIT 1);

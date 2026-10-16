@@ -17,12 +17,17 @@ import (
 // errDevForbidden — команда разработчика вне development и test.
 var errDevForbidden = errors.New("dev commands are allowed only with APP_ENV development or test")
 
+// errDevReadyWithORD — ready в обход маркировки при включённом ОРД (R-18 этапа «Маркировка»).
+var errDevReadyWithORD = errors.New("post-version ready is allowed only with ORD_ENABLED=false: use approve, the worker gets erid from ORD")
+
 // runDev — команды разработчика до API администратора и интеграции с ОРД (R-23):
 //
 //	maxim dev post-version --order <номер> approve|ready|reject [--erid X] [--reason Y]
 //
-// Двигает текущую версию поста заказа так, как это сделают модерация (S-17) и маркировка:
-// через post/app, поэтому размещения отвечают так же (R-5). Только APP_ENV development и test.
+// Двигает текущую версию поста заказа так, как это сделает модерация (S-17): через post/app,
+// поэтому размещения отвечают так же (R-5). При ORD_ENABLED=true после approve маркировка в worker
+// регистрирует креатив и выдаёт erid (ordfake или тестовый контур ОРД); ready в обход маркировки —
+// только при ORD_ENABLED=false (R-18 этапа «Маркировка»). Только APP_ENV development и test.
 // Журнал действий пишется с актором system; moderated_by — автор заказа.
 func runDev(ctx context.Context, cfg Config, log *slog.Logger, args []string, out io.Writer) error {
 	const op = "Bootstrap.Dev"
@@ -47,6 +52,10 @@ func runDev(ctx context.Context, cfg Config, log *slog.Logger, args []string, ou
 	default:
 		return errUsage
 	}
+	if action == "ready" && cfg.ORD.Enabled {
+		log.ErrorContext(ctx, "dev command refused", logx.KeyOp, op, "command", "post-version ready", "reason", "ord_enabled")
+		return errDevReadyWithORD
+	}
 
 	pool, err := db.Open(ctx, cfg.DatabaseURL, 2, log)
 	if err != nil {
@@ -58,6 +67,9 @@ func runDev(ctx context.Context, cfg Config, log *slog.Logger, args []string, ou
 		return err
 	}
 	m := newModules(cfg, in)
+	if err := m.startMarking(ctx); err != nil {
+		return err
+	}
 	o, err := m.placementStore.Orders().GetByNumber(ctx, *number)
 	if err != nil {
 		return fmt.Errorf("order %d: %w", *number, err)
@@ -87,6 +99,9 @@ func runDev(ctx context.Context, cfg Config, log *slog.Logger, args []string, ou
 		return err
 	}
 	fmt.Fprintf(out, "order %d status %s version %d status %s\n", v.Order.Number, v.Order.Status, v.Version.Number, v.Version.Status)
+	if action == "approve" && cfg.ORD.Enabled {
+		fmt.Fprintln(out, "marking: the worker registers the creative in ORD and makes the version ready with erid")
+	}
 	for _, p := range v.Placements {
 		fmt.Fprintf(out, "placement %s channel %s status %s\n", p.Placement.ID, p.Placement.ChannelID, p.Placement.Status)
 	}

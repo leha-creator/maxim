@@ -120,6 +120,8 @@ type Deps struct {
 type Service struct {
 	Deps
 	log *slog.Logger
+	// approval — модуль маркировки (SetMarkingPorts); nil — маркировка выключена.
+	approval domain.ChannelApprovalListener
 }
 
 // New создаёт сервис.

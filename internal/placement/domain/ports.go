@@ -52,6 +52,8 @@ type Orders interface {
 	FindByIdempotencyKey(ctx context.Context, orgID uuid.UUID, key string) (Order, bool, error)
 	// FindByCurrentVersion — заказ, у которого версия текущая (R-5), без блокировки.
 	FindByCurrentVersion(ctx context.Context, versionID uuid.UUID) (Order, bool, error)
+	// FindByPlacementVersion — заказ, размещения которого привязаны к версии (этап «Маркировка», R-12).
+	FindByPlacementVersion(ctx context.Context, versionID uuid.UUID) (Order, bool, error)
 	// Update — состояние, текущая версия, ключ правки поста, updated_at.
 	Update(ctx context.Context, o Order) error
 }

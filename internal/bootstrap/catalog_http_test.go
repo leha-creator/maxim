@@ -146,6 +146,7 @@ func TestCatalogHTTP(t *testing.T) {
 	if r := mod.do(http.MethodPost, "/admin/channels/"+first+"/approve", nil); r.status != http.StatusOK {
 		t.Fatalf("approve: %d %s", r.status, r.body)
 	}
+	a.ordSettle() // площадка в ОРД: канал виден в каталоге (R-14 этапа «Маркировка»)
 
 	// Канал без цены → 409 с missing.
 	second := a.moderatedChannel(a.bloggerClient("blogger2.catalog@example.ru"), -70000000102, 6000)

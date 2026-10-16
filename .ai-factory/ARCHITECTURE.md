@@ -40,6 +40,8 @@
 | Права роли в миграциях | Параметр сессии `maxim.app_role`, который выставляет `maxim migrate` из `DB_APP_ROLE` | Миграции остаются разбираемыми `sqlc` |
 | Клиент MAX | Свой тонкий HTTP-клиент поверх `platform/outbound`, без `max-bot-api-client-go` | Каждая попытка пишется в `outbound_request`; повторы и предохранитель общие для всех систем (05 §2.1) |
 | Ограничитель и общее состояние интеграций | Таблицы PostgreSQL: `rate_limit_bucket`, `outbound_circuit`, `alert`, `worker_heartbeat` | 07 §1: общее состояние экземпляров — только в базе; брокер и Redis не нужны |
+| Клиент Яндекс ОРД | Свой тонкий HTTP-клиент поверх `platform/outbound` (API v8, версия — конфигурация); тело для `outbound_request` адаптер задаёт сам (`outbound.Call.RecordBody`): ИНН маскирован, вместо текста креатива — длина | Как у MAX: повторы, предохранитель и запись попыток общие; маскирование по полям, которое `Redact` не умеет (этап «Маркировка», R-16) |
+| Ожидание без счёта попытки | `job.Postpone(reason, after)`: задание откладывается, `attempts` не растёт, журнал DEBUG | Объект ОРД ждёт зависимость и следующий опрос статуса: такие ожидания не должны тратить `max_attempts` (этап «Маркировка», R-4, R-10) |
 
 ## Folder Structure
 
@@ -88,8 +90,8 @@ maxim/
 │   ├── integration/                 # ── АДАПТЕРЫ ВНЕШНИХ СИСТЕМ ──
 │   │   ├── max/                     #   клиент MAX Bot API через outbound и ratelimit (25 rps, 1/с на чат), разбор Webhook
 │   │   │   └── maxfake/             #   поддельная реализация для тестов и разработки
-│   │   ├── ord/                     #   Яндекс ОРД
-│   │   │   └── ordfake/
+│   │   ├── ord/                     #   Яндекс ОРД, API v8: контрагент, договор, площадки, креатив, статус; корзина ord:global
+│   │   │   └── ordfake/             #   ОРД в памяти: статусы по шагам, токен fake-erid-N, отказы по запросу
 │   │   ├── rocketwork/
 │   │   │   └── rocketworkfake/
 │   │   └── mail/
@@ -128,6 +130,11 @@ maxim/
 │   │   ├── jobs/                    #   placement_timer, publish_placement, remove_placement, reconcile_publications, check_publication; события message_edited, message_removed
 │   │   └── placementtest/           #   поддельные удержания, уведомления, исполнитель; блогер с каналом
 │   ├── marking/                     # объекты ОРД, erid, отчётность (04 §6)
+│   │   ├── domain/                  #   состояния синхронизации, классификация статусов ОРД, расписание опроса, цепочки зависимостей, запросы v8 и хеш, порты
+│   │   ├── app/                     #   sync_ord_object, poll_ord_status, креатив и erid, площадки каналов, отклонение ЕРИР, ошибки S-20 и повтор, зависшие
+│   │   ├── postgres/                #   ord_organization, ord_contract, ord_platform, creative; выборки S-20; метрики maxim_ord_objects, maxim_ord_erid_wait_seconds
+│   │   ├── jobs/                    #   sync_ord_object, poll_ord_status
+│   │   └── markingtest/             #   оферты и их принятие, организации с корректным ИНН
 │   ├── ledger/                      # счета учёта, проводки, удержания — ЕДИНСТВЕННЫЙ вход в ledger_* (06 §2)
 │   ├── billing/                     # счета, выписки, сопоставление поступлений, закрывающие акты (04 §7)
 │   ├── payout/                      # исполнители Рокет Ворк, выплаты, контроль депозита (04 §7)
@@ -186,6 +193,7 @@ integration/* ──────────────────────
 - **Связи модуля размещений.** `bootstrap` подставляет `placement/app` в порты модуля каналов (`AvailabilityListener` — отмена размещений при потере канала, `PlacementSchedule` — занятые топы в карточке и запрет интервала недоступности поверх запланированного размещения, `CartLookup` — признак `in_cart`) и в `post/domain.VersionListener` (последствия смены версии поста в той же транзакции). Модули собираются по порядку, поэтому порты задаются методами `SetPlacementPorts` и `SetVersionListener`. Оформление заказа принадлежит `placement/app.Checkout`: кампанию блокирует и переводит в `ordered` модуль `post` (порт `Campaigns`), версию создаёт `post/app.CreateVersion` в той же транзакции.
 - **Публикация и контроль.** Внешние вызовы MAX — порт `placement/domain.ChannelPublisher` (переходник `bridge.PlacementPublisher` над `integration/max`), содержание версии и файлы изображений — порт `placement/domain.PublicationContent` (`bridge.PlacementContent` над `post/app.PublicationContent` и `OpenDerivative`). Приоритет ограничителя MAX задаётся в `context` (`domain.WithCallPriority`): публикация и снятие — `PriorityPublish`, сверка — `PriorityReconcile`. Сообщения каналов для контроля топа модуль каналов передаёт через порт `channel/domain.ChannelPostListener` (`bridge.ChannelPosts`, `SetPostListener`); `message_edited` и `message_removed` модуль размещений разбирает сам (`placement/jobs.RegisterEvents`). Публикация идёт в три шага: предусловия в транзакции, вызовы MAX вне её, публикация и P-08 в транзакции (I-13).
 - **Порядок блокировок.** Сценарии модуля размещений блокируют строки в одном порядке: каналы (по `channel_id`) → заказ → размещения. Так I-06 и I-08 проверяются под блокировкой канала, а одновременные действия блогера, события версии и потеря канала не блокируют друг друга навстречу.
+- **Маркировка.** Яндекс ОРД — порт `marking/domain.OrdAPI` (переходник `bridge.MarkingOrd` над `integration/ord` или `ordfake`: поля запросов переносятся один в один, поэтому хеш нагрузки совпадает с отправленным телом). Вызывают его только обработчики `sync_ord_object` и `poll_ord_status` в три шага (I-13): транзакция — вызов вне неё — транзакция. Связи с другими модулями — в транзакции их сценариев: `post/domain.VersionListener` — `bridge.VersionListeners` вызывает по порядку модуль размещений и маркировку (`bridge.MarkingVersionListener`), одобренная версия получает креатив; `channel/domain.ChannelApprovalListener` (`bridge.ChannelApprovals`, `SetMarkingPorts`) — одобренный канал получает площадку, а видимым в каталоге его делает `channel/app.SetOrdPlatformReady` (порт `marking/domain.ChannelPlatformReady`); `account/domain.OrganizationListener` (`SetOrganizationListener`) — правка наименования или КПП ставит контрагента на повторную отправку; `marking/domain.CreativeListener` — `placement/app.CreativeRejected` (P-11 `erir_rejected`). Реквизиты организаций и дату принятия оферты маркировка читает через `bridge.MarkingOrganizations` над `account/postgres`, содержание версии и переход в `ready` — через `bridge.MarkingPosts` над `post/app`. Строку организации-платформы обеспечивает `account/app.EnsurePlatformOrganization` при запуске `api`, `worker` и команд. При `ORD_ENABLED=false` (только разработка) слушатели маркировки не подключаются, а одобрение канала сразу делает его видимым.
 
 ## Key Principles
 

@@ -58,6 +58,7 @@ func TestCatalogEndToEnd(t *testing.T) {
 	if r := mod.do(http.MethodPost, "/admin/channels/"+id+"/approve", nil); r.status != http.StatusOK {
 		t.Fatalf("approve: %d %s", r.status, r.body)
 	}
+	a.ordSettle() // площадка в ОРД: канал виден в каталоге (R-14 этапа «Маркировка»)
 
 	// S-02: рекламодатель находит канал по категории и цене, сортирует по CPV, открывает карточку.
 	const secretQuery = "секретныйзапросрекламодателя"

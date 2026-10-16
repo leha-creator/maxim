@@ -85,7 +85,7 @@ func TestAcceptChecks(t *testing.T) {
 	if len(e.logged("placement accept blocked")) != 2 {
 		t.Fatal("accept blocked not logged")
 	}
-	if _, err := e.d.Pool.Exec(context.Background(), `UPDATE channel SET status = 'active' WHERE id = $1`, ch); err != nil {
+	if _, err := e.d.Pool.Exec(context.Background(), `UPDATE channel SET status = 'active', ord_platform_ready_at = now() WHERE id = $1`, ch); err != nil {
 		t.Fatal(err)
 	}
 	v, err := e.svc.Accept(e.ctx(), blogger, user, pid, "acc-1")

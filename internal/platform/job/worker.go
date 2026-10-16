@@ -336,8 +336,20 @@ func (w *Worker) execute(ctx context.Context, r sqlc.ClaimJobsRow) {
 		return
 	}
 
-	attempts := r.Attempts + 1
 	msg := err.Error()
+	if after, ok := PostponedFor(err); ok {
+		next := now.Add(after)
+		if _, uerr := q.RetryJob(dbctx, sqlc.RetryJobParams{
+			ID: r.ID, LockedBy: &w.name, Now: now, Attempts: r.Attempts, RunAt: next, LastError: &msg,
+		}); uerr != nil {
+			w.log.ErrorContext(ctx, "job state update failed", logx.KeyOp, "Job.Execute", logx.KeyError, uerr.Error())
+			return
+		}
+		w.log.DebugContext(ctx, "job postponed", logx.KeyOp, "Job.Execute", "kind", r.Kind, "attempt", attempt,
+			"next_run_at", next, "duration_ms", dur, "reason", msg)
+		return
+	}
+	attempts := r.Attempts + 1
 	permanent := IsPermanent(err)
 	if permanent || attempts >= r.MaxAttempts {
 		if _, uerr := q.FailJob(dbctx, sqlc.FailJobParams{

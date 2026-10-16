@@ -109,6 +109,9 @@ type Channel struct {
 	Rating                  int
 	ModeratedAt             *time.Time
 	ModeratedBy             *uuid.UUID
+	// OrdPlatformReadyAt — площадка канала зарегистрирована в ОРД: без неё канал не виден в
+	// каталоге (этап «Маркировка», R-14). Ставит SetOrdPlatformReady.
+	OrdPlatformReadyAt *time.Time
 	// Prices — цены по форматам (channel_price), загружает репозиторий.
 	Prices      []Price
 	LockVersion int

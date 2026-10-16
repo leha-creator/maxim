@@ -54,23 +54,27 @@ type Deps struct {
 	AuthCodes     domain.AuthCodes
 	Sessions      domain.Sessions
 	Organizations domain.Organizations
-	Legal         domain.LegalDocuments
-	Storage       domain.FileStorage
-	Sender        domain.LoginCodeSender
-	Sealer        Sealer
-	Uploads       UploadCounter
-	Tx            tx.Runner
-	Jobs          job.Enqueuer
-	Audit         audit.Recorder
-	Clock         clock.Clock
-	Log           *slog.Logger
-	Config        Config
+	// Platform — строка организации-платформы (этап «Маркировка», R-5); nil — не нужна.
+	Platform domain.PlatformOrganizations
+	Legal    domain.LegalDocuments
+	Storage  domain.FileStorage
+	Sender   domain.LoginCodeSender
+	Sealer   Sealer
+	Uploads  UploadCounter
+	Tx       tx.Runner
+	Jobs     job.Enqueuer
+	Audit    audit.Recorder
+	Clock    clock.Clock
+	Log      *slog.Logger
+	Config   Config
 }
 
 // Service — сценарии модуля аккаунтов.
 type Service struct {
 	Deps
 	log *slog.Logger
+	// orgListener — модуль маркировки (SetOrganizationListener).
+	orgListener domain.OrganizationListener
 }
 
 // New создаёт сервис.

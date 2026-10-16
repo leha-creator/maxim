@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
+	"github.com/leha-creator/maxim/internal/platform/ids"
 )
 
 func TestAdminGrant(t *testing.T) {
@@ -60,6 +62,53 @@ func TestCatalogOperationsImplemented(t *testing.T) {
 	} {
 		if r := c.do(op.method, op.path, nil); r.status == http.StatusNotImplemented {
 			t.Errorf("%s %s: 501", op.method, op.path)
+		}
+	}
+}
+
+// Этап «Маркировка», S-20 до API администратора: maxim admin ord errors|retry.
+func TestAdminORD(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	cfg := testConfig()
+	cfg.DatabaseURL = a.db.AppURL
+	adv := a.advertiserClient("adv.adminord@example.ru")
+	org := adv.orgID(t)
+	id := ids.New()
+	if _, err := a.db.Pool.Exec(ctx, `INSERT INTO ord_organization (id, organization_id, is_rr, ord_external_id, sync_status,
+		sync_error, sync_attempts, created_at, updated_at) VALUES ($1, $2, false, $3, 'error', 'ИНН 7707083893 не найден', 1, now(), now())`,
+		id, org, org.String()); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runAdmin(ctx, cfg, a.mods.in.log, []string{"ord", "errors"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "organization:"+id.String()) || strings.Contains(out.String(), "7707083893") ||
+		!strings.Contains(out.String(), "77****3893") {
+		t.Fatalf("errors output %q", out.String())
+	}
+	ref := "organization:" + id.String()
+	if err := runAdmin(ctx, cfg, a.mods.in.log, []string{"ord", "retry", "--object", ref, "--reason", "исправили", "--email", "adv.adminord@example.ru"},
+		&bytes.Buffer{}); !errors.Is(err, errNotAdmin) {
+		t.Fatalf("retry by non-admin: %v", err)
+	}
+	role := accountdomain.AdminSenior
+	if _, err := a.mods.account.SetAdminRole(ctx, "senior.ord@example.ru", &role); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runAdmin(ctx, cfg, a.mods.in.log, []string{"ord", "retry", "--object", ref, "--reason", "исправили", "--email", "senior.ord@example.ru"},
+		&out); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := a.db.Pool.QueryRow(ctx, `SELECT sync_status FROM ord_organization WHERE id = $1`, id).Scan(&status); err != nil || status != "pending" {
+		t.Fatalf("status after retry %q %v", status, err)
+	}
+	for _, args := range [][]string{{"ord"}, {"ord", "bogus"}, {"ord", "retry", "--object", ref}, {"ord", "retry", "--object", "x:y", "--reason", "r", "--email", "e"}} {
+		if err := runAdmin(ctx, cfg, a.mods.in.log, args, &bytes.Buffer{}); !errors.Is(err, errUsage) {
+			t.Errorf("%v: %v", args, err)
 		}
 	}
 }

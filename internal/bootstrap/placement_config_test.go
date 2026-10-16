@@ -64,8 +64,16 @@ func TestPlacementWiring(t *testing.T) {
 	if !slices.Contains(a.worker.Kinds(), "placement_timer") {
 		t.Fatalf("worker kinds %v have no placement_timer", a.worker.Kinds())
 	}
-	if _, ok := a.mods.post.Listener.(bridge.VersionListener); !ok {
+	// Этап «Маркировка», R-11: сначала модуль размещений, затем маркировка.
+	ls, ok := a.mods.post.Listener.(bridge.VersionListeners)
+	if !ok || len(ls) != 2 {
 		t.Fatalf("post version listener %T", a.mods.post.Listener)
+	}
+	if _, ok := ls[0].(bridge.VersionListener); !ok {
+		t.Fatalf("first version listener %T", ls[0])
+	}
+	if _, ok := ls[1].(bridge.MarkingVersionListener); !ok {
+		t.Fatalf("second version listener %T", ls[1])
 	}
 	if _, ok := a.mods.channel.Availability.(bridge.ChannelPlacements); !ok {
 		t.Fatalf("channel availability listener %T", a.mods.channel.Availability)

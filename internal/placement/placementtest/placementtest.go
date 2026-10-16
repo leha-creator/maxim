@@ -208,7 +208,7 @@ func Channel(t testing.TB, pool *pgxpool.Pool, ownerID uuid.UUID, title string, 
 	if _, err := pool.Exec(ctx, `WITH price AS (
 			INSERT INTO channel_price (id, channel_id, format_id, amount, is_enabled, created_at, updated_at)
 			VALUES ($2, $1, 'f_1_24', $3, true, now(), now()))
-		UPDATE channel SET status = 'active', moderated_at = now(), lock_version = lock_version + 1 WHERE id = $1`,
+		UPDATE channel SET status = 'active', moderated_at = now(), ord_platform_ready_at = now(), lock_version = lock_version + 1 WHERE id = $1`,
 		id, ids.New(), int64(amount)); err != nil {
 		t.Fatalf("activate channel: %v", err)
 	}

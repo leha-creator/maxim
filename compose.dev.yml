@@ -51,6 +51,11 @@ x-backend-env: &backend-env
   PLACEMENT_CLAIM_WINDOW: 24h
   DISPUTE_DEADLINE: 72h
   RECONCILE_INTERVAL: 5m
+  # Маркировка: без ORD_OAUTH_TOKEN — ordfake, erid выдаётся через несколько секунд после
+  # «maxim dev post-version --order N approve» (README, «Маркировка в разработке»).
+  ORD_ENABLED: "true"
+  ORD_OAUTH_TOKEN: ""
+  ORD_PLATFORM_TYPE: site
 
 services:
   postgres:

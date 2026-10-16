@@ -5,7 +5,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
+	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
 )
 
@@ -75,5 +77,64 @@ func TestSubscribeMAX(t *testing.T) {
 	cfg := Config{MAX: MAXConfig{WebhookURL: "https://api.maxim.example/api/v1/webhooks/max/", WebhookPathSecret: "secret"}}
 	if got := maxWebhookURL(cfg); got != url {
 		t.Fatalf("webhook url %q", got)
+	}
+}
+
+// Этап «Маркировка»: виды заданий, слушатели и проверки зависших объектов подключены.
+func TestMarkingWiring(t *testing.T) {
+	a := newTestApp(t)
+	for _, kind := range []string{markingapp.KindSyncOrdObject, markingapp.KindPollOrdStatus} {
+		if !slices.Contains(a.worker.Kinds(), kind) {
+			t.Fatalf("worker kinds %v have no %s", a.worker.Kinds(), kind)
+		}
+	}
+	if a.mods.marking.Listener != a.mods.placement {
+		t.Fatalf("creative listener %T", a.mods.marking.Listener)
+	}
+	var platform int
+	if err := a.db.Pool.QueryRow(t.Context(), `SELECT count(*) FROM organization WHERE is_platform`).Scan(&platform); err != nil || platform != 1 {
+		t.Fatalf("platform organization rows %d %v", platform, err)
+	}
+
+	// Одобренный канал до регистрации площадки не виден; после — виден.
+	mod := a.adminClient("moderator.marking@example.ru", "moderator")
+	blg := a.bloggerClient("blogger.marking@example.ru")
+	ch := a.moderatedChannel(blg, -72000000001, 5000)
+	if r := mod.do(http.MethodPost, "/admin/channels/"+ch+"/approve", nil); r.status != http.StatusOK {
+		t.Fatalf("approve: %d %s", r.status, r.body)
+	}
+	adv := a.advertiserClient("adv.marking@example.ru")
+	if r := adv.do(http.MethodGet, "/catalog/channels/"+ch, nil); r.status != http.StatusNotFound {
+		t.Fatalf("card before ord platform: %d", r.status)
+	}
+	a.ordSettle()
+	if r := adv.do(http.MethodGet, "/catalog/channels/"+ch, nil); r.status != http.StatusOK {
+		t.Fatalf("card after ord platform: %d %s", r.status, r.body)
+	}
+	if _, ok := a.ord.Object(ch); !ok {
+		t.Fatal("platform not registered in ordfake")
+	}
+}
+
+// ORD_ENABLED=false (R-18): слушатели маркировки не подключены, одобрение сразу делает канал видимым.
+func TestMarkingDisabled(t *testing.T) {
+	cfg := testConfig()
+	cfg.ORD.Enabled = false
+	a := newTestAppWith(t, cfg)
+	if slices.Contains(a.worker.Kinds(), markingapp.KindSyncOrdObject) {
+		t.Fatal("sync_ord_object registered with ORD disabled")
+	}
+	if _, ok := a.mods.post.Listener.(bridge.VersionListener); !ok {
+		t.Fatalf("post version listener %T", a.mods.post.Listener)
+	}
+	mod := a.adminClient("moderator.nomarking@example.ru", "moderator")
+	blg := a.bloggerClient("blogger.nomarking@example.ru")
+	ch := a.moderatedChannel(blg, -72000000002, 5000)
+	if r := mod.do(http.MethodPost, "/admin/channels/"+ch+"/approve", nil); r.status != http.StatusOK {
+		t.Fatalf("approve: %d %s", r.status, r.body)
+	}
+	adv := a.advertiserClient("adv.nomarking@example.ru")
+	if r := adv.do(http.MethodGet, "/catalog/channels/"+ch, nil); r.status != http.StatusOK {
+		t.Fatalf("card with ORD disabled: %d %s", r.status, r.body)
 	}
 }

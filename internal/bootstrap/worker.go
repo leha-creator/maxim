@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
 	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
@@ -33,12 +34,16 @@ func runWorker(ctx context.Context, cfg Config, log *slog.Logger) error {
 	ensureMAXSubscription(ctx, cfg, in)
 	in.alerter.CheckChannels(ctx)
 	m := newModules(cfg, in)
+	if err := m.startMarking(ctx); err != nil {
+		return err
+	}
 	w := newWorker(in, m)
 	reg.MustRegister(job.NewCollector(pool, in.clock, log.With(logx.KeyModule, "job")))
 	reg.MustRegister(inbound.NewCollector(pool, in.clock, log.With(logx.KeyModule, "inbound")))
 	reg.MustRegister(placementpg.NewCollector(m.placementStore))
+	reg.MustRegister(markingpg.NewCollector(m.markingStore))
 	log.InfoContext(ctx, "worker configured", logx.KeyOp, "Bootstrap.Worker", "kinds", w.Kinds(),
-		"max_mode", maxMode(cfg), "alert_emails", len(cfg.Alert.Emails), "alert_chat", cfg.Alert.MAXChatID != 0)
+		"max_mode", maxMode(cfg), "ord_enabled", cfg.ORD.Enabled, "ord_fake", cfg.ORDFake(), "alert_emails", len(cfg.Alert.Emails), "alert_chat", cfg.Alert.MAXChatID != 0)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return w.Run(gctx) })

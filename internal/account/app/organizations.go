@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/leha-creator/maxim/internal/account/domain"
@@ -172,10 +173,18 @@ func (s *Service) UpdateOrganization(ctx context.Context, p Principal, f domain.
 		if err := s.Organizations.Update(ctx, o); err != nil {
 			return err
 		}
-		return s.Audit.Record(ctx, audit.Entry{
+		if err := s.Audit.Record(ctx, audit.Entry{
 			Action: "organization.update", ObjectType: "organization", ObjectID: o.ID.String(),
 			ActorType: p.actorType(), Data: audit.Diff(before, o.Values(), changed),
-		})
+		}); err != nil {
+			return err
+		}
+		// R-15 этапа «Маркировка»: наименование и КПП уходят в ОРД — контрагент отправляется заново.
+		if slices.Contains(changed, "name") || slices.Contains(changed, "kpp") {
+			s.log.DebugContext(ctx, "organization change passed to marking", logx.KeyOp, op, logx.KeyOrganizationID, o.ID)
+			return s.organizationListener().OrganizationChanged(ctx, o.ID)
+		}
+		return nil
 	})
 	if err != nil {
 		s.logRejected(ctx, op, err)

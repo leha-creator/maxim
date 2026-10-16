@@ -126,6 +126,9 @@ func (s *Service) Approve(ctx context.Context, adminID, id uuid.UUID) (*AdminCha
 			return change, audit.Entry{}, apperr.Conflict("channel does not meet approval requirements").WithDetail("missing", blocked.Missing)
 		}
 		return change, audit.Entry{Action: "channel.approved", Data: map[string]any{"status": c.Status}}, err
+	}, func(ctx context.Context, c *domain.Channel) error {
+		// R-13: ошибка ОРД одобрение не отменяет — ОРД вызывается позже заданием; здесь только записи.
+		return s.channelApproved(ctx, op, c)
 	})
 	if err != nil {
 		return nil, err
@@ -141,7 +144,7 @@ func (s *Service) Reject(ctx context.Context, adminID, id uuid.UUID, reason stri
 		change, err := c.Reject(reason, s.Clock.Now())
 		text := c.StatusReason
 		return change, audit.Entry{Action: "channel.rejected", Reason: &text, Data: map[string]any{"status": c.Status}}, err
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +162,7 @@ func (s *Service) SetRknCheck(ctx context.Context, adminID, id uuid.UUID, result
 			e.Reason = &comment
 		}
 		return change, e, err
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -169,8 +172,10 @@ func (s *Service) SetRknCheck(ctx context.Context, adminID, id uuid.UUID, result
 
 // adminDecision — общий ход решения администратора: канал под блокировкой, правило
 // domain, сохранение со сменой доступности (R-11) и запись журнала действий с актором admin.
+// after — последствия решения в той же транзакции после сохранения; nil — нет.
 func (s *Service) adminDecision(ctx context.Context, op string, id uuid.UUID,
-	decide func(c *domain.Channel) (domain.StatusChange, audit.Entry, error)) error {
+	decide func(c *domain.Channel) (domain.StatusChange, audit.Entry, error),
+	after func(ctx context.Context, c *domain.Channel) error) error {
 	ctx = audit.WithActor(ctx, adminActor(ctx))
 	return s.Tx.InTx(ctx, func(ctx context.Context) error {
 		c, err := s.Admin.GetForAdminForUpdate(ctx, id)
@@ -196,7 +201,13 @@ func (s *Service) adminDecision(ctx context.Context, op string, id uuid.UUID,
 			return err
 		}
 		entry.ObjectType, entry.ObjectID, entry.ActorType, entry.OrganizationID = "channel", c.ID.String(), audit.ActorAdmin, c.OrganizationID
-		return s.Audit.Record(ctx, entry)
+		if err := s.Audit.Record(ctx, entry); err != nil {
+			return err
+		}
+		if after == nil {
+			return nil
+		}
+		return after(ctx, c)
 	})
 }
 

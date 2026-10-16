@@ -7,6 +7,7 @@
 //	maxim migrate up|down|status    — миграции базы
 //	maxim legal publish|list        — оферты и правила (до API администратора, R-8)
 //	maxim admin grant|revoke        — роль администратора (до API администратора)
+//	maxim admin ord errors|retry    — ошибки Яндекс ОРД и повтор (S-20, до API администратора)
 //	maxim dev post-version          — двинуть версию поста заказа (только development и test, R-23)
 //
 // Конфигурация — переменные окружения, см. .env.example.
@@ -33,7 +34,10 @@ commands:
   migrate up|down|status   apply, roll back one or show migrations
   legal publish|list       publish a legal document version or list current ones
   admin grant|revoke       grant (--email, --role moderator|senior) or revoke (--email) an admin role
-  dev post-version         --order <number> approve|ready|reject [--erid X] [--reason Y] (development and test only)
+  admin ord errors         list ORD objects in error [--limit N]
+  admin ord retry          --object <type>:<id> --reason <text> --email <admin>: retry an ORD object
+  dev post-version         --order <number> approve|ready|reject [--erid X] [--reason Y] (development and test only;
+                           ready only with ORD_ENABLED=false)
 `
 
 func main() {

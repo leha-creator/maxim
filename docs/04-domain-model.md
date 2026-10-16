@@ -182,6 +182,7 @@ erDiagram
 | `status_before_disconnect` | `text` | нет | Состояние до удаления бота: по нему повторное добавление возвращает канал в `active` (05 §2.4) |
 | `unclaimed_since` | `timestamptz` | нет | С какого момента канал ждёт кода подключения; через 7 суток бот уходит (A-41) |
 | `moderated_at`, `moderated_by` | `timestamptz`, `uuid` | нет | |
+| `ord_platform_ready_at` | `timestamptz` | нет | Площадка канала зарегистрирована в ОРД (принята или подтверждена). Каталог и корзина показывают канал только при непустом значении. Ставит модуль каналов по сигналу маркировки; при `ORD_ENABLED=false` — при одобрении |
 
 Ограничение: канал может быть `active` только при `organization_id is not null`, `is_public`, правах `write` и `delete`, заполненной категории, хотя бы одной включённой цене и (`subscribers_count < 10000` или `rkn_status = 'confirmed'`). В базе ограничение закреплено проверкой `channel_active_requirements` и отложенным триггером-ограничением `channel_active_requires_price` на `channel` и `channel_price`: при фиксации транзакции у канала в `active` есть включённая цена активного формата. Порог РКН — параметр конфигурации `RKN_SUBSCRIBERS_THRESHOLD`, его проверяет модуль каналов.
 
@@ -491,22 +492,28 @@ erDiagram
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
-| `ord_external_id` | `text` | нет | Идентификатор объекта в ОРД |
+| `ord_external_id` | `text` | нет | Идентификатор объекта в ОРД — наш идентификатор: у контрагента `organization.id`, у договора и креатива — `id` записи, у площадки — `channel.id`. ОРД регистрирует или обновляет объект по нему, поэтому повтор после неизвестного исхода — обычное обновление |
 | `sync_status` | `text` | да | `pending` — ждёт отправки; `sent` — отправлено, ждём подтверждения; `synced` — подтверждено; `error` — требует вмешательства (S-20) |
 | `sync_request_id` | `text` | нет | `reqid` для опроса статуса |
-| `sync_error` | `text` | нет | Последняя ошибка |
-| `sync_attempts` | `integer` | да | |
+| `sync_error` | `text` | нет | Последняя ошибка (до 2000 символов) |
+| `sync_attempts` | `integer` | да | Число вызовов ОРД, включая неудачные |
 | `synced_at` | `timestamptz` | нет | |
-| `payload_hash` | `text` | нет | Хеш отправленных данных — чтобы понять, нужна ли повторная отправка |
+| `payload_hash` | `text` | нет | SHA-256 канонического JSON отправленного запроса — чтобы понять, нужна ли повторная отправка |
+| `ord_status` | `text` | нет | Последний статус ОРД как есть (`Request accepted by ORD`, `ORD success`, …, 05 §3.5) |
+| `sent_at` | `timestamptz` | нет | Время отправки: расписание опроса, таймаут 24 ч, зависшие. Обязательно в `sent` и `synced` |
+
+Переходы: `pending` → (запрос принят) `sent` → (финальный успех) `synced`; финальная ошибка, отказ `4xx`/`422`, исчерпание повторов или таймаут статуса → `error`. Из `error` в `pending` — только «Повторить» (S-20) или новая нагрузка; из `synced` в `pending` — новая нагрузка (кроме креатива: после erid он не отправляется, D-03). Зависимость готова для зависимых объектов, когда она `synced` или `sent` со статусом `ORD success` либо `ERIR sync success` (05 §3.2, Q-40).
 
 ### Сущности
 
 | Таблица | Поля сверх синхронизации | Уникальность |
 |---|---|---|
-| `ord_organization` | `organization_id uuid` | `organization_id` |
+| `ord_organization` | `organization_id uuid`; `is_rr boolean` (организация-блогер, рекламораспространитель) | `organization_id` |
 | `ord_contract` | `kind text` (`initial`, `publisher`); `client_organization_id`, `contractor_organization_id uuid`; `number text`; `signed_date date` | `(kind, client_organization_id, contractor_organization_id)` |
-| `ord_platform` (A-32) | `channel_id uuid`; `name text`; `url text` | `channel_id` |
-| `creative` (D-07) | `post_version_id uuid`; `ord_contract_id uuid` (изначальный); `erid text`; `erir_status text` (`pending`, `success`, `error`); `erir_error text` | `post_version_id`; `erid` |
+| `ord_platform` (A-32) | `channel_id uuid`; `organization_id uuid` (блогер); `name text`; `url text` | `channel_id` |
+| `creative` (D-07) | `post_version_id uuid`; `ord_contract_id uuid` (изначальный, задаётся при отправке); `erid text`; `erid_received_at timestamptz`; `erir_status text` (`pending`, `success`, `error`); `erir_error text` | `post_version_id`; `erid` |
+
+Строки объектов ОРД не удаляются — кроме креатива, который не отправлялся: если версия стала `ready` в обход маркировки, задание креатива удаляет его запись.
 | `ord_statistics` | `creative_id`, `ord_platform_id`, `placement_id uuid`; `period date` (первое число месяца); `impressions integer`; `shown_from`, `shown_to date`; `amount bigint` | `(creative_id, ord_platform_id, period)` |
 | `ord_invoice` | `ord_contract_id uuid`; `period date`; `number text`; `invoice_date date`; `amount bigint` | `(ord_contract_id, period)` |
 | `ord_invoice_item` | `ord_invoice_id`, `creative_id`, `ord_platform_id uuid`; `amount bigint` | `(ord_invoice_id, creative_id, ord_platform_id)` |

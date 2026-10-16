@@ -72,6 +72,18 @@ func (q *Queries) GetVersionForUpdate(ctx context.Context, id uuid.UUID) (PostVe
 	return i, err
 }
 
+const getVersionOrganization = `-- name: GetVersionOrganization :one
+SELECT p.organization_id FROM post_version v JOIN post p ON p.id = v.post_id WHERE v.id = $1
+`
+
+// Организация-рекламодатель версии: креатив в ОРД (этап «Маркировка», R-8).
+func (q *Queries) GetVersionOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getVersionOrganization, id)
+	var organization_id uuid.UUID
+	err := row.Scan(&organization_id)
+	return organization_id, err
+}
+
 const insertVersion = `-- name: InsertVersion :exec
 INSERT INTO post_version (
     id, post_id, number, status, content_doc, body, token_carrier, token_position,

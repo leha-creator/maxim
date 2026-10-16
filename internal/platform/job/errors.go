@@ -40,6 +40,33 @@ func Permanent(err error) error {
 	return &permanentError{err: err}
 }
 
+type postponeError struct {
+	err   error
+	after time.Duration
+}
+
+func (e *postponeError) Error() string { return e.err.Error() }
+func (e *postponeError) Unwrap() error { return e.err }
+
+// Postpone откладывает задание на after без счёта попытки: обработчик ждёт внешнего условия,
+// а не повторяет сбой (зависимость ещё не готова, следующий опрос статуса). Предел
+// max_attempts на такие ожидания не тратится; журнал — DEBUG, не WARN.
+func Postpone(reason error, after time.Duration) error {
+	if reason == nil {
+		reason = errors.New("postponed")
+	}
+	return &postponeError{err: reason, after: max(after, 0)}
+}
+
+// PostponedFor возвращает задержку, запрошенную через Postpone.
+func PostponedFor(err error) (time.Duration, bool) {
+	var p *postponeError
+	if errors.As(err, &p) {
+		return p.after, true
+	}
+	return 0, false
+}
+
 // RetryAfter возвращает задержку, запрошенную через Retry.
 func RetryAfter(err error) (time.Duration, bool) {
 	var r *retryError

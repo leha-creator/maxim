@@ -62,7 +62,8 @@ func newEnv(t *testing.T) *env {
 		store: st, auditDB: auditLog}
 	e.svc = app.New(app.Deps{
 		Users: st.Users(), AuthCodes: st.AuthCodes(), Sessions: st.Sessions(), Organizations: st.Organizations(),
-		Legal: st.LegalDocuments(), Storage: e.files, Sender: e.mail, Sealer: box, Uploads: auditLog,
+		Platform: st.Organizations(),
+		Legal:    st.LegalDocuments(), Storage: e.files, Sender: e.mail, Sealer: box, Uploads: auditLog,
 		Tx: tx.NewRunner(d.Pool, log), Jobs: job.NewQueue(d.Pool, clk, log), Audit: auditLog, Clock: clk, Log: log,
 		Config: app.Config{
 			LoginCodeTTL: 10 * time.Minute, LoginCodeAttempts: 5, CodesPerEmailHour: 5, CodesPerIPHour: 20,

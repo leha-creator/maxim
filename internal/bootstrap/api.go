@@ -92,7 +92,11 @@ func runAPI(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	reg.MustRegister(inbound.NewCollector(pool, in.clock, log.With(logx.KeyModule, "inbound")))
-	h, err := apiHandler(cfg, in, newModules(cfg, in), reg)
+	m := newModules(cfg, in)
+	if err := m.startMarking(ctx); err != nil {
+		return err
+	}
+	h, err := apiHandler(cfg, in, m, reg)
 	if err != nil {
 		return err
 	}

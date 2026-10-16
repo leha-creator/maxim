@@ -12,6 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const firstOfferAcceptance = `-- name: FirstOfferAcceptance :one
+SELECT la.accepted_at, ld.version
+FROM legal_acceptance la
+JOIN legal_document ld ON ld.id = la.legal_document_id
+WHERE la.organization_id = $1 AND ld.kind = $2
+ORDER BY la.accepted_at, ld.version
+LIMIT 1
+`
+
+type FirstOfferAcceptanceParams struct {
+	OrganizationID uuid.UUID
+	Kind           string
+}
+
+type FirstOfferAcceptanceRow struct {
+	AcceptedAt time.Time
+	Version    int32
+}
+
+// Первое принятие оферты вида: дата договора и версия для номера (R-7 этапа «Маркировка»).
+func (q *Queries) FirstOfferAcceptance(ctx context.Context, arg FirstOfferAcceptanceParams) (FirstOfferAcceptanceRow, error) {
+	row := q.db.QueryRow(ctx, firstOfferAcceptance, arg.OrganizationID, arg.Kind)
+	var i FirstOfferAcceptanceRow
+	err := row.Scan(&i.AcceptedAt, &i.Version)
+	return i, err
+}
+
 const getOrganizationByUser = `-- name: GetOrganizationByUser :one
 SELECT o.id, o.legal_type, o.inn, o.name, o.contact_name, o.phone, o.kpp, o.address, o.tax_regime, o.vat_rate, o.tax_document_storage_key, o.tax_document_sha256, o.signer_position, o.signer_name, o.signer_basis_name, o.signer_basis_number, o.bank_account, o.bank_name, o.bank_corr_account, o.bank_bik, o.is_platform, o.status, o.created_at, o.updated_at,
        (ap.organization_id IS NOT NULL)::boolean AS is_advertiser,
@@ -62,6 +89,34 @@ func (q *Queries) GetOrganizationByUser(ctx context.Context, userID uuid.UUID) (
 		&i.IsAdvertiser,
 		&i.IsBlogger,
 		&i.BloggerFullName,
+	)
+	return i, err
+}
+
+const getOrganizationForMarking = `-- name: GetOrganizationForMarking :one
+SELECT id, legal_type, inn, name, kpp, is_platform FROM organization WHERE id = $1
+`
+
+type GetOrganizationForMarkingRow struct {
+	ID         uuid.UUID
+	LegalType  string
+	Inn        string
+	Name       string
+	Kpp        *string
+	IsPlatform bool
+}
+
+// Реквизиты для ОРД (модуль marking); без блокировки.
+func (q *Queries) GetOrganizationForMarking(ctx context.Context, id uuid.UUID) (GetOrganizationForMarkingRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationForMarking, id)
+	var i GetOrganizationForMarkingRow
+	err := row.Scan(
+		&i.ID,
+		&i.LegalType,
+		&i.Inn,
+		&i.Name,
+		&i.Kpp,
+		&i.IsPlatform,
 	)
 	return i, err
 }
@@ -134,6 +189,30 @@ func (q *Queries) GetOrganizationRequisites(ctx context.Context, id uuid.UUID) (
 	row := q.db.QueryRow(ctx, getOrganizationRequisites, id)
 	var i GetOrganizationRequisitesRow
 	err := row.Scan(&i.Name, &i.Inn)
+	return i, err
+}
+
+const getPlatformOrganization = `-- name: GetPlatformOrganization :one
+SELECT id, legal_type, inn, name FROM organization WHERE is_platform
+`
+
+type GetPlatformOrganizationRow struct {
+	ID        uuid.UUID
+	LegalType string
+	Inn       string
+	Name      string
+}
+
+// Организация-платформа — единственная строка (04 §2, R-5 этапа «Маркировка»).
+func (q *Queries) GetPlatformOrganization(ctx context.Context) (GetPlatformOrganizationRow, error) {
+	row := q.db.QueryRow(ctx, getPlatformOrganization)
+	var i GetPlatformOrganizationRow
+	err := row.Scan(
+		&i.ID,
+		&i.LegalType,
+		&i.Inn,
+		&i.Name,
+	)
 	return i, err
 }
 
@@ -256,6 +335,47 @@ func (q *Queries) InsertOrganizationMember(ctx context.Context, arg InsertOrgani
 		arg.Role,
 		arg.Now,
 	)
+	return err
+}
+
+const insertPlatformOrganization = `-- name: InsertPlatformOrganization :exec
+INSERT INTO organization (id, legal_type, inn, name, contact_name, phone, is_platform, status, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $4, $5, true, 'active', $6, $6)
+`
+
+type InsertPlatformOrganizationParams struct {
+	ID        uuid.UUID
+	LegalType string
+	Inn       string
+	Name      string
+	Phone     string
+	Now       time.Time
+}
+
+func (q *Queries) InsertPlatformOrganization(ctx context.Context, arg InsertPlatformOrganizationParams) error {
+	_, err := q.db.Exec(ctx, insertPlatformOrganization,
+		arg.ID,
+		arg.LegalType,
+		arg.Inn,
+		arg.Name,
+		arg.Phone,
+		arg.Now,
+	)
+	return err
+}
+
+const renamePlatformOrganization = `-- name: RenamePlatformOrganization :exec
+UPDATE organization SET name = $1, contact_name = $1, updated_at = $2 WHERE id = $3 AND is_platform
+`
+
+type RenamePlatformOrganizationParams struct {
+	Name string
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+func (q *Queries) RenamePlatformOrganization(ctx context.Context, arg RenamePlatformOrganizationParams) error {
+	_, err := q.db.Exec(ctx, renamePlatformOrganization, arg.Name, arg.Now, arg.ID)
 	return err
 }
 

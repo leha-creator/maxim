@@ -9,6 +9,8 @@ import (
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	"github.com/leha-creator/maxim/internal/integration/max"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
+	"github.com/leha-creator/maxim/internal/integration/ord"
+	"github.com/leha-creator/maxim/internal/integration/ord/ordfake"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/cleanup"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
@@ -125,4 +127,32 @@ func (p *platformJobs) register(w *job.Worker, cfg Config, in *infra) {
 	p.alerts.Register(w)
 	p.stuck.Register(w)
 	p.cleaner.Register(w)
+}
+
+// connectORD подключает адаптер Яндекс ОРД (05 §3): ordfake в тестах и в разработке без
+// OAuth-токена (R-18), иначе настоящий через outbound и общий ограничитель (корзина ord:global, R-20).
+func (in *infra) connectORD(ctx context.Context, cfg Config) {
+	log := in.log.With(logx.KeyModule, "ord")
+	if !cfg.ORD.Enabled {
+		return
+	}
+	if cfg.ORDFake() {
+		in.ord = ordfake.New()
+		log.InfoContext(ctx, "ord adapter connected", logx.KeyOp, "Bootstrap.ConnectORD", "mode", "fake")
+		return
+	}
+	var outMetrics *outbound.Metrics
+	var limitMetrics *ratelimit.Metrics
+	if in.reg != nil {
+		outMetrics, limitMetrics = outbound.NewMetrics(in.reg), ratelimit.NewMetrics(in.reg)
+	}
+	out := outbound.New(in.pool, in.clock, log, outbound.Options{
+		System: outbound.SystemYandexORD, Alerter: in.alerter, Metrics: outMetrics,
+	})
+	limiter := ratelimit.New(in.pool, in.clock, log, ratelimit.Options{Metrics: limitMetrics})
+	in.ord = ord.New(out, limiter, ord.Options{
+		BaseURL: cfg.ORDBaseURL(), APIVersion: cfg.ORD.APIVersion, Token: cfg.ORD.OAuthToken, Rate: cfg.ORD.Rate,
+	}, log)
+	log.InfoContext(ctx, "ord adapter connected", logx.KeyOp, "Bootstrap.ConnectORD", "mode", "real",
+		"base_url", cfg.ORDBaseURL(), "api_version", cfg.ORD.APIVersion)
 }

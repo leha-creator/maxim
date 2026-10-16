@@ -144,8 +144,9 @@ func channel(row sqlc.Channel) *domain.Channel {
 		UnclaimedSince: row.UnclaimedSince, BotIsAdmin: row.BotIsAdmin, BotPermissions: perms(row.BotPermissions),
 		BotPermissionsCheckedAt: row.BotPermissionsCheckedAt, SubscribersCount: int(row.SubscribersCount),
 		RknNumber: str(row.RknNumber), RknStatus: domain.RknStatus(row.RknStatus), RknCheckedAt: row.RknCheckedAt,
-		RknCheckedBy: row.RknCheckedBy, Rating: int(row.Rating), ModeratedAt: row.ModeratedAt, ModeratedBy: row.ModeratedBy, LockVersion: int(row.LockVersion),
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		RknCheckedBy: row.RknCheckedBy, Rating: int(row.Rating), ModeratedAt: row.ModeratedAt, ModeratedBy: row.ModeratedBy, OrdPlatformReadyAt: row.OrdPlatformReadyAt,
+		LockVersion: int(row.LockVersion),
+		CreatedAt:   row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.StatusBeforeDisconnect != nil {
 		s := domain.Status(*row.StatusBeforeDisconnect)
@@ -177,4 +178,14 @@ func (r *Channels) ListForMetrics(ctx context.Context, after uuid.UUID, limit in
 	}
 	r.s.debug(ctx, op, "after", after, "count", len(ids))
 	return ids, nil
+}
+
+func (r *Channels) SetOrdPlatformReady(ctx context.Context, id uuid.UUID, at time.Time) (bool, error) {
+	const op = "Channel.Channels.SetOrdPlatformReady"
+	n, err := r.s.q(ctx).SetChannelOrdPlatformReady(ctx, sqlc.SetChannelOrdPlatformReadyParams{ID: id, At: &at})
+	if err != nil {
+		return false, r.s.fail(ctx, op, err)
+	}
+	r.s.debug(ctx, op, "channel_id", id, "updated", n > 0)
+	return n > 0, nil
 }

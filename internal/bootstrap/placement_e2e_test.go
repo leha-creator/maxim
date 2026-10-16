@@ -79,6 +79,7 @@ func TestOrderPlacementsEndToEnd(t *testing.T) {
 	if r := mod.do(http.MethodPost, "/admin/channels/"+ch1+"/approve", nil); r.status != http.StatusOK {
 		t.Fatalf("approve: %d %s", r.status, r.body)
 	}
+	a.ordSettle() // площадка в ОРД: канал виден в каталоге (R-14 этапа «Маркировка»)
 	ch2 := a.activeChannel(blg2, "Второй", 1_000_000)
 	ch3 := a.activeChannel(blg2, "Третий", 1_000_000)
 

@@ -88,3 +88,32 @@ type FileStorage interface {
 	PutPrivate(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
 	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
 }
+
+// PlatformOrganization — организация-платформа (organization.is_platform): контрагент
+// платформы в ОРД (этап «Маркировка», R-5). Реквизиты задаёт конфигурация.
+type PlatformOrganization struct {
+	ID        uuid.UUID
+	LegalType LegalType
+	INN       string
+	Name      string
+}
+
+// PlatformOrganizations — строка платформы.
+type PlatformOrganizations interface {
+	// Platform возвращает ErrNotFound, если строки нет.
+	Platform(ctx context.Context) (*PlatformOrganization, error)
+	// InsertPlatform — ИНН занят — apperr.INNTaken.
+	InsertPlatform(ctx context.Context, p PlatformOrganization, now time.Time) error
+	RenamePlatform(ctx context.Context, id uuid.UUID, name string, now time.Time) error
+}
+
+// OrganizationListener — реквизиты организации для ОРД (наименование, КПП) изменились
+// (этап «Маркировка», R-15). Реализация — marking/app; вызывается в транзакции правки.
+type OrganizationListener interface {
+	OrganizationChanged(ctx context.Context, organizationID uuid.UUID) error
+}
+
+// NopOrganizationListener — модуль маркировки не подключён.
+type NopOrganizationListener struct{}
+
+func (NopOrganizationListener) OrganizationChanged(context.Context, uuid.UUID) error { return nil }

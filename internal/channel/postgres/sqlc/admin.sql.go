@@ -13,7 +13,7 @@ import (
 )
 
 const getChannelForAdmin = `-- name: GetChannelForAdmin :one
-SELECT c.id, c.organization_id, c.max_chat_id, c.title, c.max_description, c.icon_url, c.link, c.is_public, c.added_by_max_user_id, c.description, c.category_id, c.status, c.status_reason, c.status_before_disconnect, c.unclaimed_since, c.bot_is_admin, c.bot_permissions, c.bot_permissions_checked_at, c.subscribers_count, c.rkn_number, c.rkn_status, c.rkn_checked_at, c.rkn_checked_by, c.rating, c.moderated_at, c.moderated_by, c.lock_version, c.created_at, c.updated_at, o.name AS organization_name, o.inn AS organization_inn
+SELECT c.id, c.organization_id, c.max_chat_id, c.title, c.max_description, c.icon_url, c.link, c.is_public, c.added_by_max_user_id, c.description, c.category_id, c.status, c.status_reason, c.status_before_disconnect, c.unclaimed_since, c.bot_is_admin, c.bot_permissions, c.bot_permissions_checked_at, c.subscribers_count, c.rkn_number, c.rkn_status, c.rkn_checked_at, c.rkn_checked_by, c.rating, c.moderated_at, c.moderated_by, c.lock_version, c.created_at, c.updated_at, c.ord_platform_ready_at, o.name AS organization_name, o.inn AS organization_inn
 FROM channel c LEFT JOIN organization o ON o.id = c.organization_id
 WHERE c.id = $1
 `
@@ -57,6 +57,7 @@ func (q *Queries) GetChannelForAdmin(ctx context.Context, id uuid.UUID) (GetChan
 		&i.Channel.LockVersion,
 		&i.Channel.CreatedAt,
 		&i.Channel.UpdatedAt,
+		&i.Channel.OrdPlatformReadyAt,
 		&i.OrganizationName,
 		&i.OrganizationInn,
 	)
@@ -64,7 +65,7 @@ func (q *Queries) GetChannelForAdmin(ctx context.Context, id uuid.UUID) (GetChan
 }
 
 const getChannelForAdminForUpdate = `-- name: GetChannelForAdminForUpdate :one
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE id = $1 FOR UPDATE
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetChannelForAdminForUpdate(ctx context.Context, id uuid.UUID) (Channel, error) {
@@ -100,13 +101,14 @@ func (q *Queries) GetChannelForAdminForUpdate(ctx context.Context, id uuid.UUID)
 		&i.LockVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrdPlatformReadyAt,
 	)
 	return i, err
 }
 
 const listChannelsForAdmin = `-- name: ListChannelsForAdmin :many
 
-SELECT c.id, c.organization_id, c.max_chat_id, c.title, c.max_description, c.icon_url, c.link, c.is_public, c.added_by_max_user_id, c.description, c.category_id, c.status, c.status_reason, c.status_before_disconnect, c.unclaimed_since, c.bot_is_admin, c.bot_permissions, c.bot_permissions_checked_at, c.subscribers_count, c.rkn_number, c.rkn_status, c.rkn_checked_at, c.rkn_checked_by, c.rating, c.moderated_at, c.moderated_by, c.lock_version, c.created_at, c.updated_at, o.name AS organization_name, o.inn AS organization_inn
+SELECT c.id, c.organization_id, c.max_chat_id, c.title, c.max_description, c.icon_url, c.link, c.is_public, c.added_by_max_user_id, c.description, c.category_id, c.status, c.status_reason, c.status_before_disconnect, c.unclaimed_since, c.bot_is_admin, c.bot_permissions, c.bot_permissions_checked_at, c.subscribers_count, c.rkn_number, c.rkn_status, c.rkn_checked_at, c.rkn_checked_by, c.rating, c.moderated_at, c.moderated_by, c.lock_version, c.created_at, c.updated_at, c.ord_platform_ready_at, o.name AS organization_name, o.inn AS organization_inn
 FROM channel c LEFT JOIN organization o ON o.id = c.organization_id
 WHERE c.status <> 'unclaimed'
   AND ($1::text IS NULL OR c.status = $1::text)
@@ -184,6 +186,7 @@ func (q *Queries) ListChannelsForAdmin(ctx context.Context, arg ListChannelsForA
 			&i.Channel.LockVersion,
 			&i.Channel.CreatedAt,
 			&i.Channel.UpdatedAt,
+			&i.Channel.OrdPlatformReadyAt,
 			&i.OrganizationName,
 			&i.OrganizationInn,
 		); err != nil {

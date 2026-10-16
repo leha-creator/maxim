@@ -154,3 +154,12 @@ func (r *Orders) wrap(ctx context.Context, op string, err error) error {
 	}
 	return r.s.fail(ctx, op, err)
 }
+
+func (r *Orders) FindByPlacementVersion(ctx context.Context, versionID uuid.UUID) (domain.Order, bool, error) {
+	row, err := r.s.q(ctx).FindOrderByPlacementVersion(ctx, versionID)
+	ok, err := found(r.wrap(ctx, "Placement.Orders.FindByPlacementVersion", err))
+	if !ok {
+		return domain.Order{}, false, err
+	}
+	return toOrder(row), true, nil
+}

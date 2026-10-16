@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -67,8 +68,8 @@ func seed(t *testing.T, d *dbtest.DB, s spec) uuid.UUID {
 	defer tx.Rollback(ctx) //nolint:errcheck
 	if _, err := tx.Exec(ctx, `INSERT INTO channel (id, organization_id, max_chat_id, title, description, is_public,
 		added_by_max_user_id, category_id, status, bot_is_admin, bot_permissions, subscribers_count, rkn_status, rating,
-		created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, true, 7, $6, $7, true, ARRAY['write', 'delete'], $8, $9, $10, now(), now())`,
+		ord_platform_ready_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, true, 7, $6, $7, true, ARRAY['write', 'delete'], $8, $9, $10, now(), now(), now())`,
 		id, org, chatSeq, s.title, s.desc, s.category, s.status, s.subs, s.rknStatus, s.rating); err != nil {
 		t.Fatal(err)
 	}
@@ -119,9 +120,18 @@ func TestCatalogVisibilityAndFilters(t *testing.T) {
 	seed(t, d, spec{title: "Модерация", status: "moderation", prices: price(200000)})
 	seed(t, d, spec{title: "Без РКН", subs: 10000, rknStatus: "pending", prices: price(200000)})
 
+	// R-14 этапа «Маркировка»: без площадки в ОРД канал не виден.
+	noPlatform := seed(t, d, spec{title: "Без площадки", subs: 100, prices: price(200000)})
+	if _, err := d.Pool.Exec(context.Background(), `UPDATE channel SET ord_platform_ready_at = NULL WHERE id = $1`, noPlatform); err != nil {
+		t.Fatal(err)
+	}
+
 	all := list(t, st, domain.CatalogFilter{}, domain.SortSubscribersDesc)
 	if !slices.Equal(all, []uuid.UUID{confirmed, tech, food}) {
 		t.Fatalf("visible %v", all)
+	}
+	if _, err := st.Catalog().Get(context.Background(), noPlatform, fee, rkn); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("channel without ord platform in card: %v", err)
 	}
 
 	from, to := money.Kopecks(115000), money.Kopecks(345000)
@@ -238,10 +248,10 @@ func TestCatalogPerformance(t *testing.T) {
 	defer tx.Rollback(ctx) //nolint:errcheck
 	for i, q := range []string{
 		`INSERT INTO channel (id, organization_id, max_chat_id, title, description, is_public, added_by_max_user_id,
-			category_id, status, bot_is_admin, bot_permissions, subscribers_count, created_at, updated_at)
+			category_id, status, bot_is_admin, bot_permissions, subscribers_count, ord_platform_ready_at, created_at, updated_at)
 		SELECT gen_random_uuid(), $1, -72000000000 - g, 'Канал ' || g, 'Описание ' || g, true, 7,
 			(SELECT id FROM channel_category ORDER BY position OFFSET g % 8 LIMIT 1), 'active', true, ARRAY['write','delete'],
-			(g * 37) % 9999, now(), now()
+			(g * 37) % 9999, now(), now(), now()
 		FROM generate_series(1, 2000) g`,
 		`INSERT INTO channel_price (id, channel_id, format_id, amount, is_enabled, created_at, updated_at)
 		SELECT gen_random_uuid(), c.id, f.id, 10000 + (abs(hashtext(c.id::text || f.id)) % 1000000), true, now(), now()

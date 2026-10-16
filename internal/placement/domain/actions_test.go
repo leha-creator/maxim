@@ -143,3 +143,31 @@ func TestCancelAndExpire(t *testing.T) {
 		t.Fatalf("bind version: %d %+v", prev, p)
 	}
 }
+
+// Этап «Маркировка», R-12: отклонение креатива ЕРИР — P-11 от системы, версия та же.
+func TestReturnToCreatedOnErirRejection(t *testing.T) {
+	now := mskTime(2026, 10, 20, 10, 0)
+	for _, st := range []Status{StatusAwaitingBlogger, StatusAwaitingSchedule, StatusScheduled} {
+		p := testPlacement(st)
+		version := p.PostVersionID
+		c, err := p.ReturnToCreated(ActorSystem, ReasonErirRejected, version, now, DefaultTiming)
+		if err != nil || p.Status != StatusCreated || p.StatusReason != ReasonErirRejected || p.PostVersionID != version ||
+			c.Code != P11ReturnToCreated {
+			t.Fatalf("%s: %+v %v", st, p, err)
+		}
+	}
+	for _, st := range []Status{StatusCreated, StatusPublished} {
+		p := testPlacement(st)
+		if _, err := p.ReturnToCreated(ActorSystem, ReasonErirRejected, p.PostVersionID, now, DefaultTiming); err == nil {
+			t.Fatalf("%s: P-11 allowed", st)
+		}
+	}
+	for _, s := range []Status{StatusPublished, StatusRemoved, StatusDisputed, StatusAccepted, StatusPaid, StatusRefunded} {
+		if !s.WasPublished() {
+			t.Errorf("%s must be published", s)
+		}
+	}
+	if StatusScheduled.WasPublished() || StatusCancelled.WasPublished() {
+		t.Error("scheduled or cancelled reported as published")
+	}
+}

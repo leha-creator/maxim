@@ -11,10 +11,10 @@ import (
 )
 
 // CatalogVisible — канал виден рекламодателю в каталоге и карточке (R-7): active,
-// номер РКН подтверждён или он не нужен, есть включённая цена активного формата.
-// Условие о площадке ОРД добавит этап «Маркировка». То же условие — в SQL выборки каталога.
+// номер РКН подтверждён или он не нужен, есть включённая цена активного формата,
+// площадка канала зарегистрирована в ОРД (этап «Маркировка», R-14). То же условие — в SQL выборки каталога.
 func CatalogVisible(c *Channel, rknThreshold int) bool {
-	return c.Status == StatusActive && !c.RknRequired(rknThreshold) && c.HasOfferedPrice()
+	return c.Status == StatusActive && !c.RknRequired(rknThreshold) && c.HasOfferedPrice() && c.OrdPlatformReadyAt != nil
 }
 
 // CatalogSort — сортировка каталога (S-02, R-9).

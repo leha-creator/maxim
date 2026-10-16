@@ -146,3 +146,12 @@ func (r *Versions) UpdateStatus(ctx context.Context, v domain.Version) error {
 	r.s.debug(ctx, op, "version_id", v.ID, "status", v.Status)
 	return nil
 }
+
+// Organization — организация-рекламодатель версии (этап «Маркировка», R-8).
+func (r *Versions) Organization(ctx context.Context, versionID uuid.UUID) (uuid.UUID, error) {
+	id, err := r.s.q(ctx).GetVersionOrganization(ctx, versionID)
+	if err != nil {
+		return uuid.Nil, r.s.fail(ctx, "Post.Versions.Organization", err)
+	}
+	return id, nil
+}

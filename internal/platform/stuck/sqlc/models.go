@@ -123,6 +123,7 @@ type Channel struct {
 	LockVersion             int32
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+	OrdPlatformReadyAt      *time.Time
 }
 
 type ChannelCategory struct {
@@ -164,6 +165,27 @@ type ChannelUnavailability struct {
 	StartsAt  time.Time
 	EndsAt    time.Time
 	CreatedAt time.Time
+}
+
+type Creative struct {
+	ID             uuid.UUID
+	PostVersionID  uuid.UUID
+	OrdContractID  *uuid.UUID
+	Erid           *string
+	EridReceivedAt *time.Time
+	ErirStatus     string
+	ErirError      *string
+	OrdExternalID  *string
+	SyncStatus     string
+	SyncRequestID  *string
+	SyncError      *string
+	SyncAttempts   int32
+	SyncedAt       *time.Time
+	PayloadHash    *string
+	OrdStatus      *string
+	SentAt         *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type Dispute struct {
@@ -266,6 +288,62 @@ type MediaFile struct {
 	CreatedAt      time.Time
 	DeletedAt      *time.Time
 	PurgedAt       *time.Time
+}
+
+type OrdContract struct {
+	ID                       uuid.UUID
+	Kind                     string
+	ClientOrganizationID     uuid.UUID
+	ContractorOrganizationID uuid.UUID
+	Number                   *string
+	SignedDate               pgtype.Date
+	OrdExternalID            *string
+	SyncStatus               string
+	SyncRequestID            *string
+	SyncError                *string
+	SyncAttempts             int32
+	SyncedAt                 *time.Time
+	PayloadHash              *string
+	OrdStatus                *string
+	SentAt                   *time.Time
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+type OrdOrganization struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	IsRr           bool
+	OrdExternalID  *string
+	SyncStatus     string
+	SyncRequestID  *string
+	SyncError      *string
+	SyncAttempts   int32
+	SyncedAt       *time.Time
+	PayloadHash    *string
+	OrdStatus      *string
+	SentAt         *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type OrdPlatform struct {
+	ID             uuid.UUID
+	ChannelID      uuid.UUID
+	OrganizationID uuid.UUID
+	Name           string
+	Url            string
+	OrdExternalID  *string
+	SyncStatus     string
+	SyncRequestID  *string
+	SyncError      *string
+	SyncAttempts   int32
+	SyncedAt       *time.Time
+	PayloadHash    *string
+	OrdStatus      *string
+	SentAt         *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type Order struct {

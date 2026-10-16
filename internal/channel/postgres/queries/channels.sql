@@ -57,3 +57,8 @@ SELECT id FROM channel
 WHERE status IN ('moderation', 'active', 'suspended') AND id > @after::uuid
 ORDER BY id
 LIMIT @lim;
+
+-- name: SetChannelOrdPlatformReady :execrows
+-- R-14 этапа «Маркировка»: площадка в ОРД зарегистрирована; первая отметка остаётся.
+UPDATE channel SET ord_platform_ready_at = @at
+WHERE id = @id AND ord_platform_ready_at IS NULL;

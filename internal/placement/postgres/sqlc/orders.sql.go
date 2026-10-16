@@ -68,6 +68,33 @@ func (q *Queries) FindOrderByIdempotencyKey(ctx context.Context, arg FindOrderBy
 	return i, err
 }
 
+const findOrderByPlacementVersion = `-- name: FindOrderByPlacementVersion :one
+SELECT o.id, o.number, o.organization_id, o.campaign_id, o.post_id, o.current_post_version_id, o.status, o.total_amount, o.idempotency_key, o.post_version_idempotency_key, o.created_by, o.created_at, o.updated_at FROM "order" o
+WHERE o.id = (SELECT p.order_id FROM placement p WHERE p.post_version_id = $1 LIMIT 1)
+`
+
+// Этап «Маркировка», R-12: заказ размещений версии поста (версия может быть уже не текущей).
+func (q *Queries) FindOrderByPlacementVersion(ctx context.Context, versionID uuid.UUID) (Order, error) {
+	row := q.db.QueryRow(ctx, findOrderByPlacementVersion, versionID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.OrganizationID,
+		&i.CampaignID,
+		&i.PostID,
+		&i.CurrentPostVersionID,
+		&i.Status,
+		&i.TotalAmount,
+		&i.IdempotencyKey,
+		&i.PostVersionIdempotencyKey,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getOrder = `-- name: GetOrder :one
 SELECT id, number, organization_id, campaign_id, post_id, current_post_version_id, status, total_amount, idempotency_key, post_version_idempotency_key, created_by, created_at, updated_at FROM "order" WHERE id = $1 AND organization_id = $2
 `

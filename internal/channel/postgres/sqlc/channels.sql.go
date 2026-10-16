@@ -13,7 +13,7 @@ import (
 )
 
 const getChannelByMaxChatID = `-- name: GetChannelByMaxChatID :one
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE max_chat_id = $1
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE max_chat_id = $1
 `
 
 func (q *Queries) GetChannelByMaxChatID(ctx context.Context, maxChatID int64) (Channel, error) {
@@ -49,12 +49,13 @@ func (q *Queries) GetChannelByMaxChatID(ctx context.Context, maxChatID int64) (C
 		&i.LockVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrdPlatformReadyAt,
 	)
 	return i, err
 }
 
 const getChannelByMaxChatIDForUpdate = `-- name: GetChannelByMaxChatIDForUpdate :one
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE max_chat_id = $1 FOR UPDATE
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE max_chat_id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetChannelByMaxChatIDForUpdate(ctx context.Context, maxChatID int64) (Channel, error) {
@@ -90,12 +91,13 @@ func (q *Queries) GetChannelByMaxChatIDForUpdate(ctx context.Context, maxChatID 
 		&i.LockVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrdPlatformReadyAt,
 	)
 	return i, err
 }
 
 const getChannelForOrganization = `-- name: GetChannelForOrganization :one
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE id = $1 AND organization_id = $2
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE id = $1 AND organization_id = $2
 `
 
 type GetChannelForOrganizationParams struct {
@@ -136,12 +138,13 @@ func (q *Queries) GetChannelForOrganization(ctx context.Context, arg GetChannelF
 		&i.LockVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrdPlatformReadyAt,
 	)
 	return i, err
 }
 
 const getChannelForOrganizationForUpdate = `-- name: GetChannelForOrganizationForUpdate :one
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE id = $1 AND organization_id = $2 FOR UPDATE
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE id = $1 AND organization_id = $2 FOR UPDATE
 `
 
 type GetChannelForOrganizationForUpdateParams struct {
@@ -182,12 +185,13 @@ func (q *Queries) GetChannelForOrganizationForUpdate(ctx context.Context, arg Ge
 		&i.LockVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrdPlatformReadyAt,
 	)
 	return i, err
 }
 
 const getChannelForUpdate = `-- name: GetChannelForUpdate :one
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE id = $1 FOR UPDATE
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetChannelForUpdate(ctx context.Context, id uuid.UUID) (Channel, error) {
@@ -223,6 +227,7 @@ func (q *Queries) GetChannelForUpdate(ctx context.Context, id uuid.UUID) (Channe
 		&i.LockVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrdPlatformReadyAt,
 	)
 	return i, err
 }
@@ -307,7 +312,7 @@ func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) er
 }
 
 const listChannelsByOrganization = `-- name: ListChannelsByOrganization :many
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE organization_id = $1 ORDER BY created_at, id
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE organization_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListChannelsByOrganization(ctx context.Context, organizationID *uuid.UUID) ([]Channel, error) {
@@ -349,6 +354,7 @@ func (q *Queries) ListChannelsByOrganization(ctx context.Context, organizationID
 			&i.LockVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OrdPlatformReadyAt,
 		); err != nil {
 			return nil, err
 		}
@@ -500,6 +506,25 @@ func (q *Queries) SaveChannel(ctx context.Context, arg SaveChannelParams) (int64
 		arg.ID,
 		arg.PrevLockVersion,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setChannelOrdPlatformReady = `-- name: SetChannelOrdPlatformReady :execrows
+UPDATE channel SET ord_platform_ready_at = $1
+WHERE id = $2 AND ord_platform_ready_at IS NULL
+`
+
+type SetChannelOrdPlatformReadyParams struct {
+	At *time.Time
+	ID uuid.UUID
+}
+
+// R-14 этапа «Маркировка»: площадка в ОРД зарегистрирована; первая отметка остаётся.
+func (q *Queries) SetChannelOrdPlatformReady(ctx context.Context, arg SetChannelOrdPlatformReadyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setChannelOrdPlatformReady, arg.At, arg.ID)
 	if err != nil {
 		return 0, err
 	}

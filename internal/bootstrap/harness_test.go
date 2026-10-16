@@ -25,6 +25,7 @@ import (
 	"github.com/leha-creator/maxim/internal/account/domain"
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
+	"github.com/leha-creator/maxim/internal/integration/ord/ordfake"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/dbtest"
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -55,11 +56,18 @@ type testApp struct {
 	mail   *mailfake.Sender
 	files  *storagefake.Storage
 	mods   *modules
+	ord    *ordfake.Client
 	router routers.Router
 	logs   *bytes.Buffer
 }
 
 func newTestApp(t *testing.T) *testApp {
+	t.Helper()
+	return newTestAppWith(t, testConfig())
+}
+
+// newTestAppWith — то же с заданной конфигурацией (например, ORD_ENABLED=false).
+func newTestAppWith(t *testing.T, cfg Config) *testApp {
 	t.Helper()
 	d := dbtest.New(t)
 	logs := &bytes.Buffer{}
@@ -69,12 +77,15 @@ func newTestApp(t *testing.T) *testApp {
 		t.Fatal(err)
 	}
 	clk := clock.NewManual(testStart)
-	cfg := testConfig()
 	fake := maxfake.New()
 	fake.SetNow(clk.Now)
-	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: fake, box: box}
+	ordFake := ordfake.New()
+	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: fake, box: box, ord: ordFake}
 	in.alerter = newAlerter(cfg, in)
 	m := newModules(cfg, in)
+	if err := m.startMarking(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	h, err := apiHandler(cfg, in, m, metrics.New())
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +104,7 @@ func newTestApp(t *testing.T) *testApp {
 	}
 	return &testApp{
 		t: t, db: d, clk: clk, srv: srv, worker: newWorker(in, m), mail: in.mail.(*mailfake.Sender),
-		files: in.storage.(*storagefake.Storage), mods: m, router: router, logs: logs,
+		files: in.storage.(*storagefake.Storage), mods: m, router: router, logs: logs, ord: ordFake,
 	}
 }
 
@@ -270,4 +281,15 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.w.Write(p)
+}
+
+// ordSettle — worker регистрирует в ordfake созданные объекты ОРД: отправка, затем опросы
+// статуса раз в минуту (этап «Маркировка»). Одобренный канал после этого виден в каталоге.
+func (a *testApp) ordSettle() {
+	a.t.Helper()
+	a.settle()
+	for range 4 {
+		a.clk.Advance(time.Minute)
+		a.settle()
+	}
 }

@@ -116,3 +116,13 @@ const (
 	VersionApproved          VersionStatus = "approved"
 	VersionReady             VersionStatus = "ready"
 )
+
+// WasPublished — размещение уже опубликовано (или прошло дальше): вернуть его в created
+// нельзя; при отклонении креатива ЕРИР решает администратор (этап «Маркировка», R-12).
+func (s Status) WasPublished() bool {
+	switch s {
+	case StatusPublished, StatusRemoved, StatusDisputed, StatusAccepted, StatusPaid, StatusRefunded:
+		return true
+	}
+	return false
+}

@@ -14,11 +14,15 @@ import (
 	accounthttp "github.com/leha-creator/maxim/internal/account/httpapi"
 	accountjobs "github.com/leha-creator/maxim/internal/account/jobs"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	channelapp "github.com/leha-creator/maxim/internal/channel/app"
 	channelhttp "github.com/leha-creator/maxim/internal/channel/httpapi"
 	channeljobs "github.com/leha-creator/maxim/internal/channel/jobs"
 	"github.com/leha-creator/maxim/internal/integration/mail"
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
+	markingapp "github.com/leha-creator/maxim/internal/marking/app"
+	markingjobs "github.com/leha-creator/maxim/internal/marking/jobs"
+	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
 	placementapp "github.com/leha-creator/maxim/internal/placement/app"
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
 	placementjobs "github.com/leha-creator/maxim/internal/placement/jobs"
@@ -50,6 +54,8 @@ type infra struct {
 	storage storage.ObjectStorage
 	mail    mailer
 	max     maxAPI
+	// ord — Яндекс ОРД (integration/ord, ordfake); только worker, nil при ORD_ENABLED=false.
+	ord     bridge.OrdClient
 	alerter *alert.Alerter
 	// reg — реестр метрик процесса; nil в служебных командах.
 	reg *metrics.Registry
@@ -97,6 +103,7 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 		if err := in.connectMAX(cfg); err != nil {
 			return nil, err
 		}
+		in.connectORD(ctx, cfg)
 	}
 	if mode == ModeAPI || mode == ModeWorker {
 		box, err := secretbox.New(cfg.SecretsKeyBytes())
@@ -122,7 +129,10 @@ type modules struct {
 	placement      *placementapp.Service
 	placementHTTP  *placementhttp.Handlers
 	placementStore *placementpg.Store
-	platform       *platformJobs
+	// marking — объекты ОРД и erid; markingStore — для метрики.
+	marking      *markingapp.Service
+	markingStore *markingpg.Store
+	platform     *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
 	queue    *job.Queue
@@ -138,7 +148,7 @@ func newModules(cfg Config, in *infra) *modules {
 
 	deps := accountapp.Deps{
 		Users: accountStore.Users(), AuthCodes: accountStore.AuthCodes(), Sessions: accountStore.Sessions(),
-		Organizations: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
+		Organizations: accountStore.Organizations(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
 		Sender: in.mail, Uploads: auditLog, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: log,
 		Config: accountapp.Config{
 			LoginCodeTTL: cfg.Auth.LoginCodeTTL, LoginCodeAttempts: cfg.Auth.LoginCodeAttempts,
@@ -157,13 +167,14 @@ func newModules(cfg Config, in *infra) *modules {
 	channelSvc, channelStore := newChannelService(cfg, in, txRunner, queue, auditLog)
 	postSvc := newPostService(cfg, in, txRunner, queue, auditLog, accountStore)
 	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc)
+	markingSvc, markingStore := newMarkingService(cfg, in, txRunner, queue, auditLog, accountStore, postSvc, channelSvc)
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
 	platform.stuck.Add(stuckRemovalCheck(cfg, placementSvc))
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
 	})
-	return &modules{
+	m := &modules{
 		cfg:            cfg,
 		in:             in,
 		account:        svc,
@@ -175,10 +186,16 @@ func newModules(cfg Config, in *infra) *modules {
 		placement:      placementSvc,
 		placementHTTP:  placementhttp.New(placementSvc, log),
 		placementStore: placementStore,
+		marking:        markingSvc,
+		markingStore:   markingStore,
 		platform:       platform,
 		txRunner:       txRunner,
 		queue:          queue,
 	}
+	if cfg.ORD.Enabled {
+		m.wireMarking()
+	}
+	return m
 }
 
 // registerJobs регистрирует обработчики заданий всех модулей.
@@ -192,6 +209,9 @@ func (m *modules) registerJobs(w *job.Worker) {
 		ReconcileInterval:  m.cfg.Placement.Control.ReconcileInterval,
 	})
 	placementjobs.RegisterEvents(m.platform.dispatcher, m.placement)
+	if m.cfg.ORD.Enabled {
+		markingjobs.Register(w, m.marking)
+	}
 }
 
 // apiImpl — реализация всех операций: обработчики модулей поверх заглушек 501.

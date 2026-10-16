@@ -13,7 +13,7 @@ import (
 
 const listChannelsByIDs = `-- name: ListChannelsByIDs :many
 
-SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE id = ANY($1::uuid[]) ORDER BY id
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at, ord_platform_ready_at FROM channel WHERE id = ANY($1::uuid[]) ORDER BY id
 `
 
 // Каналы для модуля размещений (этап «Заказ и размещения»): корзина и оформление.
@@ -56,6 +56,7 @@ func (q *Queries) ListChannelsByIDs(ctx context.Context, ids []uuid.UUID) ([]Cha
 			&i.LockVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OrdPlatformReadyAt,
 		); err != nil {
 			return nil, err
 		}

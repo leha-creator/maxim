@@ -67,6 +67,7 @@ type Config struct {
 	Media     MediaConfig
 	Placement PlacementConfig
 
+	ORD       ORDConfig
 	MAX       MAXConfig
 	Alert     AlertConfig
 	Scheduler SchedulerConfig
@@ -410,6 +411,7 @@ func (c Config) Validate(mode string) error {
 		c.validateCatalog(add)
 		c.validateMedia(add)
 		c.validatePlacement(add)
+		c.validateORD(add)
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -630,6 +632,18 @@ func (c Config) LogValue() slog.Value {
 		slog.Bool("alert_max_chat", c.Alert.MAXChatID != 0),
 		slog.String("downtime_threshold", c.Scheduler.DowntimeThreshold.String()),
 		slog.String("stuck_inbound_event_age", c.Scheduler.StuckInboundEventAge.String()),
+		slog.Bool("ord_enabled", c.ORD.Enabled),
+		slog.Bool("ord_fake", c.ORDFake()),
+		slog.String("ord_api_url", c.ORDBaseURL()),
+		slog.String("ord_api_version", c.ORD.APIVersion),
+		slog.String("ord_oauth_token", secret(c.ORD.OAuthToken)),
+		slog.Float64("ord_rate", c.ORD.Rate),
+		slog.String("ord_kktu_code", c.ORD.KKTUCode),
+		slog.String("ord_platform_inn", logx.MaskINN(c.ORD.PlatformINN)),
+		slog.String("ord_platform_legal_type", c.ORD.PlatformLegalType),
+		slog.String("ord_platform_type", c.ORD.PlatformType),
+		slog.String("ord_status_timeout", c.ORD.StatusTimeout.String()),
+		slog.String("ord_erid_wait", c.ORD.EridWait.String()),
 	)
 }
 

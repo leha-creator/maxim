@@ -25,6 +25,8 @@ var (
 // priced — канал в состоянии s с включённой ценой f_1_24.
 func priced(s Status) *Channel {
 	c := channelIn(s)
+	ready := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	c.OrdPlatformReadyAt = &ready
 	c.Prices = []Price{{FormatID: "f_1_24", Amount: 300000, IsEnabled: true, FormatActive: true}}
 	if c.CategoryID == nil {
 		cat := uuid.New()
@@ -160,8 +162,10 @@ func TestCatalogVisible(t *testing.T) {
 	noPrice.Prices[0].IsEnabled = false
 	inactiveFormat := priced(StatusActive)
 	inactiveFormat.Prices[0].FormatActive = false
+	noPlatform := priced(StatusActive)
+	noPlatform.OrdPlatformReadyAt = nil
 	for name, c := range map[string]*Channel{
-		"no enabled price": noPrice, "inactive format": inactiveFormat,
+		"no enabled price": noPrice, "inactive format": inactiveFormat, "no ord platform": noPlatform,
 		"moderation": priced(StatusModeration), "suspended": priced(StatusSuspended),
 	} {
 		if CatalogVisible(c, rkn) {

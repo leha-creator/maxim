@@ -16,11 +16,15 @@ import (
 //
 //	maxim admin grant --email <почта> --role moderator|senior
 //	maxim admin revoke --email <почта>
+//	maxim admin ord errors|retry … — ошибки ОРД (S-20, этап «Маркировка»), см. runAdminORD
 //
 // Пользователя без учётной записи grant создаёт. Действие пишется в audit_log с актором system.
 func runAdmin(ctx context.Context, cfg Config, log *slog.Logger, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return errUsage
+	}
+	if args[0] == "ord" {
+		return runAdminORD(ctx, cfg, log, args[1:], out)
 	}
 	var role *domain.AdminRole
 	fs := flag.NewFlagSet("admin "+args[0], flag.ContinueOnError)
