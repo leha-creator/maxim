@@ -112,7 +112,7 @@ func Load(d *store.Data, now time.Time) {
 	}
 	for i, doc := range docs {
 		d.LegalDocs = append(d.LegalDocs, &store.LegalDocument{
-			ID: ID(501 + i), Kind: doc.kind, Version: "2026-07-01", Title: doc.title,
+			ID: ID(501 + i), Kind: doc.kind, Version: 1, PublishedAt: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), Title: doc.title,
 			URL: "https://example.test/legal/" + doc.kind,
 		})
 	}

@@ -1,0 +1,12 @@
+# Генерация кода бэкенда из api/openapi.yaml. Запуск: go generate ./internal/apigen
+# Операции тестового сервера (тег _mock) в бэкенд не попадают.
+package: apigen
+output: api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  skip-prune: true
+  exclude-tags: [_mock]

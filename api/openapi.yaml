@@ -12,7 +12,12 @@ info:
     - Время — RFC 3339 в UTC. Время суток (`time_from`, `time_to`) — `ЧЧ:ММ` по Москве.
     - Идентификаторы — UUID; у формата размещения — строка (`f_1_24`).
     - Сессия — cookie `session` (`HttpOnly`, `Secure`, `SameSite=Lax`), выдаётся при входе.
-    - Меняющие запросы передают заголовок `X-CSRF-Token` (тестовый сервер его не проверяет).
+    - Защита от межсайтовой подделки — двойная отправка: при входе выдаётся cookie `csrf_token`
+      (без `HttpOnly`); меняющие запросы (`POST`, `PUT`, `PATCH`, `DELETE`), кроме `/auth/code`
+      и `/auth/login`, повторяют её значение в заголовке `X-CSRF-Token`. Без совпадения — `403`
+      с `details.reason = csrf` (тестовый сервер заголовок не проверяет).
+    - Превышение лимита частоты — `429` с кодом `rate_limited` и заголовком `Retry-After` в секундах.
+    - Операция, которую бэкенд ещё не реализует, отвечает `501` с кодом `not_implemented`.
     - Переход размещения, недопустимый из текущего состояния, отклоняется ответом `409` с кодом `invalid_transition`.
     - Каждый ответ содержит заголовок `X-Request-Id`; по нему запрос находится в журнале.
 
@@ -80,6 +85,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LoginCodeResponse' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /auth/login:
     post:
       tags: [auth]
@@ -100,7 +106,7 @@ paths:
           description: Вход выполнен
           headers:
             Set-Cookie:
-              description: Cookie `session`
+              description: Cookie `session` и `csrf_token`
               schema: { type: string }
             X-Request-Id: { $ref: '#/components/headers/X-Request-Id' }
           content:
@@ -109,6 +115,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /auth/logout:
     post:
       tags: [auth]
@@ -119,7 +126,7 @@ paths:
           description: Сессия закрыта
           headers:
             Set-Cookie:
-              description: Очищенная cookie `session`
+              description: Очищенные cookie `session` и `csrf_token`
               schema: { type: string }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -148,8 +155,12 @@ paths:
       description: |
         Создаёт организацию пользователя с профилем рекламодателя или блогера. Если организация
         уже есть — добавляет к ней второй профиль («стать блогером», «стать рекламодателем»);
-        реквизиты в этом случае не меняются.
-        Допустимые `tax_regime` зависят от `legal_type`, допустимые `vat_rate` — от `tax_regime` (04 §2).
+        реквизиты в этом случае не меняются, но поля, обязательные для блогера, передаются.
+        КПП, `tax_regime`, `vat_rate` и данные подписанта есть только у блогера (D-24):
+        у рекламодателя они отклоняются. Допустимые `tax_regime` зависят от `legal_type`,
+        допустимые `vat_rate` — от `tax_regime` (04 §2). Документ о режиме налогообложения
+        загружается отдельно: `PUT /organizations/current/tax-document`.
+        ИНН, уже принадлежащий другой организации, — `409` с кодом `inn_taken`.
       requestBody:
         required: true
         content:
@@ -158,17 +169,11 @@ paths:
             example:
               cabinet: advertiser
               legal_type: legal_entity
-              inn: '7700000001'
-              kpp: '770001001'
+              inn: '7707083893'
               name: ООО «Тестовый рекламодатель»
               contact_name: Иван Тестов
               phone: '+79990000001'
               address: г. Москва, ул. Примерная, д. 1
-              tax_regime: usn
-              vat_rate: none
-              signer_position: Генеральный директор
-              signer_name: Тестов Иван Иванович
-              signer_basis_name: Устав
       responses:
         '201':
           description: Организация создана или дополнена профилем
@@ -214,6 +219,37 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+  /organizations/current/tax-document:
+    put:
+      tags: [organizations]
+      operationId: uploadTaxDocument
+      summary: Загрузить документ о режиме налогообложения
+      description: |
+        Документ, подтверждающий режим налогообложения и ставку НДС блогера (04 §2, `auth/org-blg`).
+        Только для кабинета блогера. PDF, JPEG или PNG до 10 МБ; тип определяется по содержимому.
+        Новый файл заменяет прежний.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Организация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   # ---------------------------------------------------------------- legal
   /legal-documents:
@@ -1599,6 +1635,26 @@ components:
               message: transition is not allowed from current status
               details: { transition: P-12, status: published }
             request_id: 0190a000-0000-7000-8000-00000000aaaa
+    RateLimited:
+      description: Превышен лимит частоты
+      headers:
+        Retry-After:
+          description: Через сколько секунд можно повторить
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: rate_limited, message: too many requests, details: { scope: email } }
+            request_id: 0190a000-0000-7000-8000-00000000aaaa
+    NotImplemented:
+      description: Операция описана, но бэкенд её ещё не реализует
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: not_implemented, message: operation is not implemented yet, details: { operation: getCart } }
+            request_id: 0190a000-0000-7000-8000-00000000aaaa
 
   schemas:
     # ------------------------------------------------ common
@@ -1634,6 +1690,9 @@ components:
         - insufficient_balance
         - cart_changed
         - campaign_incomplete
+        - inn_taken
+        - rate_limited
+        - not_implemented
         - internal
     Error:
       type: object
@@ -1818,7 +1877,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/OrganizationFields'
         - type: object
-          required: [id, legal_type, inn, name, contact_name, phone, status, cabinets, created_at]
+          required: [id, legal_type, inn, name, contact_name, phone, status, cabinets, tax_document_uploaded, created_at]
           properties:
             id: { $ref: '#/components/schemas/Uuid' }
             legal_type: { $ref: '#/components/schemas/LegalType' }
@@ -1827,18 +1886,22 @@ components:
             cabinets:
               type: array
               items: { $ref: '#/components/schemas/Cabinet' }
+            tax_document_uploaded:
+              type: boolean
+              description: Документ о режиме налогообложения загружен (нужен блогеру)
             created_at: { type: string, format: date-time }
 
     # ------------------------------------------------ legal, notifications
     LegalDocument:
       type: object
-      required: [id, kind, version, title, url, accepted]
+      required: [id, kind, version, published_at, title, url, accepted]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         kind: { type: string, enum: [advertiser_offer, blogger_offer, platform_rules, privacy_policy] }
-        version: { type: string, example: '2026-07-01' }
+        version: { type: integer, example: 1, description: Номер версии внутри вида; действующая — наибольшая }
+        published_at: { type: string, format: date-time }
         title: { type: string }
-        url: { type: string, format: uri }
+        url: { type: string, format: uri, description: Кратковременная подписанная ссылка на файл }
         accepted: { type: boolean, description: Принят текущей организацией }
     LegalAcceptanceRequest:
       type: object

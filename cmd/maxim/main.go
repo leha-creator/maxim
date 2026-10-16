@@ -1,0 +1,54 @@
+// Command maxim — бэкенд биржи рекламы в каналах MAX.
+//
+// Режимы:
+//
+//	maxim api                       — HTTP API кабинетов
+//	maxim worker                    — обработчик заданий
+//	maxim migrate up|down|status    — миграции базы
+//	maxim legal publish|list        — оферты и правила (до API администратора, R-8)
+//
+// Конфигурация — переменные окружения, см. .env.example.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/leha-creator/maxim/internal/bootstrap"
+)
+
+// version задаётся при сборке: -ldflags "-X main.version=<sha>".
+var version = "dev"
+
+const usage = `usage: maxim <command> [args]
+
+commands:
+  api                      run HTTP API
+  worker                   run job worker
+  migrate up|down|status   apply, roll back one or show migrations
+  legal publish|list       publish a legal document version or list current ones
+`
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprint(os.Stderr, usage)
+		os.Exit(2)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := bootstrap.Run(ctx, bootstrap.RunParams{
+		Command: os.Args[1],
+		Args:    os.Args[2:],
+		Environ: os.Environ(),
+		Version: version,
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+	})
+	stop()
+	if code == 2 {
+		fmt.Fprint(os.Stderr, usage)
+	}
+	os.Exit(code)
+}

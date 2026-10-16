@@ -76,7 +76,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
 
 ### Phase 1: Основа приложения
 
-- [ ] **Task 1: Модуль Go, точка входа, конфигурация и журнал**
+- [x] **Task 1: Модуль Go, точка входа, конфигурация и журнал**
   - Создать `go.mod` в корне: `module github.com/leha-creator/maxim`, `go 1.25`; инструменты через `tool` (`oapi-codegen`, `goose`). `mockapi/` остаётся отдельным модулем и в сборку не входит. Проверить, что `go build ./...` в корне его не затрагивает.
   - `cmd/maxim/main.go`: разбор подкоманд `api`, `worker`, `migrate`, `legal`; версия сборки через `-ldflags "-X main.version=<sha>"`; остановка по `SIGINT`/`SIGTERM` через `context`.
   - `internal/bootstrap/config.go`: вся конфигурация из окружения (`caarlos0/env/v11`). Группы: `APP_ENV` (`development`, `test`, `production`), `LOG_LEVEL`, `HTTP_ADDR`, `METRICS_ADDR`, `PUBLIC_BASE_URL`, `DATABASE_URL`, `DB_APP_ROLE`, `S3_*`, `SMTP_*`, `MAIL_FROM`, `APP_SECRETS_KEY` (32 байта, base64), `AUTH_CODE_PEPPER`, `COOKIE_SECURE`, параметры предметной области этапа со значениями по умолчанию из 07 §4: срок кода 600 с, 5 попыток, 5 кодов на почту в час, 20 на IP в час, сессия 30 суток, сессия администратора 12 ч. Проверка при запуске: обязательные поля, длина ключей, `COOKIE_SECURE=true` в `production`. При ошибке — запись ERROR со списком полей (без значений) и выход с кодом 1.
@@ -86,7 +86,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Тесты: проверка конфигурации (нет обязательного, короткий ключ, `production` без `COOKIE_SECURE`); маскирование; `Manual` clock.
   - Файлы: `go.mod`, `cmd/maxim/main.go`, `internal/bootstrap/config.go`, `internal/platform/{logx,clock,ids,apperr,money}/*.go`.
 
-- [ ] **Task 2: Уточнение `api/openapi.yaml` под аккаунты (R-5, R-6, R-7)**
+- [x] **Task 2: Уточнение `api/openapi.yaml` под аккаунты (R-5, R-6, R-7)**
   - `ErrorCode` дополнить значениями `inn_taken`, `rate_limited`, `not_implemented`. Добавить ответ `RateLimited` (`429`, заголовок `Retry-After`) к `requestLoginCode`, `login`, `uploadTaxDocument`, ответ `NotImplemented` (`501`) — в `components/responses`.
   - `createOrganization`: `409` с кодом `inn_taken` описать в `description`.
   - Новая операция `PUT /organizations/current/tax-document` (`operationId: uploadTaxDocument`, тег `organizations`, `multipart/form-data`, поле `file`; ответ `200` — `Organization`). В `Organization` — поле `tax_document_uploaded: boolean`.
@@ -96,7 +96,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Журнал: в `mockapi` — по его правилам (DEBUG вход в обработчик, INFO `tax document uploaded`).
   - Файлы: `api/openapi.yaml`, `mockapi/internal/api/api.gen.go`, `mockapi/internal/handlers/*.go`, `mockapi/internal/store/*.go`.
 
-- [ ] **Task 3: Генерация API и HTTP-сервер (R-7)** (depends on 1, 2)
+- [x] **Task 3: Генерация API и HTTP-сервер (R-7)** (depends on 1, 2)
   - `internal/apigen/generate.go` + `oapi-codegen.yaml`: модели, `std-http-server`, `strict-server`, `embedded-spec`; `exclude-tags: [_mock]`. Сгенерированное коммитится.
   - `internal/apigen/cmd/genstub` (или `go:generate` с `go/types`): по `StrictServerInterface` генерирует `internal/bootstrap/unimplemented.go` — тип `unimplemented` с методами, возвращающими `apperr.NotImplemented`. Сервер собирается встраиванием: обработчики модулей перекрывают заглушки.
   - `internal/platform/httpx`: middleware `RequestID` (`X-Request-Id` из запроса, если это UUID, иначе новый; в ответ и в `context`), `AccessLog`, `Recover` (ERROR с `stack`, ответ `500 internal`), `BodyLimit` (1 МБ по умолчанию, 11 МБ для `uploadTaxDocument`), `SecurityHeaders` (`X-Content-Type-Options`, `Referrer-Policy`, `Cache-Control: no-store` для `/api/`), проверка запроса по встроенной спецификации (`oapi-codegen/nethttp-middleware`) с ответом `422 validation_failed` и полем `details.field`. Единый обработчик ошибок strict server: `apperr` → HTTP-код и тело `Error` с `request_id`.
