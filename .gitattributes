@@ -2,3 +2,8 @@
 Caddyfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.go text eol=lf
+*.sql text eol=lf
+*.tmpl text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf

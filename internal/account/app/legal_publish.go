@@ -56,3 +56,8 @@ func (s *Service) PublishLegalDocument(ctx context.Context, kind domain.LegalDoc
 	s.log.InfoContext(ctx, "legal document published", logx.KeyOp, op, "kind", kind, "version", doc.Version, "sha256", doc.SHA256)
 	return doc, nil
 }
+
+// CurrentLegalDocuments — действующие версии всех видов (для `maxim legal list`).
+func (s *Service) CurrentLegalDocuments(ctx context.Context) ([]domain.LegalDocument, error) {
+	return s.Legal.Current(ctx)
+}

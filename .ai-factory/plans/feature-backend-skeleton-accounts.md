@@ -200,20 +200,20 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
 
 ### Phase 4: Оферты и сквозная проверка
 
-- [ ] **Task 12: Сборка режимов и проводка зависимостей** (depends on 6, 9, 10, 11)
+- [x] **Task 12: Сборка режимов и проводка зависимостей** (depends on 6, 9, 10, 11)
   - `internal/bootstrap`: создание пула, `tx.Runner`, `job` enqueuer, `audit`, хранилища, почты, `account/app.Service`; встраивание `account/httpapi.Handlers` в сервер; регистрация `account/jobs` в `worker`. Выбор реализаций по `APP_ENV`: в `test` — поддельные, иначе настоящие (Mailpit и MinIO в разработке — это настоящие SMTP и S3).
   - Глобальных переменных с состоянием нет; всё передаётся конструкторами.
   - Журнал: INFO `component ready` (`component`, `addr`), INFO `shutdown started` / `shutdown finished` (`duration_ms`).
   - Тесты: `go build ./...`; запуск `api` и `worker` в одном тесте на `dbtest` — `/readyz` отвечает `200`.
   - Файлы: `internal/bootstrap/*.go`, `cmd/maxim/main.go`.
 
-- [ ] **Task 13: Команда публикации оферт (R-8)** (depends on 7, 8, 12)
+- [x] **Task 13: Команда публикации оферт (R-8)** (depends on 7, 8, 12)
   - `maxim legal publish --kind <advertiser_offer|blogger_offer|platform_rules|privacy_policy> --file <path> [--published-at <RFC3339>]`: проверяет вид и файл (PDF), загружает в `legal/<uuid>.pdf`, считает `sha256`, создаёт `legal_document` со следующим `version` в транзакции; аудит `legal.publish` с `actor_type = system`. `maxim legal list` — действующие версии.
   - Журнал: INFO `legal document published` (`kind`, `version`, `sha256`), ERROR при сбое загрузки (без создания записи).
   - Тесты: публикация двух версий одного вида → действующая — вторая; пользователь, принявший первую, снова видит документ в `pending_legal_document_ids` (A-25).
   - Файлы: `cmd/maxim/legal.go`, `internal/account/app/legal_publish.go`.
 
-- [ ] **Task 14: Сквозные тесты S-01 и S-10** (depends on 12, 13)
+- [x] **Task 14: Сквозные тесты S-01 и S-10** (depends on 12, 13)
   - `internal/bootstrap/e2e_test.go` (или `test/e2e`): собранный сервер + `worker` в одном процессе, `dbtest`, `mailfake`, `storagefake`, `clock.Manual`.
     - S-01: запросить код → воркер отправил письмо → вход по коду из письма → `GET /me` пустые организации → `POST /organizations` (`advertiser`, ООО) → `pending_legal_document_ids` = оферта рекламодателя, правила, политика → принятие → список пуст.
     - S-10: блогер-самозанятый с `npd`/`none` → загрузка документа → принятие оферты блогера; затем тот же пользователь добавляет кабинет рекламодателя — реквизиты не меняются, нужна оферта рекламодателя.
