@@ -28,7 +28,7 @@ func runLegal(ctx context.Context, cfg Config, log *slog.Logger, args []string, 
 		return err
 	}
 	defer pool.Close()
-	in, err := newInfra(ctx, cfg, ModeLegal, pool, log)
+	in, err := newInfra(ctx, cfg, ModeLegal, pool, log, nil)
 	if err != nil {
 		return err
 	}

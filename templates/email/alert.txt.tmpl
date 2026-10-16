@@ -1,0 +1,8 @@
+{{.Subject}}{{if .ObjectKey}} ({{.ObjectKey}}){{end}}
+
+{{.Summary}}
+{{range .FieldLines}}
+{{.}}{{end}}
+
+Срабатываний: {{.RaisedCount}}. Первое: {{.FirstRaisedAtMSK}} МСК, последнее: {{.LastRaisedAtMSK}} МСК.
+Повторное оповещение по той же причине — не чаще раза в час.

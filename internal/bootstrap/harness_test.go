@@ -24,6 +24,7 @@ import (
 
 	"github.com/leha-creator/maxim/internal/account/domain"
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
+	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/dbtest"
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -62,8 +63,9 @@ func newTestApp(t *testing.T) *testApp {
 		t.Fatal(err)
 	}
 	clk := clock.NewManual(testStart)
-	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), box: box}
 	cfg := testConfig()
+	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: maxfake.New(), box: box}
+	in.alerter = newAlerter(cfg, in)
 	m := newModules(cfg, in)
 	h, err := apiHandler(cfg, in, m, metrics.New())
 	if err != nil {

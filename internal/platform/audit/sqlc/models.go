@@ -17,6 +17,19 @@ type AdvertiserProfile struct {
 	UpdatedAt      time.Time
 }
 
+type Alert struct {
+	ID            uuid.UUID
+	Reason        string
+	ObjectKey     string
+	Level         string
+	Summary       string
+	FirstRaisedAt time.Time
+	LastRaisedAt  time.Time
+	LastSentAt    *time.Time
+	RaisedCount   int32
+	ResolvedAt    *time.Time
+}
+
 type AuditLog struct {
 	ID             uuid.UUID
 	ActorType      string
@@ -50,6 +63,19 @@ type BloggerProfile struct {
 	FullName       *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type InboundEvent struct {
+	ID          uuid.UUID
+	Source      string
+	ExternalKey string
+	EventType   string
+	Payload     []byte
+	Status      string
+	ProcessedAt *time.Time
+	Error       *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Job struct {
@@ -125,6 +151,35 @@ type OrganizationMember struct {
 	UpdatedAt      time.Time
 }
 
+type OutboundCircuit struct {
+	System              string
+	ConsecutiveFailures int32
+	OpenUntil           *time.Time
+	UpdatedAt           time.Time
+}
+
+type OutboundRequest struct {
+	ID             uuid.UUID
+	System         string
+	Operation      string
+	IdempotencyKey *string
+	Attempt        int32
+	Request        []byte
+	ResponseStatus *int32
+	ResponseBody   []byte
+	DurationMs     *int32
+	Error          *string
+	ObjectType     *string
+	ObjectID       *string
+	CreatedAt      time.Time
+}
+
+type RateLimitBucket struct {
+	Key        string
+	Tokens     float64
+	RefilledAt time.Time
+}
+
 type Session struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -145,4 +200,10 @@ type User struct {
 	LastLoginAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type WorkerHeartbeat struct {
+	Instance  string
+	StartedAt time.Time
+	SeenAt    time.Time
 }

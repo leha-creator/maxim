@@ -18,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/leha-creator/maxim/internal/integration/mail"
+	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
@@ -124,4 +125,29 @@ func smtpGreeting(addr string) error {
 		return fmt.Errorf("unexpected greeting %q", line)
 	}
 	return nil
+}
+
+func TestRenderAlert(t *testing.T) {
+	clk := clock.NewManual(time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC))
+	s, err := mail.New(mail.Options{}, clk, logx.Discard())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := alert.Notice{Level: "error", Reason: "job_failed:sync_ord_object", ObjectKey: "job-1", Summary: "Job failed after 10 attempts",
+		Fields: map[string]any{"attempts": 10, "kind": "sync_ord_object"}, RaisedCount: 2,
+		FirstRaisedAt: clk.Now(), LastRaisedAt: clk.Now().Add(time.Hour)}
+	subject, text, html, err := s.RenderAlert(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subject != "[ERROR] job_failed:sync_ord_object" {
+		t.Fatalf("subject %q", subject)
+	}
+	for _, body := range []string{text, html} {
+		for _, want := range []string{"job-1", "Job failed after 10 attempts", "kind: ", "attempts: 10", "13:00 МСК"} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("body has no %q:\n%s", want, body)
+			}
+		}
+	}
 }

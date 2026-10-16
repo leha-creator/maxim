@@ -28,6 +28,12 @@ func FromContext(ctx context.Context) (pgx.Tx, bool) {
 	return t, ok
 }
 
+// Detach возвращает context без транзакции: запись в нём не откатится вместе с
+// транзакцией вызывающего (журналы внешних вызовов, оповещения).
+func Detach(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKey{}, nil)
+}
+
 // PgxRunner — Runner на пуле pgx. Уровень изоляции — READ COMMITTED.
 type PgxRunner struct {
 	pool *pgxpool.Pool

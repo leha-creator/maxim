@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -106,5 +108,72 @@ func TestConfigLogValueHidesSecrets(t *testing.T) {
 	}
 	if !strings.Contains(out, "maxim_app:***@localhost") {
 		t.Fatalf("database url is not redacted as expected: %s", out)
+	}
+}
+
+func validWorkerEnv() map[string]string {
+	e := validAPIEnv()
+	e["SMTP_HOST"] = "localhost"
+	e["MAIL_FROM"] = "noreply@maxim.test"
+	return e
+}
+
+func TestWorkerConfig(t *testing.T) {
+	cfg, err := LoadConfig(validWorkerEnv(), ModeWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MAX.RateGlobal != 25 || cfg.MAX.RatePerChat != 1 || cfg.Scheduler.DowntimeThreshold != 30*time.Minute ||
+		cfg.Scheduler.StuckInboundEventAge != 10*time.Minute || cfg.Retention.OutboundRequest != 180*24*time.Hour {
+		t.Fatalf("defaults differ from 05 §2.8, 07 §2–§3, 04 §8: %+v %+v %+v", cfg.MAX, cfg.Scheduler, cfg.Retention)
+	}
+	if !cfg.MAXFake() {
+		t.Fatal("development without MAX_BOT_TOKEN must use the fake adapter")
+	}
+
+	pemFile := filepath.Join(t.TempDir(), "bad.pem")
+	if err := os.WriteFile(pemFile, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name  string
+		edit  func(map[string]string)
+		field string
+	}{
+		{"production without bot token", func(m map[string]string) { m["APP_ENV"] = "production"; m["ALERT_EMAILS"] = "oncall@maxim.ru" }, "MAX_BOT_TOKEN: required in production"},
+		{"production without alert recipients", func(m map[string]string) { m["APP_ENV"] = "production"; m["MAX_BOT_TOKEN"] = "t" },
+			"ALERT_EMAILS: at least one alert recipient (ALERT_EMAILS or ALERT_MAX_CHAT_ID) is required in production"},
+		{"bad pem", func(m map[string]string) { m["MAX_CA_CERT_FILE"] = pemFile }, "MAX_CA_CERT_FILE: no PEM certificates found"},
+		{"missing pem", func(m map[string]string) { m["MAX_CA_CERT_FILE"] = pemFile + ".missing" }, "MAX_CA_CERT_FILE: cannot be read"},
+		{"zero rate", func(m map[string]string) { m["MAX_RATE_GLOBAL"] = "0" }, "MAX_RATE_*: must be positive"},
+		{"bad alert email", func(m map[string]string) { m["ALERT_EMAILS"] = "oncall@maxim.ru,nope" }, "ALERT_EMAILS: invalid address"},
+		{"zero retention", func(m map[string]string) { m["RETENTION_SESSION"] = "0s" }, "RETENTION_*: must be positive"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := validWorkerEnv()
+			c.edit(e)
+			_, err := LoadConfig(e, ModeWorker)
+			if fields := configFields(t, err); !slices.Contains(fields, c.field) {
+				t.Fatalf("fields %v do not contain %q", fields, c.field)
+			}
+		})
+	}
+}
+
+func TestConfigLogValueHidesBotToken(t *testing.T) {
+	e := validWorkerEnv()
+	e["MAX_BOT_TOKEN"] = "max-bot-secret"
+	cfg, err := LoadConfig(e, ModeWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "config", cfg)
+	if strings.Contains(buf.String(), "max-bot-secret") {
+		t.Fatal("log contains MAX bot token")
+	}
+	if cfg.MAXFake() {
+		t.Fatal("development with MAX_BOT_TOKEN must use the live adapter")
 	}
 }

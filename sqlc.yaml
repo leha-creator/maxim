@@ -57,3 +57,33 @@ sql:
       go:
         <<: *gen
         out: internal/account/postgres/sqlc
+  - <<: *entry
+    queries: internal/platform/outbound/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/platform/outbound/sqlc
+  - <<: *entry
+    queries: internal/platform/ratelimit/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/platform/ratelimit/sqlc
+  - <<: *entry
+    queries: internal/platform/inbound/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/platform/inbound/sqlc
+  - <<: *entry
+    queries: internal/platform/alert/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/platform/alert/sqlc
+  - <<: *entry
+    queries: internal/platform/stuck/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/platform/stuck/sqlc

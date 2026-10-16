@@ -2,11 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/leha-creator/maxim/internal/platform/db"
+	"github.com/leha-creator/maxim/internal/platform/inbound"
 	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/metrics"
@@ -19,13 +21,20 @@ func runWorker(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	in, err := newInfra(ctx, cfg, ModeWorker, pool, log)
+	reg := metrics.New()
+	in, err := newInfra(ctx, cfg, ModeWorker, pool, log, reg)
 	if err != nil {
 		return err
 	}
+	if err := checkMAX(ctx, cfg, in); err != nil {
+		return err
+	}
+	in.alerter.CheckChannels(ctx)
 	w := newWorker(in, newModules(cfg, in))
-	reg := metrics.New()
 	reg.MustRegister(job.NewCollector(pool, in.clock, log.With(logx.KeyModule, "job")))
+	reg.MustRegister(inbound.NewCollector(pool, in.clock, log.With(logx.KeyModule, "inbound")))
+	log.InfoContext(ctx, "worker configured", logx.KeyOp, "Bootstrap.Worker", "kinds", w.Kinds(),
+		"max_mode", maxMode(cfg), "alert_emails", len(cfg.Alert.Emails), "alert_chat", cfg.Alert.MAXChatID != 0)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return w.Run(gctx) })
@@ -38,4 +47,26 @@ func newWorker(in *infra, m *modules) *job.Worker {
 	w := job.NewWorker(in.pool, in.clock, in.log.With(logx.KeyModule, "job"))
 	m.registerJobs(w)
 	return w
+}
+
+func maxMode(cfg Config) string {
+	if cfg.MAXFake() {
+		return "fake"
+	}
+	return "live"
+}
+
+// checkMAX проверяет токен бота при запуске в продакшене: без связи с MAX
+// worker не стартует (07 §8).
+func checkMAX(ctx context.Context, cfg Config, in *infra) error {
+	if cfg.Env != EnvProduction {
+		return nil
+	}
+	bot, err := in.max.GetMe(ctx)
+	if err != nil {
+		in.log.ErrorContext(ctx, "max bot check failed", logx.KeyOp, "Bootstrap.CheckMAX", logx.KeyError, err.Error())
+		return fmt.Errorf("max bot check: %w", err)
+	}
+	in.log.InfoContext(ctx, "max bot checked", logx.KeyOp, "Bootstrap.CheckMAX", "bot_user_id", bot.UserID)
+	return nil
 }

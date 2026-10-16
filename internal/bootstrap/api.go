@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/leha-creator/maxim/internal/platform/db"
+	"github.com/leha-creator/maxim/internal/platform/inbound"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/metrics"
 )
@@ -85,11 +86,12 @@ func runAPI(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	in, err := newInfra(ctx, cfg, ModeAPI, pool, log)
+	reg := metrics.New()
+	in, err := newInfra(ctx, cfg, ModeAPI, pool, log, reg)
 	if err != nil {
 		return err
 	}
-	reg := metrics.New()
+	reg.MustRegister(inbound.NewCollector(pool, in.clock, log.With(logx.KeyModule, "inbound")))
 	h, err := apiHandler(cfg, in, newModules(cfg, in), reg)
 	if err != nil {
 		return err

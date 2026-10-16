@@ -21,7 +21,7 @@ func TestMigrationsDownAndUp(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	log := logx.Discard()
-	for range 2 { // откат 00002 и 00001
+	for range 3 { // откат 00003, 00002 и 00001
 		if err := db.MigrateURL(ctx, d.OwnerURL, dbtest.AppRole, db.MigrateDown, log); err != nil {
 			t.Fatalf("down: %v", err)
 		}
@@ -115,5 +115,34 @@ func TestUniqueViolation(t *testing.T) {
 	_, err := d.Pool.Exec(ctx, strings.Replace(q, "A@example.ru", "a@EXAMPLE.ru", 1), ids.New())
 	if !db.UniqueViolation(err, "user_email_key") {
 		t.Fatalf("email must be unique case-insensitively, got %v", err)
+	}
+}
+
+func TestIntegrationTablesForAppRole(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	for _, stmt := range []string{
+		`INSERT INTO outbound_request (id, system, operation, attempt, request, created_at) VALUES ('` + ids.New().String() + `', 'max', 'GetMe', 1, '{}', now())`,
+		`INSERT INTO rate_limit_bucket (key, tokens, refilled_at) VALUES ('max:global', 25, now())`,
+		`UPDATE rate_limit_bucket SET tokens = 1`,
+		`INSERT INTO outbound_circuit (system, updated_at) VALUES ('max', now())`,
+		`INSERT INTO alert (id, reason, level, summary, first_raised_at, last_raised_at, raised_count) VALUES ('` + ids.New().String() + `', 'test', 'error', 's', now(), now(), 1)`,
+		`INSERT INTO worker_heartbeat (instance, started_at, seen_at) VALUES ('w1', now(), now())`,
+		`DELETE FROM outbound_request`,
+	} {
+		if _, err := d.Pool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	insert := `INSERT INTO inbound_event (id, source, external_key, event_type, payload, status, created_at, updated_at)
+		VALUES ($1, 'max', 'k1', 'bot_added', '{}', 'received', now(), now()) ON CONFLICT (source, external_key) DO NOTHING`
+	for range 2 {
+		if _, err := d.Pool.Exec(ctx, insert, ids.New()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := d.Pool.QueryRow(ctx, `SELECT count(*) FROM inbound_event`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("inbound_event rows = %d, err = %v; want 1", n, err)
 	}
 }

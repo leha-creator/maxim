@@ -24,6 +24,9 @@ FROM gcr.io/distroless/static-debian12:nonroot
 LABEL org.opencontainers.image.source="https://github.com/leha-creator/maxim" \
       org.opencontainers.image.description="Maxim backend: api, worker, migrate"
 COPY --from=build /out/maxim /maxim
+# Корневые сертификаты внешних систем (MAX: сертификат Минцифры, 05 §2.1);
+# путь задаётся MAX_CA_CERT_FILE. Как получить и проверить — deploy/certs/README.md.
+COPY deploy/certs/ /etc/maxim/certs/
 # 65532 — пользователь nonroot в distroless.
 USER 65532:65532
 EXPOSE 8080 9090

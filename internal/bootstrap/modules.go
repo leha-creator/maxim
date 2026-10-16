@@ -11,12 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	accountapp "github.com/leha-creator/maxim/internal/account/app"
-	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
 	accounthttp "github.com/leha-creator/maxim/internal/account/httpapi"
 	accountjobs "github.com/leha-creator/maxim/internal/account/jobs"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
 	"github.com/leha-creator/maxim/internal/integration/mail"
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
+	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/db"
@@ -37,13 +37,18 @@ type infra struct {
 	clock   clock.Clock
 	log     *slog.Logger
 	storage storage.ObjectStorage
-	mail    accountdomain.LoginCodeSender
-	box     *secretbox.Box
+	mail    mailer
+	max     maxAPI
+	alerter *alert.Alerter
+	// reg — реестр метрик процесса; nil в служебных командах.
+	reg *metrics.Registry
+	box *secretbox.Box
 }
 
 // newInfra подключает адаптеры, нужные режиму.
-func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, log *slog.Logger) (*infra, error) {
-	in := &infra{pool: pool, clock: clock.System{}, log: log}
+func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, log *slog.Logger, reg *metrics.Registry) (*infra, error) {
+	in := &infra{pool: pool, clock: clock.System{}, log: log, reg: reg}
+	in.alerter = newAlerter(cfg, in)
 	fakes := cfg.Env == EnvTest
 	if mode == ModeAPI || mode == ModeLegal {
 		if fakes {
@@ -72,6 +77,9 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 			}
 			in.mail = m
 		}
+		if err := in.connectMAX(cfg); err != nil {
+			return nil, err
+		}
 	}
 	if mode == ModeAPI || mode == ModeWorker {
 		box, err := secretbox.New(cfg.SecretsKeyBytes())
@@ -85,8 +93,11 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 
 // modules — собранные модули приложения.
 type modules struct {
+	cfg         Config
+	in          *infra
 	account     *accountapp.Service
 	accountHTTP *accounthttp.Handlers
+	platform    *platformJobs
 }
 
 // newModules связывает порты модулей с реализациями.
@@ -116,13 +127,17 @@ func newModules(cfg Config, in *infra) *modules {
 	}
 	svc := accountapp.New(deps)
 	return &modules{
+		cfg:         cfg,
+		in:          in,
 		account:     svc,
 		accountHTTP: accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
+		platform:    newPlatformJobs(cfg, in, accountStore),
 	}
 }
 
 // registerJobs регистрирует обработчики заданий всех модулей.
 func (m *modules) registerJobs(w *job.Worker) {
+	m.platform.register(w, m.cfg, m.in)
 	accountjobs.Register(w, m.account)
 }
 

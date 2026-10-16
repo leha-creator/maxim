@@ -47,11 +47,39 @@ type HandlerOptions struct {
 	// WipePayload затирает полезную нагрузку после завершения (успех или
 	// исчерпание попыток): для заданий с секретами (R-1).
 	WipePayload bool
+	// Priority — высокий приоритет у публикации, снятия и таймеров размещения:
+	// такие задания берутся первыми и получают резерв мест (R-8).
+	Priority Priority
+	// Overdue — что делать с заданием, взятым позже срока (07 §2, «После простоя»).
+	Overdue Overdue
+	// ObjectRef извлекает из полезной нагрузки объект задания для списка
+	// затронутых объектов после простоя (например, placement:<id>).
+	ObjectRef func(payload []byte) string
+	// OnExhausted вызывается после перевода задания в failed: отметить связанный
+	// объект (например, inbound_event.status = failed). err — последняя ошибка.
+	OnExhausted func(ctx context.Context, j Running, err error)
+	// NoFailureAlert — не поднимать оповещение при исчерпании попыток: для самого
+	// задания отправки оповещений, чтобы сбой почты не порождал новые оповещения.
+	NoFailureAlert bool
 }
+
+// Priority — приоритет вида задания при взятии в работу.
+type Priority int
+
+const (
+	PriorityNormal Priority = iota
+	PriorityHigh
+)
+
+// reservedHigh — места пакета, которые задания обычного приоритета не занимают,
+// если зарегистрирован хотя бы один вид высокого приоритета (R-8).
+const reservedHigh = 2
 
 type registration struct {
 	handler Handler
 	opts    HandlerOptions
+	// schedule задан у периодических заданий.
+	schedule Schedule
 }
 
 // Worker берёт задания из таблицы и выполняет их обработчиками по виду.
@@ -62,6 +90,10 @@ type Worker struct {
 	name     string
 	handlers map[string]registration
 	batch    int
+	queue    *Queue
+
+	alerter       Alerter
+	downtimeAfter time.Duration
 
 	mu      sync.Mutex
 	running map[uuid.UUID]context.CancelFunc
@@ -79,6 +111,52 @@ func NewWorker(pool *pgxpool.Pool, clk clock.Clock, log *slog.Logger) *Worker {
 		handlers: map[string]registration{},
 		batch:    defaultBatch,
 		running:  map[uuid.UUID]context.CancelFunc{},
+		queue:    NewQueue(pool, clk, log),
+
+		alerter:       nopAlerter{},
+		downtimeAfter: defaultDowntimeAfter,
+	}
+}
+
+// RegisterPeriodic регистрирует периодическое задание: одна попытка, запуск по
+// schedule. Пропущенные интервалы не догоняются: после простоя — один запуск (07 §2).
+func (w *Worker) RegisterPeriodic(kind string, schedule Schedule, h Handler, opts HandlerOptions) {
+	w.handlers[kind] = registration{handler: h, opts: opts, schedule: schedule}
+}
+
+// PeriodicKey — dedupe_key живого задания периодического вида.
+func PeriodicKey(kind string) string { return "periodic:" + kind }
+
+// EnsurePeriodic создаёт задания периодических видов, у которых нет живого
+// задания. Гонку экземпляров решает dedupe_key.
+func (w *Worker) EnsurePeriodic(ctx context.Context) error {
+	for _, kind := range w.Kinds() {
+		reg := w.handlers[kind]
+		if reg.schedule == nil {
+			continue
+		}
+		if err := w.enqueuePeriodic(ctx, kind, reg.schedule); err != nil {
+			return err
+		}
+		w.log.InfoContext(ctx, "periodic job registered", logx.KeyOp, "Job.EnsurePeriodic", "kind", kind,
+			"schedule", reg.schedule.String())
+	}
+	return nil
+}
+
+func (w *Worker) enqueuePeriodic(ctx context.Context, kind string, s Schedule) error {
+	runAt := s.Next(w.clock.Now())
+	if err := w.queue.Enqueue(ctx, Job{Kind: kind, DedupeKey: PeriodicKey(kind), RunAt: runAt, MaxAttempts: 1}); err != nil {
+		return err
+	}
+	w.log.DebugContext(ctx, "periodic job scheduled", logx.KeyOp, "Job.SchedulePeriodic", "kind", kind, "run_at", runAt)
+	return nil
+}
+
+func (w *Worker) schedulePeriodic(ctx context.Context, kind string, s Schedule) {
+	if err := w.enqueuePeriodic(ctx, kind, s); err != nil {
+		w.log.ErrorContext(ctx, "periodic job schedule failed", logx.KeyOp, "Job.SchedulePeriodic", "kind", kind,
+			logx.KeyError, err.Error())
 	}
 }
 
@@ -92,15 +170,35 @@ func (w *Worker) Kinds() []string {
 	return slices.Sorted(maps.Keys(w.handlers))
 }
 
+// kindsByPriority делит зарегистрированные виды на высокий и обычный приоритет.
+func (w *Worker) kindsByPriority() (high, normal []string) {
+	for _, k := range w.Kinds() {
+		if w.handlers[k].opts.Priority == PriorityHigh {
+			high = append(high, k)
+		} else {
+			normal = append(normal, k)
+		}
+	}
+	return high, normal
+}
+
 // Run обрабатывает задания, пока не отменён ctx. После отмены новые задания не
 // берутся, текущие доделываются до shutdownDeadline, остальные возвращаются в очередь.
 func (w *Worker) Run(ctx context.Context) error {
 	w.log.InfoContext(ctx, "worker started", logx.KeyOp, "Job.Run", "locked_by", w.name, "kinds", w.Kinds())
+	if _, err := w.CheckDowntime(ctx); err != nil {
+		return fmt.Errorf("check downtime: %w", err)
+	}
 	w.releaseAbandoned(ctx)
+	if err := w.EnsurePeriodic(ctx); err != nil {
+		return fmt.Errorf("ensure periodic jobs: %w", err)
+	}
 	poll := time.NewTicker(pollInterval)
 	defer poll.Stop()
 	abandon := time.NewTicker(abandonInterval)
 	defer abandon.Stop()
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
 
 	jobsCtx, cancelJobs := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelJobs()
@@ -111,6 +209,10 @@ func (w *Worker) Run(ctx context.Context) error {
 			return nil
 		case <-abandon.C:
 			w.releaseAbandoned(ctx)
+		case <-heartbeat.C:
+			if err := w.Heartbeat(ctx); err != nil && ctx.Err() == nil {
+				w.log.ErrorContext(ctx, "heartbeat failed", logx.KeyOp, "Job.Run", logx.KeyError, err.Error())
+			}
 		case <-poll.C:
 			if _, err := w.claimAndStart(jobsCtx); err != nil && ctx.Err() == nil {
 				w.log.ErrorContext(ctx, "job poll failed", logx.KeyOp, "Job.Run", logx.KeyError, err.Error())
@@ -134,15 +236,40 @@ func (w *Worker) claimAndStart(ctx context.Context) (int, error) {
 	if len(w.handlers) == 0 {
 		return 0, nil
 	}
+	high, normal := w.kindsByPriority()
+	n := 0
+	if len(high) > 0 {
+		started, err := w.claim(ctx, high, w.batch)
+		n += started
+		if err != nil {
+			return n, err
+		}
+	}
+	if len(normal) > 0 {
+		limit := w.batch
+		if len(high) > 0 {
+			limit -= reservedHigh
+		}
+		started, err := w.claim(ctx, normal, limit)
+		n += started
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+// claim берёт готовые задания видов kinds, пока занятых мест меньше limit, и запускает их.
+func (w *Worker) claim(ctx context.Context, kinds []string, limit int) (int, error) {
 	w.mu.Lock()
-	free := w.batch - len(w.running)
+	free := limit - len(w.running)
 	w.mu.Unlock()
 	if free <= 0 {
 		return 0, nil
 	}
 	now := w.clock.Now()
 	rows, err := sqlc.New(w.pool).ClaimJobs(ctx, sqlc.ClaimJobsParams{
-		LockedBy: &w.name, Now: now, Kinds: w.Kinds(), Batch: int32(free),
+		LockedBy: &w.name, Now: now, Kinds: kinds, Batch: int32(free),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("claim jobs: %w", err)
@@ -180,10 +307,20 @@ func (w *Worker) execute(ctx context.Context, r sqlc.ClaimJobsRow) {
 	start := w.clock.Now()
 	w.log.InfoContext(ctx, "job started", logx.KeyOp, "Job.Execute", "kind", r.Kind, "attempt", attempt)
 
-	err := safeCall(ctx, reg.handler, Running{ID: r.ID, Kind: r.Kind, Payload: payload, Attempts: int(r.Attempts)})
+	handler := reg.handler
+	if expired(reg.opts, r.RunAt, start) {
+		w.log.WarnContext(ctx, "overdue job expired", logx.KeyOp, "Job.Execute", "kind", r.Kind,
+			"overdue", start.Sub(r.RunAt).Round(time.Second).String(), "allowed", reg.opts.Overdue.After.String())
+		handler = reg.opts.Overdue.OnExpired
+	}
+	err := safeCall(ctx, handler, Running{ID: r.ID, Kind: r.Kind, Payload: payload, Attempts: int(r.Attempts)})
 	// Итог пишется и после отмены context задания: до остановки процесса.
 	dbctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
+	if reg.schedule != nil {
+		// 07 §2: следующий запуск создаётся независимо от исхода, от фактического времени.
+		defer w.schedulePeriodic(dbctx, r.Kind, reg.schedule)
+	}
 	q := sqlc.New(w.pool)
 	now := w.clock.Now()
 	dur := now.Sub(start).Milliseconds()
@@ -201,18 +338,37 @@ func (w *Worker) execute(ctx context.Context, r sqlc.ClaimJobsRow) {
 
 	attempts := r.Attempts + 1
 	msg := err.Error()
-	if attempts >= r.MaxAttempts {
+	permanent := IsPermanent(err)
+	if permanent || attempts >= r.MaxAttempts {
 		if _, uerr := q.FailJob(dbctx, sqlc.FailJobParams{
 			ID: r.ID, LockedBy: &w.name, Now: now, Attempts: attempts, LastError: &msg, WipePayload: reg.opts.WipePayload,
 		}); uerr != nil {
 			w.log.ErrorContext(ctx, "job state update failed", logx.KeyOp, "Job.Execute", logx.KeyError, uerr.Error())
 			return
 		}
-		w.log.ErrorContext(ctx, "job exhausted attempts", logx.KeyOp, "Job.Execute", "kind", r.Kind,
-			"attempt", attempt, "max_attempts", r.MaxAttempts, "duration_ms", dur, logx.KeyError, msg)
+		if permanent {
+			w.log.ErrorContext(ctx, "job failed permanently", logx.KeyOp, "Job.Execute", "kind", r.Kind,
+				"attempt", attempt, "duration_ms", dur, logx.KeyError, msg)
+		} else {
+			w.log.ErrorContext(ctx, "job exhausted attempts", logx.KeyOp, "Job.Execute", "kind", r.Kind,
+				"attempt", attempt, "max_attempts", r.MaxAttempts, "duration_ms", dur, logx.KeyError, msg)
+		}
+		if reg.opts.OnExhausted != nil {
+			reg.opts.OnExhausted(dbctx, Running{ID: r.ID, Kind: r.Kind, Payload: payload, Attempts: int(attempts)}, err)
+		}
+		// 07 §2: после max_attempts — failed и оповещение.
+		if !reg.opts.NoFailureAlert {
+			w.alerter.RaiseError(dbctx, reasonJobFailedPrefix+r.Kind, r.ID.String(),
+				fmt.Sprintf("Job %s failed after %d attempts", r.Kind, attempts),
+				map[string]any{"job_id": r.ID.String(), "kind": r.Kind, "attempts": attempts, "permanent": permanent})
+		}
 		return
 	}
-	next := now.Add(RetryDelay(int(r.Attempts)))
+	delay, reason := RetryDelay(int(r.Attempts)), "backoff"
+	if after, ok := RetryAfter(err); ok {
+		delay, reason = after, "requested"
+	}
+	next := now.Add(delay)
 	if _, uerr := q.RetryJob(dbctx, sqlc.RetryJobParams{
 		ID: r.ID, LockedBy: &w.name, Now: now, Attempts: attempts, RunAt: next, LastError: &msg,
 	}); uerr != nil {
@@ -220,7 +376,7 @@ func (w *Worker) execute(ctx context.Context, r sqlc.ClaimJobsRow) {
 		return
 	}
 	w.log.WarnContext(ctx, "job failed, will retry", logx.KeyOp, "Job.Execute", "kind", r.Kind,
-		"attempt", attempt, "next_run_at", next, "duration_ms", dur, logx.KeyError, msg)
+		"attempt", attempt, "next_run_at", next, "retry_reason", reason, "duration_ms", dur, logx.KeyError, msg)
 }
 
 // RetryDelay — задержка перед повтором: min(30 с × 2^attempts, 1 ч), где

@@ -64,3 +64,48 @@ GROUP BY kind;
 
 -- name: GetJob :one
 SELECT * FROM job WHERE id = @id;
+
+-- name: CancelJob :execrows
+-- Отменяет ожидающее задание по dedupe_key. Задание в running не трогается:
+-- его обработчик идемпотентен (03 §11).
+UPDATE job
+SET status = 'cancelled', finished_at = @now::timestamptz, updated_at = @now::timestamptz
+WHERE dedupe_key = @dedupe_key AND status = 'pending';
+
+-- name: RescheduleJob :execrows
+UPDATE job
+SET run_at = @run_at, updated_at = @now::timestamptz
+WHERE dedupe_key = @dedupe_key AND status = 'pending';
+
+-- name: LastHeartbeat :one
+-- Последняя отметка любого экземпляра worker (R-6).
+SELECT seen_at FROM worker_heartbeat ORDER BY seen_at DESC LIMIT 1;
+
+-- name: UpsertHeartbeat :exec
+INSERT INTO worker_heartbeat (instance, started_at, seen_at)
+VALUES (@instance, @now::timestamptz, @now::timestamptz)
+ON CONFLICT (instance) DO UPDATE SET seen_at = EXCLUDED.seen_at;
+
+-- name: OverdueJobs :many
+-- Просроченные ожидающие задания указанных видов: список затронутых объектов после простоя.
+SELECT id, kind, payload, run_at
+FROM job
+WHERE status = 'pending' AND run_at < @run_before::timestamptz AND kind = ANY (@kinds::text[])
+ORDER BY run_at
+LIMIT 1000;
+
+-- name: DeleteFinishedJobsBefore :execrows
+-- Очистка (R-10): завершённые задания указанных статусов старше срока, пачками.
+DELETE FROM job
+WHERE id IN (SELECT j.id FROM job j
+             WHERE j.status = ANY (@statuses::text[]) AND j.finished_at < @before::timestamptz LIMIT @batch);
+
+-- name: DeleteHeartbeatsBefore :execrows
+DELETE FROM worker_heartbeat WHERE seen_at < @before::timestamptz;
+
+-- name: OldestReadyJobs :many
+-- Самое раннее время запуска готовых, но не взятых заданий по видам: задержка очереди.
+SELECT kind, min(run_at)::timestamptz AS oldest_run_at
+FROM job
+WHERE status = 'pending' AND run_at <= @now::timestamptz
+GROUP BY kind;

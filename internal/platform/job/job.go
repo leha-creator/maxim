@@ -41,6 +41,16 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, jobs ...Job) error
 }
 
+// Scheduler — постановка, отмена и перенос заданий по dedupe_key. Всё работает
+// в транзакции из context (I-10).
+type Scheduler interface {
+	Enqueuer
+	// Cancel отменяет ожидающее задание; false — живого ожидающего задания нет.
+	Cancel(ctx context.Context, dedupeKey string) (bool, error)
+	// Reschedule переносит ожидающее задание на runAt; false — задания нет.
+	Reschedule(ctx context.Context, dedupeKey string, runAt time.Time) (bool, error)
+}
+
 // Queue — запись заданий в таблицу job.
 type Queue struct {
 	pool  *pgxpool.Pool
@@ -90,6 +100,37 @@ func (q *Queue) Enqueue(ctx context.Context, jobs ...Job) error {
 			"dedupe_key", j.DedupeKey, "run_at", runAt)
 	}
 	return nil
+}
+
+// Cancel переводит ожидающее задание с dedupeKey в cancelled. Задание в running
+// не отменяется: его обработчик сам проверит состояние (03 §11).
+func (q *Queue) Cancel(ctx context.Context, dedupeKey string) (bool, error) {
+	n, err := sqlc.New(db.Conn(ctx, q.pool)).CancelJob(ctx, sqlc.CancelJobParams{Now: q.clock.Now(), DedupeKey: &dedupeKey})
+	if err != nil {
+		return false, fmt.Errorf("cancel job %s: %w", dedupeKey, err)
+	}
+	if n == 0 {
+		q.log.DebugContext(ctx, "job to cancel not found", logx.KeyOp, "Job.Cancel", "dedupe_key", dedupeKey)
+		return false, nil
+	}
+	q.log.InfoContext(ctx, "job cancelled", logx.KeyOp, "Job.Cancel", "dedupe_key", dedupeKey)
+	return true, nil
+}
+
+// Reschedule переносит ожидающее задание с dedupeKey на runAt.
+func (q *Queue) Reschedule(ctx context.Context, dedupeKey string, runAt time.Time) (bool, error) {
+	n, err := sqlc.New(db.Conn(ctx, q.pool)).RescheduleJob(ctx, sqlc.RescheduleJobParams{
+		RunAt: runAt, Now: q.clock.Now(), DedupeKey: &dedupeKey,
+	})
+	if err != nil {
+		return false, fmt.Errorf("reschedule job %s: %w", dedupeKey, err)
+	}
+	if n == 0 {
+		q.log.DebugContext(ctx, "job to reschedule not found", logx.KeyOp, "Job.Reschedule", "dedupe_key", dedupeKey)
+		return false, nil
+	}
+	q.log.DebugContext(ctx, "job rescheduled", logx.KeyOp, "Job.Reschedule", "dedupe_key", dedupeKey, "run_at", runAt)
+	return true, nil
 }
 
 // encodePayload сериализует полезную нагрузку и добавляет сквозной идентификатор.

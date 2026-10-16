@@ -16,8 +16,10 @@ func TestAssembledApp(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("readyz: %d", resp.StatusCode)
 	}
-	if !slices.Contains(a.worker.Kinds(), "send_login_code") {
-		t.Fatalf("worker kinds: %v", a.worker.Kinds())
+	for _, kind := range []string{"send_login_code", "process_inbound_event", "send_alert", "check_stuck_objects", "cleanup"} {
+		if !slices.Contains(a.worker.Kinds(), kind) {
+			t.Fatalf("worker kinds %v have no %s", a.worker.Kinds(), kind)
+		}
 	}
 	resp, err = http.Get(a.srv.URL + "/openapi.json")
 	if err != nil {
