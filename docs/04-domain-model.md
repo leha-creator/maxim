@@ -650,6 +650,54 @@ erDiagram
 
 Хранится 180 суток, затем удаляется заданием очистки.
 
+### rate_limit_bucket
+
+Корзина токенов общего ограничителя запросов (05 §2.8). Одна на все экземпляры приложения.
+
+| Поле | Тип | Об. | Пояснение |
+|---|---|---|---|
+| `key` | `text` | да | Первичный ключ: `max:global`, `max:chat:{chat_id}`, `max:user:{user_id}` |
+| `tokens` | `double precision` | да | Остаток токенов на момент `refilled_at` |
+| `refilled_at` | `timestamptz` | да | |
+
+### outbound_circuit
+
+Предохранитель по внешней системе (05 §1), общий для всех экземпляров.
+
+| Поле | Тип | Об. | Пояснение |
+|---|---|---|---|
+| `system` | `text` | да | Первичный ключ: `max`, `yandex_ord`, `rocketwork` |
+| `consecutive_failures` | `integer` | да | Ошибок подряд; успешный ответ или отказ `4xx` обнуляет |
+| `open_until` | `timestamptz` | нет | До какого времени вызовы приостановлены |
+
+### alert
+
+Оповещения администратору (07 §3). Одна строка на пару «причина + объект».
+
+| Поле | Тип | Об. | Пояснение |
+|---|---|---|---|
+| `reason` | `text` | да | Код причины: `job_failed:{kind}`, `circuit_open:{system}`, `outbound_failed:{system}:{operation}`, `downtime`, `stuck:{проверка}` |
+| `object_key` | `text` | да | Объект причины; пустая строка — причина целиком. Уникально в паре с `reason` |
+| `level` | `text` | да | `warn`, `error` |
+| `summary` | `text` | да | Текст без персональных данных |
+| `first_raised_at`, `last_raised_at` | `timestamptz` | да | |
+| `last_sent_at` | `timestamptz` | нет | Последняя отправка: следующая — не раньше чем через час |
+| `raised_count` | `integer` | да | |
+| `resolved_at` | `timestamptz` | нет | Причина устранена (например, зависший объект обработан) |
+
+Закрытые оповещения хранятся 90 суток.
+
+### worker_heartbeat
+
+Отметки экземпляров `worker`: по разрыву в отметках определяется простой (07 §2).
+
+| Поле | Тип | Об. | Пояснение |
+|---|---|---|---|
+| `instance` | `text` | да | Первичный ключ: хост и номер процесса |
+| `started_at`, `seen_at` | `timestamptz` | да | Отметка — раз в 30 секунд |
+
+Сроки хранения служебных таблиц (задание `cleanup`, параметры конфигурации): `outbound_request` — 180 суток; `job` в `succeeded` и `cancelled` — 30 суток, в `failed` — 180 суток; `inbound_event` в `processed` и `ignored` — 180 суток; `auth_code` и `session` — 7 суток после истечения; `worker_heartbeat` — сутки.
+
 ### notification
 
 | Поле | Тип | Об. | Пояснение |

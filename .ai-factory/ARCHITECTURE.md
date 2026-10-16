@@ -36,6 +36,8 @@
 | Почта | `wneessen/go-mail` (SMTP), шаблоны `templates/email/*.tmpl` | 07 §6: тексты в репозитории; в разработке — Mailpit |
 | Секреты в базе | `platform/secretbox`: AES-256-GCM, ключ `APP_SECRETS_KEY` | 07 §4: секрет в базе — только зашифрованным (R-1) |
 | Права роли в миграциях | Параметр сессии `maxim.app_role`, который выставляет `maxim migrate` из `DB_APP_ROLE` | Миграции остаются разбираемыми `sqlc` |
+| Клиент MAX | Свой тонкий HTTP-клиент поверх `platform/outbound`, без `max-bot-api-client-go` | Каждая попытка пишется в `outbound_request`; повторы и предохранитель общие для всех систем (05 §2.1) |
+| Ограничитель и общее состояние интеграций | Таблицы PostgreSQL: `rate_limit_bucket`, `outbound_circuit`, `alert`, `worker_heartbeat` | 07 §1: общее состояние экземпляров — только в базе; брокер и Redis не нужны |
 
 ## Folder Structure
 
@@ -67,6 +69,10 @@ maxim/
 │   │   ├── job/                     #   очередь на таблице job: Enqueue (в той же tx), Worker, повторы (07 §2)
 │   │   ├── inbound/                 #   запись и разбор inbound_event, дедупликация
 │   │   ├── outbound/                #   обёртка внешних вызовов: outbound_request, повторы, предохранитель (05 §1)
+│   │   ├── ratelimit/               #   общий ограничитель на корзинах токенов в базе, приоритеты (05 §2.8)
+│   │   ├── alert/                   #   оповещения администратору: почта и чат дежурных, не чаще раза в час (07 §3)
+│   │   ├── stuck/                   #   поиск зависших объектов раз в час; проверки регистрируют модули (07 §3)
+│   │   ├── cleanup/                 #   ежесуточная очистка; запросы удаления остаются у владельцев таблиц
 │   │   ├── audit/                   #   запись audit_log
 │   │   ├── logx/                    #   slog: поля из context, маскирование (07 §5.4)
 │   │   ├── metrics/                 #   реестр Prometheus, HTTP-метрики (07 §5.5)
@@ -76,7 +82,7 @@ maxim/
 │   │   └── storage/                 #   порт ObjectStorage + реализация на minio-go; storagefake/
 │   │
 │   ├── integration/                 # ── АДАПТЕРЫ ВНЕШНИХ СИСТЕМ ──
-│   │   ├── max/                     #   клиент MAX Bot API, ограничитель 30 rps, разбор Webhook
+│   │   ├── max/                     #   клиент MAX Bot API через outbound и ratelimit (25 rps, 1/с на чат), разбор Webhook
 │   │   │   └── maxfake/             #   поддельная реализация для тестов и разработки
 │   │   ├── ord/                     #   Яндекс ОРД
 │   │   │   └── ordfake/
@@ -132,7 +138,8 @@ integration/* ──────────────────────
 - ✅ `postgres` импортирует свой `domain`, свой `sqlc` и `platform/{db, tx}`.
 - ✅ `httpapi` импортирует свой `app`, свой `domain` (типы для преобразования) и `apigen`.
 - ✅ `jobs` импортирует свой `app` и `platform/job`.
-- ✅ `integration/*` реализуют порты: импортируют `platform/{outbound, logx, clock}` и не импортируют модули.
+- ✅ `integration/*` реализуют порты: импортируют `platform/{outbound, ratelimit, job, alert, logx, clock}` и не импортируют модули. Из `job` — только `Retry`/`Permanent`, из `alert` — тип `Notice`.
+- ✅ Пакеты `platform/` друг от друга зависят только «вниз»: `alert`, `stuck`, `cleanup`, `inbound` используют `job`, `tx`, `db`; `job` и `outbound` об оповещениях знают только через свой интерфейс `Alerter`.
 - ✅ Только `bootstrap` знает обо всех пакетах и связывает порты с реализациями.
 - ❌ `domain` не импортирует `pgx`, `net/http`, `log/slog`, `apigen`, `integration/*` и любой `app`.
 - ❌ Модуль не импортирует внутренности другого модуля (`placement` → `channel/postgres`, `channel/domain`). Связь идёт через порт (см. ниже).
