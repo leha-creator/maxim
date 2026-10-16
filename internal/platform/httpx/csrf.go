@@ -28,7 +28,7 @@ func CSRF(log *slog.Logger, exempt func(r *http.Request) bool) Middleware {
 			c, err := r.Cookie(CSRFCookie)
 			if err != nil || header == "" || c.Value == "" ||
 				subtle.ConstantTimeCompare([]byte(header), []byte(c.Value)) != 1 {
-				log.WarnContext(r.Context(), "csrf check failed", logx.KeyOp, "HTTP.CSRF", "method", r.Method, "path", r.URL.Path)
+				log.WarnContext(r.Context(), "csrf check failed", logx.KeyOp, "HTTP.CSRF", "method", r.Method, "path", RedactPath(r.URL.Path))
 				WriteError(w, r, log, apperr.Forbidden("csrf"))
 				return
 			}

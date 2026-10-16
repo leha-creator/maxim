@@ -21,7 +21,7 @@ func TestMigrationsDownAndUp(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	log := logx.Discard()
-	for range 3 { // откат 00003, 00002 и 00001
+	for range 4 { // откат 00004, 00003, 00002 и 00001
 		if err := db.MigrateURL(ctx, d.OwnerURL, dbtest.AppRole, db.MigrateDown, log); err != nil {
 			t.Fatalf("down: %v", err)
 		}
@@ -144,5 +144,35 @@ func TestIntegrationTablesForAppRole(t *testing.T) {
 	var n int
 	if err := d.Pool.QueryRow(ctx, `SELECT count(*) FROM inbound_event`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("inbound_event rows = %d, err = %v; want 1", n, err)
+	}
+}
+
+func TestChannelTablesForAppRole(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	var categories int
+	if err := d.Pool.QueryRow(ctx, `SELECT count(*) FROM channel_category WHERE is_active`).Scan(&categories); err != nil {
+		t.Fatal(err)
+	}
+	if categories == 0 {
+		t.Fatal("channel_category seed is empty")
+	}
+	insert := `INSERT INTO channel (id, max_chat_id, added_by_max_user_id, status, created_at, updated_at)
+		VALUES ($1, $2, 7, $3, now(), now())`
+	if _, err := d.Pool.Exec(ctx, insert, ids.New(), -100, "unclaimed"); err != nil {
+		t.Fatalf("app role cannot insert channel: %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, `UPDATE channel SET title = 'x', lock_version = lock_version + 1`); err != nil {
+		t.Fatalf("app role cannot update channel: %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, insert, ids.New(), -100, "unclaimed"); !db.UniqueViolation(err, "channel_max_chat_id_key") {
+		t.Fatalf("max_chat_id must be unique, got %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, insert, ids.New(), -101, "lost"); err == nil {
+		t.Fatal("status outside the enum accepted")
+	}
+	// active без организации, категории и прав нарушает ограничение 04 §3.
+	if _, err := d.Pool.Exec(ctx, insert, ids.New(), -102, "active"); err == nil {
+		t.Fatal("active channel without requirements accepted")
 	}
 }

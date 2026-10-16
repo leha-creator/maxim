@@ -56,7 +56,7 @@ erDiagram
 | `purpose` | `text` | да | `login`, `channel_link` |
 | `email` | `citext` | нет | Для `login` |
 | `organization_id` | `uuid` | нет | Для `channel_link` — организация блогера, к которой привяжется канал |
-| `code_hash` | `text` | да | Хеш кода; сам код не хранится |
+| `code_hash` | `text` | да | HMAC-SHA256 кода с секретом окружения; сам код не хранится. Для `channel_link` назначение входит в хеш, поиск — по хешу среди живых кодов. У организации один живой код `channel_link`: новый гасит прежний |
 | `expires_at` | `timestamptz` | да | 10 минут для `login`, 60 для `channel_link` |
 | `attempts` | `integer` | да | Не более 5 |
 | `consumed_at` | `timestamptz` | нет | Код использован или погашен новым кодом того же адреса |
@@ -179,9 +179,11 @@ erDiagram
 | `rkn_status` | `text` | да | `not_required`, `pending`, `confirmed`, `rejected` |
 | `rkn_checked_at`, `rkn_checked_by` | `timestamptz`, `uuid` | нет | Кто и когда проверил вручную |
 | `rating` | `smallint` | да | От 0 до 100, начальное 100. Уменьшается по решениям споров (A-08) |
+| `status_before_disconnect` | `text` | нет | Состояние до удаления бота: по нему повторное добавление возвращает канал в `active` (05 §2.4) |
+| `unclaimed_since` | `timestamptz` | нет | С какого момента канал ждёт кода подключения; через 7 суток бот уходит (A-41) |
 | `moderated_at`, `moderated_by` | `timestamptz`, `uuid` | нет | |
 
-Ограничение: канал может быть `active` только при `organization_id is not null`, `is_public`, правах `write` и `delete`, заполненной категории, хотя бы одной включённой цене и (`subscribers_count < 10000` или `rkn_status = 'confirmed'`).
+Ограничение: канал может быть `active` только при `organization_id is not null`, `is_public`, правах `write` и `delete`, заполненной категории, хотя бы одной включённой цене и (`subscribers_count < 10000` или `rkn_status = 'confirmed'`). В базе ограничение закреплено проверкой без цены (её добавит этап «Каталог») и без порога РКН (параметр конфигурации `RKN_SUBSCRIBERS_THRESHOLD`, проверяет модуль каналов).
 
 ### channel_metrics
 

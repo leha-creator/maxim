@@ -21,6 +21,10 @@ import (
 // повторно и задание может выполниться повторно (03 §11). Ошибка — повтор задания.
 type Handler func(ctx context.Context, e Event) error
 
+// ErrIgnore — обработчик решил, что событие не требует действий: оно получает статус
+// ignored, а не processed (05 §2.2: бот добавлен не в канал, событие по неизвестному каналу).
+var ErrIgnore = errors.New("inbound: event ignored by handler")
+
 type route struct{ source, eventType string }
 
 // Dispatcher разбирает события по источнику и виду. Вид без обработчика
@@ -77,7 +81,16 @@ func (d *Dispatcher) Process(ctx context.Context, j job.Running) error {
 		return nil
 	}
 	d.log.DebugContext(ctx, "inbound event dispatch", logx.KeyOp, op, "source", row.Source, "event_type", row.EventType)
-	if err := h(ctx, Event{ID: row.ID, Source: row.Source, ExternalKey: row.ExternalKey, EventType: row.EventType, Payload: row.Payload}); err != nil {
+	err = h(ctx, Event{ID: row.ID, Source: row.Source, ExternalKey: row.ExternalKey, EventType: row.EventType,
+		Payload: row.Payload, ReceivedAt: row.CreatedAt})
+	if errors.Is(err, ErrIgnore) {
+		if err := d.finish(ctx, q, row.ID, StatusIgnored, nil); err != nil {
+			return err
+		}
+		d.log.InfoContext(ctx, "inbound event ignored", logx.KeyOp, op, "source", row.Source, "event_type", row.EventType, "by", "handler")
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	if err := d.finish(ctx, q, row.ID, StatusProcessed, nil); err != nil {
@@ -110,4 +123,10 @@ func (d *Dispatcher) markFailed(ctx context.Context, j job.Running, cause error)
 	}
 	d.log.ErrorContext(ctx, "inbound event failed", logx.KeyOp, "Inbound.Process", KeyInboundEventID, p.InboundEventID,
 		logx.KeyError, msg)
+}
+
+// Handles сообщает, что для вида события источника зарегистрирован обработчик.
+func (d *Dispatcher) Handles(source, eventType string) bool {
+	_, ok := d.handlers[route{source, eventType}]
+	return ok
 }

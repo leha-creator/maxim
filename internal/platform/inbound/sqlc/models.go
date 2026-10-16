@@ -65,6 +65,48 @@ type BloggerProfile struct {
 	UpdatedAt      time.Time
 }
 
+type Channel struct {
+	ID                      uuid.UUID
+	OrganizationID          *uuid.UUID
+	MaxChatID               int64
+	Title                   *string
+	MaxDescription          *string
+	IconUrl                 *string
+	Link                    *string
+	IsPublic                bool
+	AddedByMaxUserID        int64
+	Description             *string
+	CategoryID              *uuid.UUID
+	Status                  string
+	StatusReason            *string
+	StatusBeforeDisconnect  *string
+	UnclaimedSince          *time.Time
+	BotIsAdmin              bool
+	BotPermissions          []string
+	BotPermissionsCheckedAt *time.Time
+	SubscribersCount        int32
+	RknNumber               *string
+	RknStatus               string
+	RknCheckedAt            *time.Time
+	RknCheckedBy            *uuid.UUID
+	Rating                  int16
+	ModeratedAt             *time.Time
+	ModeratedBy             *uuid.UUID
+	LockVersion             int32
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+}
+
+type ChannelCategory struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	Position  int32
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type InboundEvent struct {
 	ID          uuid.UUID
 	Source      string

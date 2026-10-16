@@ -38,6 +38,12 @@ func TestMain(m *testing.M) { os.Exit(dbtest.Main(m)) }
 
 var testStart = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 
+// Секреты Webhook MAX тестового приложения.
+const (
+	testWebhookPath   = "test-webhook-path-secret-0123456789abcdef"
+	testWebhookSecret = "test-webhook-header-secret-0123456789abcd"
+)
+
 // testApp — собранный сервер и обработчик заданий в одном процессе:
 // настоящая PostgreSQL, поддельные почта и хранилище, часы с ручным ходом.
 type testApp struct {
@@ -94,6 +100,7 @@ func testConfig() Config {
 		"APP_ENV": "test", "DATABASE_URL": "postgres://unused", "APP_SECRETS_KEY": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32)),
 		"AUTH_CODE_PEPPER": strings.Repeat("x", 32), "S3_ENDPOINT": "unused", "S3_BUCKET_PRIVATE": "b",
 		"S3_ACCESS_KEY": "a", "S3_SECRET_KEY": "s",
+		"MAX_WEBHOOK_PATH_SECRET": testWebhookPath, "MAX_WEBHOOK_SECRET": testWebhookSecret, "MAX_BOT_NAME": "@maxim_test_bot",
 	}, ModeAPI)
 	if err != nil {
 		panic(err)

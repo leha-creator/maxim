@@ -53,6 +53,9 @@ type serverDeps struct {
 	Before []httpx.Middleware
 	// ServeDocs включает /openapi.json и /docs (не в продакшене).
 	ServeDocs bool
+	// Routes — обработчики вне strict server: шаблон ServeMux → обработчик (Webhook, R-4).
+	// Слои Before к ним не применяются.
+	Routes map[string]http.Handler
 }
 
 // newHandler собирает корневой HTTP-обработчик.
@@ -106,7 +109,7 @@ func newHandler(d serverDeps) (http.Handler, error) {
 			case opts.MatchedRoute == nil:
 				httpx.WriteError(w, r, log, apperr.NotFound("no such API operation"))
 			case opts.StatusCode == http.StatusUnauthorized:
-				log.WarnContext(r.Context(), "unauthorized request", logx.KeyOp, "HTTP.Auth", "path", r.URL.Path)
+				log.WarnContext(r.Context(), "unauthorized request", logx.KeyOp, "HTTP.Auth", "path", httpx.RedactPath(r.URL.Path))
 				httpx.WriteError(w, r, log, apperr.Unauthorized("session is missing or invalid"))
 			default:
 				field, reason := validationField(err)
@@ -121,6 +124,9 @@ func newHandler(d serverDeps) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle(BaseURL+"/", apiChain)
+	for pattern, h := range d.Routes {
+		mux.Handle(pattern, h)
+	}
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -111,7 +112,7 @@ func (h *Handlers) MockLinkChannel(ctx context.Context, req api.MockLinkChannelR
 	tx, done := h.st.Begin(ctx)
 	defer done()
 	i := slices.IndexFunc(tx.D.LinkCodes, func(lc *store.LinkCode) bool {
-		return lc.Code == req.Body.Code && tx.Now.Before(lc.ExpiresAt)
+		return lc.Code == strings.ToUpper(strings.TrimSpace(req.Body.Code)) && tx.Now.Before(lc.ExpiresAt)
 	})
 	if i < 0 {
 		return nil, store.NotFound("channel_link_code", "code")

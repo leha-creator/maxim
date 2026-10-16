@@ -29,6 +29,7 @@ func runWorker(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if err := checkMAX(ctx, cfg, in); err != nil {
 		return err
 	}
+	ensureMAXSubscription(ctx, cfg, in)
 	in.alerter.CheckChannels(ctx)
 	w := newWorker(in, newModules(cfg, in))
 	reg.MustRegister(job.NewCollector(pool, in.clock, log.With(logx.KeyModule, "job")))

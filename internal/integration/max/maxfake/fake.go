@@ -23,6 +23,12 @@ type Client struct {
 	sent    []Message
 	failErr error
 	seq     int
+
+	chats   map[int64]max.Chat
+	members map[int64]max.Membership
+	deleted []string
+	left    []int64
+	subs    []max.Subscription
 }
 
 // New создаёт пустой Client.

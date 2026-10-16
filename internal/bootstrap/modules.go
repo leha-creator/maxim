@@ -14,6 +14,9 @@ import (
 	accounthttp "github.com/leha-creator/maxim/internal/account/httpapi"
 	accountjobs "github.com/leha-creator/maxim/internal/account/jobs"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	channelapp "github.com/leha-creator/maxim/internal/channel/app"
+	channelhttp "github.com/leha-creator/maxim/internal/channel/httpapi"
+	channeljobs "github.com/leha-creator/maxim/internal/channel/jobs"
 	"github.com/leha-creator/maxim/internal/integration/mail"
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
 	"github.com/leha-creator/maxim/internal/platform/alert"
@@ -97,7 +100,12 @@ type modules struct {
 	in          *infra
 	account     *accountapp.Service
 	accountHTTP *accounthttp.Handlers
+	channel     *channelapp.Service
+	channelHTTP *channelhttp.Handlers
 	platform    *platformJobs
+	// txRunner и queue нужны приёму Webhook (api).
+	txRunner tx.Runner
+	queue    *job.Queue
 }
 
 // newModules связывает порты модулей с реализациями.
@@ -126,12 +134,17 @@ func newModules(cfg Config, in *infra) *modules {
 		deps.Sealer = in.box
 	}
 	svc := accountapp.New(deps)
+	channelSvc := newChannelService(cfg, in, txRunner, queue, auditLog)
 	return &modules{
 		cfg:         cfg,
 		in:          in,
 		account:     svc,
 		accountHTTP: accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
+		channel:     channelSvc,
+		channelHTTP: channelhttp.New(channelSvc, log),
 		platform:    newPlatformJobs(cfg, in, accountStore),
+		txRunner:    txRunner,
+		queue:       queue,
 	}
 }
 
@@ -139,12 +152,14 @@ func newModules(cfg Config, in *infra) *modules {
 func (m *modules) registerJobs(w *job.Worker) {
 	m.platform.register(w, m.cfg, m.in)
 	accountjobs.Register(w, m.account)
+	channeljobs.Register(w, m.platform.dispatcher, m.channel)
 }
 
 // apiImpl — реализация всех операций: обработчики модулей поверх заглушек 501.
 type apiImpl struct {
 	fallback
 	*accounthttp.Handlers
+	*channelHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -155,10 +170,14 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 	}
 	log := in.log.With(logx.KeyModule, "http")
 	return newHandler(serverDeps{
-		Log:           in.log,
-		Clock:         in.clock,
-		Metrics:       reg,
-		Impl:          apiImpl{Handlers: m.accountHTTP},
+		Log:     in.log,
+		Clock:   in.clock,
+		Metrics: reg,
+		Impl:    apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP},
+		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
+		Routes: map[string]http.Handler{
+			maxWebhookPattern: newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
+		},
 		Ready:         readiness(in.pool),
 		Authenticated: httpx.Authenticated,
 		Before: []httpx.Middleware{

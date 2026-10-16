@@ -1,0 +1,1 @@
+{"subscriptions":[{"url":"https://api.maxim.example/api/v1/webhooks/max/path-secret","time":1760600000000,"update_types":["bot_added","bot_removed"],"version":"0.0.1"}]}

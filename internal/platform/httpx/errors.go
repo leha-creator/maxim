@@ -58,7 +58,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 	case status >= 500 && e.Code != apperr.CodeNotImplemented:
 		log.ErrorContext(ctx, "request failed", logx.KeyOp, "HTTP.Error", "status", status, logx.KeyError, err.Error())
 	case status == http.StatusForbidden:
-		log.WarnContext(ctx, "access denied", logx.KeyOp, "HTTP.Error", "method", r.Method, "path", r.URL.Path,
+		log.WarnContext(ctx, "access denied", logx.KeyOp, "HTTP.Error", "method", r.Method, "path", RedactPath(r.URL.Path),
 			"reason", e.Details["reason"])
 	default:
 		log.DebugContext(ctx, "request rejected", logx.KeyOp, "HTTP.Error", "status", status, "code", e.Code)
