@@ -79,6 +79,18 @@ type Campaign struct {
 	CreatedBy         uuid.UUID
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	OrderID           *uuid.UUID
+}
+
+type CartItem struct {
+	ID               uuid.UUID
+	OrganizationID   uuid.UUID
+	ChannelID        uuid.UUID
+	FormatID         string
+	ShownTotalAmount int64
+	CreatedBy        uuid.UUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type Channel struct {
@@ -238,6 +250,22 @@ type MediaFile struct {
 	PurgedAt       *time.Time
 }
 
+type Order struct {
+	ID                        uuid.UUID
+	Number                    int64
+	OrganizationID            uuid.UUID
+	CampaignID                uuid.UUID
+	PostID                    uuid.UUID
+	CurrentPostVersionID      uuid.UUID
+	Status                    string
+	TotalAmount               int64
+	IdempotencyKey            *string
+	PostVersionIdempotencyKey *string
+	CreatedBy                 uuid.UUID
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+}
+
 type Organization struct {
 	ID                    uuid.UUID
 	LegalType             string
@@ -297,6 +325,44 @@ type OutboundRequest struct {
 	CreatedAt      time.Time
 }
 
+type Placement struct {
+	ID                    uuid.UUID
+	OrderID               uuid.UUID
+	ChannelID             uuid.UUID
+	BloggerOrganizationID uuid.UUID
+	FormatID              string
+	TopHours              int32
+	DurationHours         int32
+	WindowStart           time.Time
+	WindowEnd             time.Time
+	TimeFrom              pgtype.Time
+	TimeTo                pgtype.Time
+	PostVersionID         uuid.UUID
+	Status                string
+	StatusChangedAt       time.Time
+	StatusReason          *string
+	SentToBloggerAt       *time.Time
+	FeeRateBp             int32
+	BloggerAmount         int64
+	FeeAmount             int64
+	TotalAmount           int64
+	AcceptDeadlineAt      *time.Time
+	ScheduleDeadlineAt    *time.Time
+	PublishAt             *time.Time
+	RemoveAt              *time.Time
+	PublishedAt           *time.Time
+	RemovedAt             *time.Time
+	ClaimDeadlineAt       *time.Time
+	PerformanceShare      *int32
+	PayoutAmount          *int64
+	FeeCharged            *int64
+	RefundAmount          *int64
+	FinalViews            *int32
+	LockVersion           int32
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
 type PlacementFormat struct {
 	ID            string
 	Name          string
@@ -306,6 +372,23 @@ type PlacementFormat struct {
 	Position      int32
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type PlacementStateHistory struct {
+	ID                uuid.UUID
+	PlacementID       uuid.UUID
+	Transition        string
+	FromStatus        *string
+	ToStatus          string
+	ActorType         string
+	ActorUserID       *uuid.UUID
+	ReasonCode        *string
+	ReasonText        *string
+	JobID             *uuid.UUID
+	InboundEventID    *uuid.UUID
+	OutboundRequestID *uuid.UUID
+	IdempotencyKey    *string
+	CreatedAt         time.Time
 }
 
 type Post struct {

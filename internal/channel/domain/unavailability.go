@@ -13,6 +13,8 @@ var (
 	ErrUnavailabilityTooFar  = &RuleError{Field: "starts_at", Reason: "too_far"}
 	ErrUnavailabilityOverlap = &RuleError{Field: "starts_at", Reason: "overlap"}
 	ErrUnavailabilityTooMany = &RuleError{Field: "starts_at", Reason: "too_many"}
+	// ErrUnavailabilityPlacement — интервал пересекает запланированное размещение (R-8).
+	ErrUnavailabilityPlacement = &RuleError{Field: "starts_at", Reason: "placement_conflict"}
 )
 
 // Unavailability — интервал, в который блогер не принимает публикации (S-13).

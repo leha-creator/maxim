@@ -479,7 +479,11 @@ paths:
       tags: [cart]
       operationId: addCartItem
       summary: Добавить канал в корзину
-      description: Один канал — одна позиция; повторное добавление канала даёт `409`.
+      description: |
+        Один канал — одна позиция. Канал должен быть виден в каталоге (иначе `404`).
+        Повторное добавление канала — `409` с `details.reason = already_in_cart`.
+        `422` с `details.reason`: `format_unavailable` — формат не активен или цена выключена;
+        `own_channel` — канал принадлежит той же организации; `cart_full` — в корзине уже 50 позиций.
       requestBody:
         required: true
         content:
@@ -501,7 +505,11 @@ paths:
     patch:
       tags: [cart]
       operationId: updateCartItem
-      summary: Сменить формат позиции
+      summary: Сменить формат позиции или подтвердить цену
+      description: |
+        Меняет формат позиции и запоминает текущий итог как показанный (`shown_total_amount`).
+        Запрос с тем же форматом подтверждает изменившуюся цену (снимает `price_changed`).
+        `422` с `details.reason = format_unavailable` — формат не активен или цена выключена.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -759,10 +767,18 @@ paths:
         Оформляет заказ из всех позиций корзины: создаёт версию поста 1 в `pending_moderation`,
         заказ в `moderation` и по размещению в `created` на каждую позицию; удерживает деньги
         с баланса; очищает корзину; кампания переходит в `ordered`.
-        Отказ — `409` с кодом `insufficient_balance`, `cart_changed` или `campaign_incomplete`;
-        в `details` — недостающая сумма или список проблемных позиций.
+        Отказ — `409` с кодом:
+        - `campaign_incomplete` — кампания не готова к оплате; `details.missing_fields` — незаполненные или
+          недопустимые поля (`date_from`, `date_to`, `time_from`, `time_to`), `details.post_problems` — коды
+          проблем поста из предпросмотра;
+        - `cart_changed` — корзина пуста, канал недоступен, формат выключен или цена изменилась;
+          `details.items` — идентификаторы позиций;
+        - `insufficient_balance` — `details.missing_amount` — недостающая сумма в копейках;
+        - `conflict` — кампания не в `draft`.
+        Повтор с тем же `Idempotency-Key` возвращает созданный заказ.
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '201':
           description: Заказ
@@ -905,9 +921,15 @@ paths:
       description: |
         Создаёт следующую версию поста из текущего черновика кампании и отправляет её на модерацию.
         Размещения в `awaiting_blogger`, `awaiting_schedule`, `scheduled` возвращаются в `created` (P-11);
-        опубликованные не меняются.
+        опубликованные не меняются. Размещения, у которых до конца окна дат меньше 24 ч, отменяются
+        (P-06, `window_elapsed`). Для размещений в `created` деньги удерживаются заново.
+        Доступно, когда заказ в `rejected` или `in_progress`. Отказ — `409`:
+        `details.reason = post_version_in_progress` — текущая версия на модерации или регистрации;
+        `nothing_to_update` — нет размещений до публикации; код `insufficient_balance` с
+        `details.missing_amount`; код `campaign_incomplete` с `details.post_problems`.
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '201':
           description: Заказ с новой текущей версией
@@ -919,6 +941,28 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+  /orders/{id}/cancel:
+    post:
+      tags: [orders]
+      operationId: cancelOrder
+      summary: Отменить заказ (S-07, P-06)
+      description: |
+        Отменяет размещения заказа в `created` и `awaiting_blogger` (P-06, `advertiser_cancel`);
+        остальные не меняются. Удержания снимаются. Нечего отменять — `409` с
+        `details.reason = nothing_to_cancel`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /orders/{id}/report:
     get:
       tags: [orders]
@@ -943,6 +987,7 @@ paths:
       description: Допустимо из `created` и `awaiting_blogger`. Удержание снимается, деньги возвращаются на баланс.
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Размещение
@@ -1326,9 +1371,13 @@ paths:
       tags: [blogger-placements]
       operationId: bloggerAcceptPlacement
       summary: Принять в работу (P-03)
-      description: Из `awaiting_blogger`. Для блогера не юрлица нужен активный исполнитель Рокет Ворк.
+      description: |
+        Из `awaiting_blogger`. Для блогера не юрлица нужен активный исполнитель Рокет Ворк
+        (иначе `409` с `details.reason = contractor_inactive`). Канал должен быть `active`
+        (иначе `409` с `details.reason = channel_not_active`).
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Размещение
@@ -1346,6 +1395,7 @@ paths:
       summary: Отказаться (P-04)
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: false
         content:
@@ -1369,10 +1419,15 @@ paths:
       summary: Запланировать или опубликовать сейчас (P-17)
       description: |
         Из `awaiting_schedule`. `mode=at` — время `publish_at` внутри периода дат и времени суток кампании,
-        не раньше чем через 1 ч и не в интервале недоступности; `mode=now` — текущий момент,
-        если он внутри периода. `remove_at = publish_at + duration_hours`.
+        не раньше чем через 1 ч, кратно 5 минутам и не в интервале недоступности; `mode=now` — текущий момент,
+        если он внутри периода. `remove_at = publish_at + duration_hours`. Интервал топа
+        `[publish_at, publish_at + top_hours)` не пересекается с топом других размещений канала (стык допустим).
+        `422` с `details.reason`: `publish_at_required`, `outside_window`, `outside_time`, `too_soon`,
+        `not_aligned`, `channel_unavailable_interval`, `slot_taken`. Канал не `active` — `409` с
+        `details.reason = channel_not_active`.
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1395,9 +1450,12 @@ paths:
       tags: [blogger-placements]
       operationId: bloggerReschedulePlacement
       summary: Перенести публикацию (P-07)
-      description: Из `scheduled`, если до прежнего `publish_at` больше 1 ч.
+      description: |
+        Из `scheduled`, если до прежнего `publish_at` больше 1 ч (иначе `409 invalid_transition`).
+        Новое время проверяется по тем же правилам, что `mode=at` планирования; причины `422` — те же.
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1834,6 +1892,15 @@ components:
       in: query
       description: Значение `next_cursor` из предыдущего ответа
       schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Ключ идемпотентности действия (03 §11). Повтор с тем же ключом возвращает текущее состояние
+        объекта без нового перехода. Без ключа повтор действия отклоняется `409 invalid_transition`
+        с фактическим состоянием.
+      schema: { type: string, minLength: 1, maxLength: 64 }
 
   responses:
     ValidationFailed:
@@ -2508,7 +2575,9 @@ components:
               items: { $ref: '#/components/schemas/PlacementHistoryEntry' }
             available_actions:
               type: array
-              description: Действия, допустимые сейчас
+              description: |
+                Действия, допустимые сейчас: `cancel` — из `created` и `awaiting_blogger`.
+                `accept` и `claim` появятся с этапом приёмки.
               items: { $ref: '#/components/schemas/AdvertiserPlacementAction' }
     PlacementClaim:
       type: object
@@ -2704,6 +2773,7 @@ components:
         instruction: { type: string }
     BloggerPost:
       type: object
+      description: Пост размещения. Есть, пока версия поста размещения в `ready` и размещение не в `created`
       required: [final_text, media_urls, erid]
       properties:
         final_text: { type: string }
@@ -2734,6 +2804,9 @@ components:
             post: { $ref: '#/components/schemas/BloggerPost' }
             available_actions:
               type: array
+              description: |
+                `accept`, `decline` — из `awaiting_blogger`; `schedule` — из `awaiting_schedule`;
+                `reschedule` — из `scheduled`, пока до `publish_at` больше 1 ч
               items: { $ref: '#/components/schemas/BloggerPlacementAction' }
     DeclineInput:
       type: object

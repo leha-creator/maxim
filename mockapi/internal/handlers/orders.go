@@ -164,6 +164,23 @@ func (h *Handlers) CreateOrderPostVersion(ctx context.Context, req api.CreateOrd
 	return api.CreateOrderPostVersion201JSONResponse(order(tx, x)), nil
 }
 
+func (h *Handlers) CancelOrder(ctx context.Context, req api.CancelOrderRequestObject) (api.CancelOrderResponseObject, error) {
+	tx, done := h.st.Begin(ctx)
+	defer done()
+	_, o, err := advertiser(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	x, err := tx.OrgOrder(o.ID, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.CancelOrder(x); err != nil {
+		return nil, err
+	}
+	return api.CancelOrder200JSONResponse(order(tx, x)), nil
+}
+
 func (h *Handlers) GetOrderReport(ctx context.Context, req api.GetOrderReportRequestObject) (api.GetOrderReportResponseObject, error) {
 	tx, done := h.st.Begin(ctx)
 	defer done()

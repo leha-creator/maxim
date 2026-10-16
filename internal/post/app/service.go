@@ -54,6 +54,8 @@ const (
 	actionPostVersionApproved  = "post.version_approved"
 	actionPostVersionRejected  = "post.version_rejected"
 	actionPostVersionReady     = "post.version_ready"
+	actionCampaignOrdered      = "campaign.ordered"
+	actionCampaignArchived     = "campaign.archived"
 	purgeBatch                 = 100
 	defaultPageLimit           = 20
 	maxPageLimit               = 100
@@ -63,6 +65,7 @@ const (
 	problemsDetail             = "problems"
 	reasonPostNotReady         = "post_not_ready"
 	reasonNotDraft             = "not_draft"
+	reasonArchived             = "campaign_archived"
 	mediaUploadRateLimitScope  = "user"
 	derivativeSkipAlreadyReady = "already_ready"
 )
@@ -121,15 +124,18 @@ type Deps struct {
 	Posts       domain.Posts
 	Versions    domain.Versions
 	Requisites  domain.AdvertiserRequisites
-	Renderer    domain.Renderer
-	Storage     domain.ObjectStore
-	Uploads     UploadCounter
-	Tx          tx.Runner
-	Jobs        job.Enqueuer
-	Audit       audit.Recorder
-	Clock       clock.Clock
-	Log         *slog.Logger
-	Config      Config
+	// Listener — последствия смены состояния версии (R-5 этапа «Заказ и размещения»);
+	// nil — NopVersionListener.
+	Listener domain.VersionListener
+	Renderer domain.Renderer
+	Storage  domain.ObjectStore
+	Uploads  UploadCounter
+	Tx       tx.Runner
+	Jobs     job.Enqueuer
+	Audit    audit.Recorder
+	Clock    clock.Clock
+	Log      *slog.Logger
+	Config   Config
 }
 
 // Service — сценарии модуля post.
@@ -141,7 +147,23 @@ type Service struct {
 // New создаёт сервис.
 func New(d Deps) *Service {
 	d.Config.defaults()
+	if d.Listener == nil {
+		d.Listener = NopVersionListener{Log: d.Log}
+	}
 	return &Service{Deps: d, log: d.Log.With(logx.KeyModule, "post")}
+}
+
+// SetVersionListener подставляет реализацию модуля размещений (bootstrap): тот собирается
+// после модуля post, поэтому слушатель задаётся отдельно.
+func (s *Service) SetVersionListener(l domain.VersionListener) { s.Listener = l }
+
+// NopVersionListener — пустая реализация VersionListener без модуля размещений.
+type NopVersionListener struct{ Log *slog.Logger }
+
+func (n NopVersionListener) VersionChanged(ctx context.Context, c domain.VersionChange) error {
+	n.Log.DebugContext(ctx, "post version change has no listener", logx.KeyOp, "Post.VersionListener",
+		KeyVersionID, c.VersionID, "to", c.To)
+	return nil
 }
 
 // ruleError переводит нарушение правила домена в 422 с details.reason.

@@ -144,3 +144,82 @@ func (s *Service) logRuleRejected(ctx context.Context, op, msg string, campaignI
 	}
 	s.log.WarnContext(ctx, msg, args...)
 }
+
+// CheckoutCampaign — кампания под блокировкой для оформления заказа и её пост.
+type CheckoutCampaign struct {
+	Campaign domain.Campaign
+	PostID   uuid.UUID
+}
+
+// LockCampaignForCheckout — кампания организации с блокировкой строки до конца транзакции
+// вызывающего (R-1 этапа «Заказ и размещения»): два одновременных оформления не создают
+// двух заказов. Чужая — 404.
+func (s *Service) LockCampaignForCheckout(ctx context.Context, orgID, campaignID uuid.UUID) (CheckoutCampaign, error) {
+	c, err := s.Campaigns.GetForUpdate(ctx, orgID, campaignID)
+	if err != nil {
+		return CheckoutCampaign{}, notFound(err, "campaign")
+	}
+	p, err := s.Posts.GetByCampaign(ctx, orgID, campaignID)
+	if err != nil {
+		return CheckoutCampaign{}, notFound(err, "campaign")
+	}
+	return CheckoutCampaign{Campaign: c, PostID: p.ID}, nil
+}
+
+// MarkCampaignOrdered — кампания оплачена (draft → ordered) со ссылкой на заказ (R-1, R-19).
+// Работает в транзакции вызывающего. Не draft — 409.
+func (s *Service) MarkCampaignOrdered(ctx context.Context, orgID, campaignID, orderID uuid.UUID) error {
+	const op = "Post.MarkCampaignOrdered"
+	return s.Tx.InTx(ctx, func(ctx context.Context) error {
+		c, err := s.Campaigns.GetForUpdate(ctx, orgID, campaignID)
+		if err != nil {
+			return notFound(err, "campaign")
+		}
+		from := c.Status
+		if err := c.MarkOrdered(orderID, s.Clock.Now()); err != nil {
+			s.log.WarnContext(ctx, "campaign status change rejected", logx.KeyOp, op, KeyCampaignID, campaignID,
+				"reason", reasonNotDraft, "status", from)
+			return apperr.Conflict("campaign is not a draft").WithDetail("reason", reasonNotDraft).
+				WithDetail("status", string(from))
+		}
+		if err := s.Campaigns.Update(ctx, c); err != nil {
+			return err
+		}
+		if err := s.Audit.Record(ctx, audit.Entry{
+			Action: actionCampaignOrdered, ObjectType: "campaign", ObjectID: c.ID.String(), ActorType: audit.ActorAdvertiser,
+			Data: map[string]any{"from": from, "to": c.Status, "order_id": orderID},
+		}); err != nil {
+			return err
+		}
+		s.log.InfoContext(ctx, "campaign status changed", logx.KeyOp, op, KeyCampaignID, c.ID, "from", from, "to", c.Status)
+		return nil
+	})
+}
+
+// ArchiveCampaign — заказ кампании завершён (ordered → archived, R-19). Уже архивная — без
+// изменений. Работает в транзакции вызывающего.
+func (s *Service) ArchiveCampaign(ctx context.Context, orgID, campaignID uuid.UUID) error {
+	const op = "Post.ArchiveCampaign"
+	return s.Tx.InTx(ctx, func(ctx context.Context) error {
+		c, err := s.Campaigns.GetForUpdate(ctx, orgID, campaignID)
+		if err != nil {
+			return notFound(err, "campaign")
+		}
+		from := c.Status
+		if !c.Archive(s.Clock.Now()) {
+			s.log.DebugContext(ctx, "campaign archive skipped", logx.KeyOp, op, KeyCampaignID, campaignID, "status", from)
+			return nil
+		}
+		if err := s.Campaigns.Update(ctx, c); err != nil {
+			return err
+		}
+		if err := s.Audit.Record(ctx, audit.Entry{
+			Action: actionCampaignArchived, ObjectType: "campaign", ObjectID: c.ID.String(), ActorType: audit.ActorSystem,
+			OrganizationID: &orgID, Data: map[string]any{"from": from, "to": c.Status},
+		}); err != nil {
+			return err
+		}
+		s.log.InfoContext(ctx, "campaign status changed", logx.KeyOp, op, KeyCampaignID, c.ID, "from", from, "to", c.Status)
+		return nil
+	})
+}

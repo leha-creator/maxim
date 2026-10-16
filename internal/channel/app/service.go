@@ -99,7 +99,9 @@ type Deps struct {
 	// Messages — чтение сообщений канала (только worker).
 	Messages domain.MessageReader
 	// Placements — занятые размещениями интервалы (R-8); nil — пустая реализация.
-	Placements   domain.PlacementSchedule
+	Placements domain.PlacementSchedule
+	// Cart — признак in_cart каталога; nil — пустая реализация.
+	Cart         domain.CartLookup
 	Chats        domain.ChatReader
 	Bot          domain.ChatManager
 	Availability domain.AvailabilityListener
@@ -127,7 +129,16 @@ func New(d Deps) *Service {
 	if d.Placements == nil {
 		d.Placements = NopPlacements{}
 	}
+	if d.Cart == nil {
+		d.Cart = NopCart{}
+	}
 	return &Service{Deps: d, log: d.Log.With(logx.KeyModule, "channel")}
+}
+
+// SetPlacementPorts подставляет реализации модуля размещений (bootstrap): модуль
+// размещений собирается после модуля каналов, поэтому порты задаются отдельно.
+func (s *Service) SetPlacementPorts(availability domain.AvailabilityListener, placements domain.PlacementSchedule, cart domain.CartLookup) {
+	s.Availability, s.Placements, s.Cart = availability, placements, cart
 }
 
 // NopAvailability — пустая реализация AvailabilityListener до модуля размещений (R-11).
@@ -200,6 +211,17 @@ type NopPlacements struct{}
 
 func (NopPlacements) BusyIntervals(context.Context, uuid.UUID, time.Time, time.Time) ([]domain.Unavailability, error) {
 	return nil, nil
+}
+
+func (NopPlacements) ScheduledConflict(context.Context, uuid.UUID, time.Time, time.Time) (bool, error) {
+	return false, nil
+}
+
+// NopCart — пустая реализация CartLookup: каналов в корзине нет.
+type NopCart struct{}
+
+func (NopCart) InCart(context.Context, uuid.UUID, []uuid.UUID) (map[uuid.UUID]bool, error) {
+	return map[uuid.UUID]bool{}, nil
 }
 
 // ruleError переводит нарушение правила домена в 422 с details.reason (R-4 … R-6, R-10).

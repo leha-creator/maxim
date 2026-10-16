@@ -44,7 +44,7 @@ func toCampaign(c domain.Campaign) apigen.Campaign {
 	return apigen.Campaign{
 		Id: c.ID, Name: c.Name, Status: apigen.CampaignStatus(c.Status),
 		DateFrom: toDate(c.DateFrom), DateTo: toDate(c.DateTo), TimeFrom: toTime(c.TimeFrom), TimeTo: toTime(c.TimeTo),
-		ExtraRequirements: c.ExtraRequirements, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		ExtraRequirements: c.ExtraRequirements, OrderId: c.OrderID, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 }
 

@@ -136,7 +136,8 @@ func start() (*DB, func(), error) {
 // referenceTables — справочники, которые заполняют миграции; очистка их не трогает.
 var referenceTables = []string{"goose_db_version", "channel_category", "placement_format"}
 
-// Truncate очищает все таблицы приложения, кроме справочников из миграций.
+// Truncate очищает все таблицы приложения, кроме справочников из миграций, и сбрасывает
+// их последовательности (номер заказа снова начинается с 1001).
 func (d *DB) Truncate(ctx context.Context) error {
 	rows, err := d.Owner.Query(ctx,
 		`SELECT quote_ident(tablename) FROM pg_tables WHERE schemaname = 'public' AND NOT (tablename = ANY($1))`, referenceTables)
@@ -157,6 +158,6 @@ func (d *DB) Truncate(ctx context.Context) error {
 	if len(tables) == 0 {
 		return nil
 	}
-	_, err = d.Owner.Exec(ctx, "TRUNCATE "+strings.Join(tables, ", ")+" CASCADE")
+	_, err = d.Owner.Exec(ctx, "TRUNCATE "+strings.Join(tables, ", ")+" RESTART IDENTITY CASCADE")
 	return err
 }

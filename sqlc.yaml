@@ -99,3 +99,9 @@ sql:
       go:
         <<: *gen
         out: internal/post/postgres/sqlc
+  - <<: *entry
+    queries: internal/placement/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/placement/postgres/sqlc

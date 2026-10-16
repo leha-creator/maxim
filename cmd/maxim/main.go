@@ -7,6 +7,7 @@
 //	maxim migrate up|down|status    — миграции базы
 //	maxim legal publish|list        — оферты и правила (до API администратора, R-8)
 //	maxim admin grant|revoke        — роль администратора (до API администратора)
+//	maxim dev post-version          — двинуть версию поста заказа (только development и test, R-23)
 //
 // Конфигурация — переменные окружения, см. .env.example.
 package main
@@ -32,6 +33,7 @@ commands:
   migrate up|down|status   apply, roll back one or show migrations
   legal publish|list       publish a legal document version or list current ones
   admin grant|revoke       grant (--email, --role moderator|senior) or revoke (--email) an admin role
+  dev post-version         --order <number> approve|ready|reject [--erid X] [--reason Y] (development and test only)
 `
 
 func main() {

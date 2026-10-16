@@ -231,6 +231,25 @@ func (tx *Tx) RejectPost(o *Order, reason string) error {
 
 func (tx *Tx) CancelPlacement(p *Placement) error { return tx.apply(p, "P-06", "advertiser_cancel") }
 
+// CancelOrder отменяет размещения заказа, которые рекламодатель может отменить
+// (created, awaiting_blogger); остальные не меняются (S-07 шаг 3).
+func (tx *Tx) CancelOrder(o *Order) error {
+	n := 0
+	for _, p := range tx.OrderPlacements(o.ID) {
+		if p.Status != "created" && p.Status != "awaiting_blogger" {
+			continue
+		}
+		if err := tx.CancelPlacement(p); err != nil {
+			return err
+		}
+		n++
+	}
+	if n == 0 {
+		return Conflict("conflict", "nothing to cancel in this order", map[string]any{"reason": "nothing_to_cancel"})
+	}
+	return nil
+}
+
 func (tx *Tx) AcceptPlacement(p *Placement) error {
 	if !Allowed("P-12", p.Status) {
 		return tx.apply(p, "P-12", "")

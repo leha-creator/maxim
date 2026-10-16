@@ -28,5 +28,5 @@ LIMIT @lim;
 -- name: UpdateCampaign :exec
 UPDATE campaign SET
     name = @name, status = @status, date_from = @date_from, date_to = @date_to, time_from = @time_from,
-    time_to = @time_to, extra_requirements = @extra_requirements, updated_at = @updated_at
+    time_to = @time_to, extra_requirements = @extra_requirements, order_id = @order_id, updated_at = @updated_at
 WHERE id = @id AND organization_id = @organization_id;

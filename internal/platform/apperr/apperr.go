@@ -19,9 +19,13 @@ const (
 	CodeConflict          Code = "conflict"
 	CodeInvalidTransition Code = "invalid_transition"
 	CodeINNTaken          Code = "inn_taken"
-	CodeRateLimited       Code = "rate_limited"
-	CodeNotImplemented    Code = "not_implemented"
-	CodeInternal          Code = "internal"
+	// Отказы оформления заказа (S-06, этап «Заказ и размещения»).
+	CodeInsufficientBalance Code = "insufficient_balance"
+	CodeCartChanged         Code = "cart_changed"
+	CodeCampaignIncomplete  Code = "campaign_incomplete"
+	CodeRateLimited         Code = "rate_limited"
+	CodeNotImplemented      Code = "not_implemented"
+	CodeInternal            Code = "internal"
 )
 
 // Error — ошибка с кодом. Message — короткая постоянная строка на английском,

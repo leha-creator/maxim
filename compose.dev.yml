@@ -36,6 +36,14 @@ x-backend-env: &backend-env
   MAX_WEBHOOK_SECRET: dev-only-webhook-header-secret-012345678
   # Каталог: комиссия платформы 15 % (README, «Канал до каталога в разработке»).
   PLATFORM_FEE_RATE_BP: "1500"
+  # Заказ и размещения: сроки T-01, T-13 и правила времени публикации (03 §5, A-10).
+  PLACEMENT_ACCEPT_TIMEOUT: 24h
+  PLACEMENT_SCHEDULE_TIMEOUT: 24h
+  PLACEMENT_WINDOW_GUARD: 1h
+  PLACEMENT_MIN_LEAD: 1h
+  PLACEMENT_SLOT_STEP: 5m
+  PLACEMENT_REEDIT_GUARD: 24h
+  CART_MAX_ITEMS: "50"
 
 services:
   postgres:

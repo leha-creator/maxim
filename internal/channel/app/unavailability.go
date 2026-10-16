@@ -41,6 +41,16 @@ func (s *Service) AddUnavailability(ctx context.Context, orgID, channelID uuid.U
 			}
 			return ruleError(err)
 		}
+		// R-8 этапа «Каталог»: интервал не накрывает запланированное размещение. Блокировка
+		// канала та же, под которой модуль размещений планирует публикации (R-14).
+		conflict, err := s.Placements.ScheduledConflict(ctx, c.ID, u.StartsAt, u.EndsAt)
+		if err != nil {
+			return err
+		}
+		if conflict {
+			s.log.WarnContext(ctx, "unavailability conflicts with placement", logx.KeyOp, op, KeyChannelID, c.ID)
+			return ruleError(domain.ErrUnavailabilityPlacement)
+		}
 		if err := s.Unavail.Create(ctx, c.ID, u, now); err != nil {
 			return err
 		}

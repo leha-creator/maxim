@@ -168,8 +168,16 @@ func (s *Service) transition(ctx context.Context, op string, versionID uuid.UUID
 		if v.RejectionReason != "" {
 			data["rejection_reason"] = v.RejectionReason
 		}
-		return s.Audit.Record(ctx, audit.Entry{Action: action, ObjectType: "post_version", ObjectID: v.ID.String(),
-			ActorType: actor, Data: data})
+		if err := s.Audit.Record(ctx, audit.Entry{Action: action, ObjectType: "post_version", ObjectID: v.ID.String(),
+			ActorType: actor, Data: data}); err != nil {
+			return err
+		}
+		// R-5 этапа «Заказ и размещения»: заказ и размещения узнают о смене в той же транзакции.
+		if err := s.Listener.VersionChanged(ctx, domain.VersionChange{VersionID: v.ID, PostID: v.PostID, From: from, To: v.Status}); err != nil {
+			return err
+		}
+		s.log.DebugContext(ctx, "post version listener notified", logx.KeyOp, op, KeyVersionID, v.ID, "to", v.Status)
+		return nil
 	})
 	if err != nil {
 		return domain.Version{}, err

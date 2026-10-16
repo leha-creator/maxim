@@ -16,7 +16,7 @@
 - Внешние ключи объявляются всегда. Каскадного удаления нет.
 - Удаление пользовательских данных — мягкое, полем `deleted_at`, и только там, где оно указано. Остальное не удаляется.
 - **Неизменяемые таблицы** (только добавление, без `update` и `delete`): `placement_state_history`, `ledger_transaction`, `ledger_entry`, `audit_log`, `legal_acceptance`, `inbound_event` (кроме полей обработки), `outbound_request`. Запрет закрепляется правами роли базы данных.
-- **Неизменяемые после фиксации строки**: `post_version` и `post_version_media` после перехода версии в `ready` — запрет закреплён триггером `post_version_ready_immutable` (запрет `UPDATE` и `DELETE` версии в `ready`, вставки, изменения и удаления её изображений); суммы `placement` после создания (I-05).
+- **Неизменяемые после фиксации строки**: `post_version` и `post_version_media` после перехода версии в `ready` — запрет закреплён триггером `post_version_ready_immutable` (запрет `UPDATE` и `DELETE` версии в `ready`, вставки, изменения и удаления её изображений); суммы и ставка комиссии `placement` после создания (I-05) — триггер `placement_amounts_immutable`; выход размещения из конечного состояния (I-04) — триггер `placement_terminal_guard`.
 - Оптимистическая блокировка: у `placement`, `channel`, `payout`, `post_version` есть `lock_version integer not null default 0`, увеличивается при каждом обновлении.
 - Объекты с отражением во внешней системе имеют поля синхронизации (§6.1).
 
@@ -290,9 +290,10 @@ erDiagram
 | `date_from`, `date_to` | `date` | нет | Период дат публикации (A-39). Обязательны к оплате |
 | `time_from`, `time_to` | `time` | нет | Период времени суток, МСК (A-39). Обязательны к оплате |
 | `extra_requirements` | `text` | нет | «Дополнительные требования» — комментарий исполнителю, не длиннее 2000 |
+| `order_id` | `uuid` | нет | Заказ кампании; есть с `ordered` (проверка `campaign_ordered_has_order`). Пишет модуль `post` по вызову оформления заказа |
 | `created_by` | `uuid` | да | |
 
-Ограничения: `date_from <= date_to`, `time_from < time_to`, время задаётся парой. Проверки формы (A-39): период — не длиннее 14 суток и не раньше сегодняшнего дня по Москве, окно времени — не короче 1 часа. Кампании и их пост появились на этапе «Медиатека и пост»; `order_id` и состояния `ordered`, `archived` — этап «Заказ и размещения».
+Ограничения: `date_from <= date_to`, `time_from < time_to`, время задаётся парой. Проверки формы (A-39): период — не длиннее 14 суток и не раньше сегодняшнего дня по Москве, окно времени — не короче 1 часа. Переходы: `draft → ordered` при оформлении заказа; `ordered → archived`, когда заказ становится `completed` или `cancelled`. Период и требования меняются только в `draft`; в `archived` черновик поста не сохраняется, название меняется всегда.
 
 ### post
 
@@ -359,20 +360,25 @@ erDiagram
 |---|---|---|---|
 | `organization_id`, `channel_id` | `uuid` | да | Уникальная пара |
 | `format_id` | `text` | да | |
-| `shown_total_amount` | `bigint` | да | Итог, показанный рекламодателю при добавлении. Сравнивается при оформлении |
+| `shown_total_amount` | `bigint` | да | Итог, показанный рекламодателю при добавлении или подтверждении цены. Сравнивается при оформлении |
+| `created_by` | `uuid` | да | |
 
 ### order
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
-| `number` | `bigint` | да | Человекочитаемый номер, уникальный, из последовательности |
+| `number` | `bigint` | да | Человекочитаемый номер, уникальный, из последовательности `order_number_seq` с 1001. Берётся до создания версии поста (UTM-метки) |
 | `organization_id` | `uuid` | да | Рекламодатель |
-| `campaign_id` | `uuid` | да | В первой версии у кампании один заказ (D-16) |
+| `campaign_id` | `uuid` | да | В первой версии у кампании один заказ (D-16): уникально |
 | `post_id` | `uuid` | да | |
 | `current_post_version_id` | `uuid` | да | Последняя версия |
 | `status` | `text` | да | Производное (03 §1.2): `moderation`, `rejected`, `marking`, `in_progress`, `completed`, `cancelled` |
 | `total_amount` | `bigint` | да | Сумма `total_amount` размещений при создании |
+| `idempotency_key` | `text` | нет | Ключ оформления (03 §11); уникальна пара `(organization_id, idempotency_key)` |
+| `post_version_idempotency_key` | `text` | нет | Ключ последней правки поста после оформления (S-29, 03 §11) |
 | `created_by` | `uuid` | да | |
+
+Имя таблицы — `"order"` (в SQL в кавычках). Индекс `(organization_id, created_at DESC, id DESC)` — список заказов.
 
 ### placement
 
@@ -388,6 +394,7 @@ erDiagram
 | `status` | `text` | да | 03 §3 |
 | `status_changed_at` | `timestamptz` | да | |
 | `status_reason` | `text` | нет | Код причины последнего перехода |
+| `sent_to_blogger_at` | `timestamptz` | нет | Первый P-02: с него размещение видно блогеру (07 §4) |
 | `fee_rate_bp` | `integer` | да | Ставка комиссии на момент создания |
 | `blogger_amount`, `fee_amount`, `total_amount` | `bigint` | да | Неизменяемы (I-05) |
 | `accept_deadline_at` | `timestamptz` | нет | T-01 |
@@ -400,11 +407,11 @@ erDiagram
 | `final_views` | `integer` | нет | Просмотры на момент снятия |
 | `lock_version` | `integer` | да | |
 
-Индексы: `(channel_id, status)`, `(status, accept_deadline_at)`, `(order_id)`. I-06 проверяется в транзакции с блокировкой строки канала.
+Индексы: `(channel_id, status)`, `(status, accept_deadline_at)`, `(order_id)`, `(blogger_organization_id, created_at DESC, id DESC)` для отправленных блогеру, `publish_at` для `scheduled` (07 §3). Проверки: `total_amount = blogger_amount + fee_amount`, `window_start < window_end`, `time_from < time_to`, `publish_at` и `remove_at` задаются парой, `scheduled` — только с `publish_at`. I-06 проверяется в транзакции с блокировкой строки канала. Порядок блокировок модуля: каналы (по идентификатору) → заказ → размещения.
 
 ### placement_state_history
 
-Поля — 03 §12: `placement_id`, `transition` (`P-NN`), `from_status`, `to_status`, `actor_type`, `actor_user_id`, `reason_code`, `reason_text`, `job_id`, `inbound_event_id`, `outbound_request_id`. Неизменяема.
+Поля — 03 §12: `placement_id`, `transition` (`P-NN`), `from_status`, `to_status`, `actor_type`, `actor_user_id`, `reason_code`, `reason_text`, `job_id`, `inbound_event_id`, `outbound_request_id`, `idempotency_key` (уникальна пара `(placement_id, idempotency_key)`, 03 §11). Неизменяема: роль приложения только добавляет строки. Источники — без внешних ключей: задания и запросы очищаются по сроку хранения.
 
 ### publication
 

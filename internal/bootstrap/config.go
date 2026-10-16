@@ -36,6 +36,8 @@ const (
 	ModeLegal   = "legal"
 	// ModeAdmin — роли администратора (maxim admin grant|revoke).
 	ModeAdmin = "admin"
+	// ModeDev — команды разработчика (maxim dev post-version): только development и test (R-23).
+	ModeDev = "dev"
 )
 
 // Config — вся конфигурация приложения. Источник — только переменные окружения (07 §8).
@@ -60,9 +62,10 @@ type Config struct {
 	SecretsKey     string `env:"APP_SECRETS_KEY"`  // base64, 32 байта: шифрование секретов в job.payload (R-1)
 	AuthCodePepper string `env:"AUTH_CODE_PEPPER"` // секрет HMAC кода входа (R-3)
 
-	Auth    AuthConfig
-	Channel ChannelConfig
-	Media   MediaConfig
+	Auth      AuthConfig
+	Channel   ChannelConfig
+	Media     MediaConfig
+	Placement PlacementConfig
 
 	MAX       MAXConfig
 	Alert     AlertConfig
@@ -130,6 +133,26 @@ type MediaConfig struct {
 	// PostBodyLimit, PostFinalTextLimit — пределы текста поста (A-38).
 	PostBodyLimit      int `env:"POST_BODY_LIMIT" envDefault:"3800"`
 	PostFinalTextLimit int `env:"POST_FINAL_TEXT_LIMIT" envDefault:"4000"`
+}
+
+// PlacementConfig — заказ и размещения (03 §5, A-10, этап «Заказ и размещения»).
+type PlacementConfig struct {
+	// AcceptTimeout — T-01: срок принятия блогером.
+	AcceptTimeout time.Duration `env:"PLACEMENT_ACCEPT_TIMEOUT" envDefault:"24h"`
+	// ScheduleTimeout — T-13: срок планирования публикации (D-15).
+	ScheduleTimeout time.Duration `env:"PLACEMENT_SCHEDULE_TIMEOUT" envDefault:"24h"`
+	// WindowGuard — запас до конца окна дат: P-02, T-01, T-14, оплата (R-6, R-10, R-11).
+	WindowGuard time.Duration `env:"PLACEMENT_WINDOW_GUARD" envDefault:"1h"`
+	// MinLead — publish_at не раньше чем через MinLead; перенос — пока до publish_at больше (03 §5, P-07).
+	MinLead time.Duration `env:"PLACEMENT_MIN_LEAD" envDefault:"1h"`
+	// SlotStep — кратность publish_at (03 §5).
+	SlotStep time.Duration `env:"PLACEMENT_SLOT_STEP" envDefault:"5m"`
+	// ReeditGuard — правка поста отменяет размещения, у которых до конца окна меньше (R-15).
+	ReeditGuard time.Duration `env:"PLACEMENT_REEDIT_GUARD" envDefault:"24h"`
+	// CartMaxItems — позиций в корзине (R-8).
+	CartMaxItems int `env:"CART_MAX_ITEMS" envDefault:"50"`
+	// StuckScheduledAge — размещение в scheduled с прошедшим publish_at считается зависшим (07 §3).
+	StuckScheduledAge time.Duration `env:"STUCK_SCHEDULED_PLACEMENT_AGE" envDefault:"35m"`
 }
 
 // Пределы MAX для изображений и текста (05 §2.6, A-38).
@@ -294,7 +317,7 @@ func (c Config) Validate(mode string) error {
 		require("DB_APP_ROLE", c.DBAppRole)
 		return finish(bad)
 	}
-	if mode == ModeAdmin {
+	if mode == ModeAdmin || mode == ModeDev {
 		return finish(bad) // только база
 	}
 	if c.DBMaxConns < 1 {
@@ -354,6 +377,7 @@ func (c Config) Validate(mode string) error {
 	if mode == ModeAPI || mode == ModeWorker {
 		c.validateCatalog(add)
 		c.validateMedia(add)
+		c.validatePlacement(add)
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -562,6 +586,14 @@ func (c Config) LogValue() slog.Value {
 		slog.String("media_retention_deleted", c.Media.RetentionDeleted.String()),
 		slog.Int("post_body_limit", c.Media.PostBodyLimit),
 		slog.Int("post_final_text_limit", c.Media.PostFinalTextLimit),
+		slog.String("placement_accept_timeout", c.Placement.AcceptTimeout.String()),
+		slog.String("placement_schedule_timeout", c.Placement.ScheduleTimeout.String()),
+		slog.String("placement_window_guard", c.Placement.WindowGuard.String()),
+		slog.String("placement_min_lead", c.Placement.MinLead.String()),
+		slog.String("placement_slot_step", c.Placement.SlotStep.String()),
+		slog.String("placement_reedit_guard", c.Placement.ReeditGuard.String()),
+		slog.Int("cart_max_items", c.Placement.CartMaxItems),
+		slog.String("stuck_scheduled_placement_age", c.Placement.StuckScheduledAge.String()),
 		slog.Int("alert_emails", len(c.Alert.Emails)),
 		slog.Bool("alert_max_chat", c.Alert.MAXChatID != 0),
 		slog.String("downtime_threshold", c.Scheduler.DowntimeThreshold.String()),
@@ -604,5 +636,35 @@ func (c Config) validateCatalog(add func(field, reason string)) {
 	}
 	if ch.RknThreshold < 1 {
 		add("RKN_SUBSCRIBERS_THRESHOLD", "must be positive")
+	}
+}
+
+// maxCartItems — верхняя граница CART_MAX_ITEMS: оформление блокирует каналы корзины в одной транзакции.
+const maxCartItems = 200
+
+// validatePlacement — сроки и правила времени размещений (03 §5, R-10, R-13, R-15).
+func (c Config) validatePlacement(add func(field, reason string)) {
+	p := c.Placement
+	for _, d := range []struct {
+		field string
+		value time.Duration
+	}{
+		{"PLACEMENT_ACCEPT_TIMEOUT", p.AcceptTimeout}, {"PLACEMENT_SCHEDULE_TIMEOUT", p.ScheduleTimeout},
+		{"PLACEMENT_WINDOW_GUARD", p.WindowGuard}, {"PLACEMENT_MIN_LEAD", p.MinLead},
+		{"PLACEMENT_REEDIT_GUARD", p.ReeditGuard}, {"STUCK_SCHEDULED_PLACEMENT_AGE", p.StuckScheduledAge},
+	} {
+		if d.value <= 0 {
+			add(d.field, "must be positive")
+		}
+	}
+	// Слоты одинаковы в каждом часе: шаг — целое число минут, делящее час.
+	if p.SlotStep < time.Minute || p.SlotStep%time.Minute != 0 || time.Hour%p.SlotStep != 0 {
+		add("PLACEMENT_SLOT_STEP", "must be whole minutes dividing an hour")
+	}
+	if p.WindowGuard > p.AcceptTimeout {
+		add("PLACEMENT_WINDOW_GUARD", "must not exceed PLACEMENT_ACCEPT_TIMEOUT")
+	}
+	if p.CartMaxItems < 1 || p.CartMaxItems > maxCartItems {
+		add("CART_MAX_ITEMS", fmt.Sprintf("must be between 1 and %d", maxCartItems))
 	}
 }

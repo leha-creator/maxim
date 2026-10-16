@@ -84,6 +84,21 @@ type Versions interface {
 	UpdateStatus(ctx context.Context, v Version) error
 }
 
+// VersionChange — смена состояния версии поста (03 §1.1).
+type VersionChange struct {
+	VersionID uuid.UUID
+	PostID    uuid.UUID
+	From      VersionStatus
+	To        VersionStatus
+}
+
+// VersionListener — последствия смены состояния версии для заказа и размещений (R-5 этапа
+// «Заказ и размещения»). Вызывается в транзакции перехода версии: ошибка откатывает переход.
+// Реализация — модуль размещений; без него — NopVersionListener.
+type VersionListener interface {
+	VersionChanged(ctx context.Context, change VersionChange) error
+}
+
 // AdvertiserRequisites — название и ИНН текущей организации (R-14). Реализация — переходник в bootstrap.
 type AdvertiserRequisites interface {
 	Requisites(ctx context.Context, orgID uuid.UUID) (Requisites, error)

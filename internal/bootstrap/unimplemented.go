@@ -230,6 +230,10 @@ func (unimplemented) GetOrder(context.Context, apigen.GetOrderRequestObject) (ap
 	return nil, apperr.NotImplemented("getOrder")
 }
 
+func (unimplemented) CancelOrder(context.Context, apigen.CancelOrderRequestObject) (apigen.CancelOrderResponseObject, error) {
+	return nil, apperr.NotImplemented("cancelOrder")
+}
+
 func (unimplemented) CreateOrderPostVersion(context.Context, apigen.CreateOrderPostVersionRequestObject) (apigen.CreateOrderPostVersionResponseObject, error) {
 	return nil, apperr.NotImplemented("createOrderPostVersion")
 }

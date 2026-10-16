@@ -224,9 +224,7 @@ func TestUpdateCampaign(t *testing.T) {
 	if strings.Contains(data, extra) || !strings.Contains(data, "date_from") {
 		t.Fatalf("audit data %s", data)
 	}
-	if _, err := e.d.Pool.Exec(e.ctx(), `UPDATE campaign SET status = 'ordered' WHERE id = $1`, c.ID); err != nil {
-		t.Fatal(err)
-	}
+	e.markOrdered(c.ID)
 	_, err = e.svc.UpdateCampaign(e.ctx(), e.org, e.user, c.ID, domain.CampaignInput{DateTo: &from})
 	wantReason(t, err, apperr.CodeConflict, "not_draft")
 	if _, err := e.svc.UpdateCampaign(e.ctx(), e.org, e.user, c.ID, domain.CampaignInput{Name: ptr("Ещё")}); err != nil {

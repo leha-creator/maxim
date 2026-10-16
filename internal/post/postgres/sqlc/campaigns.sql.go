@@ -14,7 +14,7 @@ import (
 )
 
 const getCampaign = `-- name: GetCampaign :one
-SELECT id, organization_id, name, status, date_from, date_to, time_from, time_to, extra_requirements, created_by, created_at, updated_at FROM campaign WHERE id = $1 AND organization_id = $2
+SELECT id, organization_id, name, status, date_from, date_to, time_from, time_to, extra_requirements, created_by, created_at, updated_at, order_id FROM campaign WHERE id = $1 AND organization_id = $2
 `
 
 type GetCampaignParams struct {
@@ -38,12 +38,13 @@ func (q *Queries) GetCampaign(ctx context.Context, arg GetCampaignParams) (Campa
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrderID,
 	)
 	return i, err
 }
 
 const getCampaignForUpdate = `-- name: GetCampaignForUpdate :one
-SELECT id, organization_id, name, status, date_from, date_to, time_from, time_to, extra_requirements, created_by, created_at, updated_at FROM campaign WHERE id = $1 AND organization_id = $2 FOR UPDATE
+SELECT id, organization_id, name, status, date_from, date_to, time_from, time_to, extra_requirements, created_by, created_at, updated_at, order_id FROM campaign WHERE id = $1 AND organization_id = $2 FOR UPDATE
 `
 
 type GetCampaignForUpdateParams struct {
@@ -67,6 +68,7 @@ func (q *Queries) GetCampaignForUpdate(ctx context.Context, arg GetCampaignForUp
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrderID,
 	)
 	return i, err
 }
@@ -117,7 +119,7 @@ func (q *Queries) InsertCampaign(ctx context.Context, arg InsertCampaignParams) 
 }
 
 const listCampaigns = `-- name: ListCampaigns :many
-SELECT id, organization_id, name, status, date_from, date_to, time_from, time_to, extra_requirements, created_by, created_at, updated_at FROM campaign
+SELECT id, organization_id, name, status, date_from, date_to, time_from, time_to, extra_requirements, created_by, created_at, updated_at, order_id FROM campaign
 WHERE organization_id = $1
   AND ($2::text IS NULL OR status = $2::text)
   AND ($3::timestamptz IS NULL
@@ -163,6 +165,7 @@ func (q *Queries) ListCampaigns(ctx context.Context, arg ListCampaignsParams) ([
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OrderID,
 		); err != nil {
 			return nil, err
 		}
@@ -177,8 +180,8 @@ func (q *Queries) ListCampaigns(ctx context.Context, arg ListCampaignsParams) ([
 const updateCampaign = `-- name: UpdateCampaign :exec
 UPDATE campaign SET
     name = $1, status = $2, date_from = $3, date_to = $4, time_from = $5,
-    time_to = $6, extra_requirements = $7, updated_at = $8
-WHERE id = $9 AND organization_id = $10
+    time_to = $6, extra_requirements = $7, order_id = $8, updated_at = $9
+WHERE id = $10 AND organization_id = $11
 `
 
 type UpdateCampaignParams struct {
@@ -189,6 +192,7 @@ type UpdateCampaignParams struct {
 	TimeFrom          pgtype.Time
 	TimeTo            pgtype.Time
 	ExtraRequirements *string
+	OrderID           *uuid.UUID
 	UpdatedAt         time.Time
 	ID                uuid.UUID
 	OrganizationID    uuid.UUID
@@ -203,6 +207,7 @@ func (q *Queries) UpdateCampaign(ctx context.Context, arg UpdateCampaignParams) 
 		arg.TimeFrom,
 		arg.TimeTo,
 		arg.ExtraRequirements,
+		arg.OrderID,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.OrganizationID,

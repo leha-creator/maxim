@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -31,9 +32,11 @@ func runWorker(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}
 	ensureMAXSubscription(ctx, cfg, in)
 	in.alerter.CheckChannels(ctx)
-	w := newWorker(in, newModules(cfg, in))
+	m := newModules(cfg, in)
+	w := newWorker(in, m)
 	reg.MustRegister(job.NewCollector(pool, in.clock, log.With(logx.KeyModule, "job")))
 	reg.MustRegister(inbound.NewCollector(pool, in.clock, log.With(logx.KeyModule, "inbound")))
+	reg.MustRegister(placementpg.NewCollector(m.placementStore))
 	log.InfoContext(ctx, "worker configured", logx.KeyOp, "Bootstrap.Worker", "kinds", w.Kinds(),
 		"max_mode", maxMode(cfg), "alert_emails", len(cfg.Alert.Emails), "alert_chat", cfg.Alert.MAXChatID != 0)
 

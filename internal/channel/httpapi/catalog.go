@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/leha-creator/maxim/internal/apigen"
 	"github.com/leha-creator/maxim/internal/channel/app"
 	"github.com/leha-creator/maxim/internal/channel/domain"
@@ -30,7 +32,8 @@ func (h *Handlers) ListPlacementFormats(ctx context.Context, _ apigen.ListPlacem
 }
 
 func (h *Handlers) ListCatalogChannels(ctx context.Context, req apigen.ListCatalogChannelsRequestObject) (apigen.ListCatalogChannelsResponseObject, error) {
-	if _, err := httpx.RequireCabinet(ctx, cabinetAdvertiser); err != nil {
+	principal, err := httpx.RequireCabinet(ctx, cabinetAdvertiser)
+	if err != nil {
 		return nil, err
 	}
 	p := req.Params
@@ -57,22 +60,29 @@ func (h *Handlers) ListCatalogChannels(ctx context.Context, req apigen.ListCatal
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]uuid.UUID, 0, len(page.Items))
+	for _, it := range page.Items {
+		ids = append(ids, it.ID)
+	}
+	inCart := h.svc.InCart(ctx, principal.OrganizationID, ids)
 	items := make([]apigen.CatalogChannel, 0, len(page.Items))
 	for _, it := range page.Items {
-		items = append(items, catalogChannel(it))
+		items = append(items, catalogChannel(it, inCart[it.ID]))
 	}
 	return apigen.ListCatalogChannels200JSONResponse{Items: items, NextCursor: opt(page.NextCursor)}, nil
 }
 
 func (h *Handlers) GetCatalogChannel(ctx context.Context, req apigen.GetCatalogChannelRequestObject) (apigen.GetCatalogChannelResponseObject, error) {
-	if _, err := httpx.RequireCabinet(ctx, cabinetAdvertiser); err != nil {
+	principal, err := httpx.RequireCabinet(ctx, cabinetAdvertiser)
+	if err != nil {
 		return nil, err
 	}
 	card, err := h.svc.CatalogChannel(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetCatalogChannel200JSONResponse(catalogDetail(card)), nil
+	inCart := h.svc.InCart(ctx, principal.OrganizationID, []uuid.UUID{card.ID})
+	return apigen.GetCatalogChannel200JSONResponse(catalogDetail(card, inCart[card.ID])), nil
 }
 
 func (h *Handlers) SetBloggerChannelPrices(ctx context.Context, req apigen.SetBloggerChannelPricesRequestObject) (apigen.SetBloggerChannelPricesResponseObject, error) {

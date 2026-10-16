@@ -159,9 +159,9 @@ func TestCampaignPostHTTP(t *testing.T) {
 	if r := c.do(http.MethodGet, "/campaigns?limit=5", nil); r.status != http.StatusOK || !strings.Contains(string(r.body), "Новое") {
 		t.Fatalf("list: %d %s", r.status, r.body)
 	}
-	// Оплата кампании — следующий этап.
-	if r := c.do(http.MethodPost, "/campaigns/"+camp.ID+"/checkout", nil); r.status != http.StatusNotImplemented {
-		t.Fatalf("checkout: %d", r.status)
+	// Оплата с пустой корзиной — 409 cart_changed (этап «Заказ и размещения»).
+	if r := c.do(http.MethodPost, "/campaigns/"+camp.ID+"/checkout", nil); r.status != http.StatusConflict {
+		t.Fatalf("checkout: %d %s", r.status, r.body)
 	}
 	other := a.advertiserClient("other-campaign@example.ru")
 	if r := other.do(http.MethodGet, "/campaigns/"+camp.ID, nil); r.status != http.StatusNotFound {

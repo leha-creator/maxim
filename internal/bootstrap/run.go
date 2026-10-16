@@ -31,13 +31,13 @@ var errUsage = errors.New("usage")
 func Run(ctx context.Context, p RunParams) int {
 	mode := p.Command
 	switch mode {
-	case ModeAPI, ModeWorker, ModeMigrate, ModeLegal, ModeAdmin:
+	case ModeAPI, ModeWorker, ModeMigrate, ModeLegal, ModeAdmin, ModeDev:
 	default:
 		return 2
 	}
 
 	component := mode
-	if mode == ModeLegal || mode == ModeAdmin {
+	if mode == ModeLegal || mode == ModeAdmin || mode == ModeDev {
 		component = "cli"
 	}
 	cfg, err := LoadConfig(env.ToMap(p.Environ), mode)
@@ -66,6 +66,8 @@ func Run(ctx context.Context, p RunParams) int {
 		err = runLegal(ctx, cfg, log, p.Args, p.Stdout)
 	case ModeAdmin:
 		err = runAdmin(ctx, cfg, log, p.Args, p.Stdout)
+	case ModeDev:
+		err = runDev(ctx, cfg, log, p.Args, p.Stdout)
 	}
 	if errors.Is(err, errUsage) {
 		log.Error("invalid arguments", logx.KeyOp, "Bootstrap.Run", "mode", mode)

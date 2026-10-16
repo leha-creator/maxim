@@ -70,9 +70,9 @@ func flags[T ~string](list []string) *[]T {
 	return &out
 }
 
-// catalogChannel — строка каталога. in_cart = false до этапа «Заказ и размещения».
-func catalogChannel(it domain.CatalogItem) apigen.CatalogChannel {
-	inCart := false
+// catalogChannel — строка каталога; inCart — канал уже в корзине организации (R-8 этапа
+// «Заказ и размещения»).
+func catalogChannel(it domain.CatalogItem, inCart bool) apigen.CatalogChannel {
 	out := apigen.CatalogChannel{
 		Id: it.ID, Title: it.Title, IconUrl: opt(it.IconURL), Link: it.Link, Description: opt(it.Description),
 		Category:         apigen.ChannelCategory{Id: it.Category.ID, Slug: it.Category.Slug, Name: it.Category.Name},
@@ -86,8 +86,8 @@ func catalogChannel(it domain.CatalogItem) apigen.CatalogChannel {
 	return out
 }
 
-func catalogDetail(card *domain.CatalogCard) apigen.CatalogChannelDetail {
-	b := catalogChannel(card.CatalogItem)
+func catalogDetail(card *domain.CatalogCard, inCart bool) apigen.CatalogChannelDetail {
+	b := catalogChannel(card.CatalogItem, inCart)
 	out := apigen.CatalogChannelDetail{
 		Id: b.Id, Title: b.Title, IconUrl: b.IconUrl, Link: b.Link, Description: b.Description, Category: b.Category,
 		SubscribersCount: b.SubscribersCount, AvgViews: b.AvgViews, EngagementBp: b.EngagementBp, Rating: b.Rating,

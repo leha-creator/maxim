@@ -43,6 +43,7 @@ docker compose -f compose.dev.yml up --build
 | `maxim legal list` | Действующие версии документов |
 | `maxim admin grant --email <почта> --role moderator\|senior` | Роль администратора (до появления API администратора). Пользователя без учётной записи создаёт; повтор ничего не меняет |
 | `maxim admin revoke --email <почта>` | Снять роль администратора |
+| `maxim dev post-version --order <номер> approve\|ready\|reject [--erid X] [--reason Y]` | Двинуть текущую версию поста заказа, как это сделают модерация и маркировка (до API администратора и ОРД). Только `APP_ENV` `development` и `test` |
 
 Виды документов: `advertiser_offer`, `blogger_offer`, `platform_rules`, `privacy_policy`. Публикация в локальном окружении:
 
@@ -139,9 +140,28 @@ curl -b cookies.txt -H "X-CSRF-Token: $CSRF" -F "file=@photo.jpg" http://localho
 
 Создание версии поста, публикация производных в `maxim-public` и переходы версии — сервис для этапов заказа, модерации и маркировки; их API появится там. Весь путь проверяет `internal/bootstrap/post_e2e_test.go`.
 
+## Заказ в разработке
+
+Продолжение двух предыдущих разделов: нужен канал в каталоге и кампания с постом. Даты кампании (`date_from`, `date_to`, `time_from`, `time_to`) обязательны к оплате; период — не раньше сегодняшнего дня по Москве.
+
+1. Рекламодатель, корзина (S-03): `POST /api/v1/cart/items` с `channel_id` и `format_id`; `GET /api/v1/cart`. Изменившуюся цену подтверждает `PATCH /api/v1/cart/items/{id}` с тем же форматом.
+2. Оплата (S-06): `POST /api/v1/campaigns/{id}/checkout` (необязательный заголовок `Idempotency-Key`). Отказ — `409` с кодом `campaign_incomplete`, `cart_changed` или `insufficient_balance`. Заказ — в `moderation`, размещения — в `created`, номер первого заказа — `1001`.
+3. Модерация и erid — командой разработчика:
+
+```bash
+docker compose -f compose.dev.yml run --rm --no-deps api dev post-version --order 1001 ready
+```
+
+`approve` — только одобрение (заказ `marking`), `reject --reason "…"` — отклонение (удержания снимаются, заказ `rejected`). После `ready` размещения уходят блогерам (`awaiting_blogger`) или отменяются, если канал не `active` или окно почти закончилось.
+
+4. Блогер (S-14): `GET /api/v1/blogger/placements`, затем `POST .../{id}/accept`, `POST .../{id}/schedule` с `{"mode": "at", "publish_at": "…"}` или `{"mode": "now"}`, `.../decline`, `.../reschedule`.
+5. Рекламодатель: `GET /api/v1/orders/{id}`, отмена размещения — `POST /api/v1/placements/{id}/cancel`, заказа — `POST /api/v1/orders/{id}/cancel`, новая версия поста — `POST /api/v1/orders/{id}/post-versions`.
+
+Пока работают заглушки следующих этапов: удержания не пишут проводок и баланс не ограничен (`UnlimitedHolds`, этап «Приём оплаты»), исполнитель Рокет Ворк всегда допущен (`AllowAllContractors`, этап «Выплаты»), уведомления не отправляются (`NopNotifier`). Задания `publish_placement` и `remove_placement` ставятся, но ждут: их обработчики — этап «Автопостинг и контроль». `acceptPlacement`, `createPlacementClaim` и `getOrderReport` отвечают `501`. Весь путь, включая таймеры и потерю канала, проверяет `internal/bootstrap/placement_e2e_test.go`.
+
 ## Конфигурация
 
-Только переменные окружения. Все они с пояснениями и безопасными для разработки значениями перечислены в [.env.example](.env.example). При ошибке в конфигурации процесс пишет в журнал `config invalid` со списком полей и не стартует. Обязательные переменные зависят от режима: `migrate` нужна только база. `worker` в продакшене требует `MAX_BOT_TOKEN`, хотя бы одного адресата оповещений, `MAX_WEBHOOK_URL` (https) и оба секрета Webhook; `api` в продакшене — `MAX_WEBHOOK_PATH_SECRET` и `MAX_WEBHOOK_SECRET` (не короче 32 символов). Подключение каналов: `MAX_BOT_NAME` (имя бота в инструкции), `CHANNEL_LINK_CODE_TTL` (60 мин), `CHANNEL_LINK_CODES_PER_HOUR` (10), `CHANNEL_UNCLAIMED_TTL` (7 суток), `RKN_SUBSCRIBERS_THRESHOLD` (10 000). Каталог: `PLATFORM_FEE_RATE_BP` (1500 — комиссия 15 % сверху цены блогера, 0…10 000), `RKN_RECHECK_INTERVAL` (90 суток до повторной проверки номера), пороги флагов аномалий `METRICS_SUBSCRIBERS_SPIKE_BP` (2000) и `METRICS_VIEWS_MIN_BP` (100), пределы интервалов недоступности `CHANNEL_UNAVAILABILITY_MAX_DAYS` (90), `CHANNEL_UNAVAILABILITY_HORIZON_DAYS` (365), `CHANNEL_UNAVAILABILITY_MAX_COUNT` (50), хранение закончившихся интервалов `RETENTION_CHANNEL_UNAVAILABILITY` (30 суток). Медиатека и пост: хранилище нужно `api` и `worker`; публичная корзина `S3_BUCKET_PUBLIC` и её адрес `S3_PUBLIC_BASE_URL` (https в продакшене), адрес в подписанных ссылках `S3_PRESIGN_ENDPOINT` (если браузер видит хранилище иначе, чем сервер), `MEDIA_MAX_BYTES` (50 МБ, не больше), `MEDIA_MIN_SIDE` (160), `MEDIA_PREVIEW_SIDE` (640), `MEDIA_UPLOADS_PER_HOUR` (60), `MEDIA_UPLOAD_CONCURRENCY` (4), `MEDIA_BUILD_CONCURRENCY` (2), `MEDIA_ALBUM_LIMIT` (10, не больше), `MEDIA_URL_TTL` (1 ч), `MEDIA_RETENTION_DELETED` (30 суток), `POST_BODY_LIMIT` (3800) и `POST_FINAL_TEXT_LIMIT` (4000). `maxim admin` нужна только база.
+Только переменные окружения. Все они с пояснениями и безопасными для разработки значениями перечислены в [.env.example](.env.example). При ошибке в конфигурации процесс пишет в журнал `config invalid` со списком полей и не стартует. Обязательные переменные зависят от режима: `migrate` нужна только база. `worker` в продакшене требует `MAX_BOT_TOKEN`, хотя бы одного адресата оповещений, `MAX_WEBHOOK_URL` (https) и оба секрета Webhook; `api` в продакшене — `MAX_WEBHOOK_PATH_SECRET` и `MAX_WEBHOOK_SECRET` (не короче 32 символов). Подключение каналов: `MAX_BOT_NAME` (имя бота в инструкции), `CHANNEL_LINK_CODE_TTL` (60 мин), `CHANNEL_LINK_CODES_PER_HOUR` (10), `CHANNEL_UNCLAIMED_TTL` (7 суток), `RKN_SUBSCRIBERS_THRESHOLD` (10 000). Каталог: `PLATFORM_FEE_RATE_BP` (1500 — комиссия 15 % сверху цены блогера, 0…10 000), `RKN_RECHECK_INTERVAL` (90 суток до повторной проверки номера), пороги флагов аномалий `METRICS_SUBSCRIBERS_SPIKE_BP` (2000) и `METRICS_VIEWS_MIN_BP` (100), пределы интервалов недоступности `CHANNEL_UNAVAILABILITY_MAX_DAYS` (90), `CHANNEL_UNAVAILABILITY_HORIZON_DAYS` (365), `CHANNEL_UNAVAILABILITY_MAX_COUNT` (50), хранение закончившихся интервалов `RETENTION_CHANNEL_UNAVAILABILITY` (30 суток). Медиатека и пост: хранилище нужно `api` и `worker`; публичная корзина `S3_BUCKET_PUBLIC` и её адрес `S3_PUBLIC_BASE_URL` (https в продакшене), адрес в подписанных ссылках `S3_PRESIGN_ENDPOINT` (если браузер видит хранилище иначе, чем сервер), `MEDIA_MAX_BYTES` (50 МБ, не больше), `MEDIA_MIN_SIDE` (160), `MEDIA_PREVIEW_SIDE` (640), `MEDIA_UPLOADS_PER_HOUR` (60), `MEDIA_UPLOAD_CONCURRENCY` (4), `MEDIA_BUILD_CONCURRENCY` (2), `MEDIA_ALBUM_LIMIT` (10, не больше), `MEDIA_URL_TTL` (1 ч), `MEDIA_RETENTION_DELETED` (30 суток), `POST_BODY_LIMIT` (3800) и `POST_FINAL_TEXT_LIMIT` (4000). Заказ и размещения: `PLACEMENT_ACCEPT_TIMEOUT` (24 ч, T-01), `PLACEMENT_SCHEDULE_TIMEOUT` (24 ч, T-13), `PLACEMENT_WINDOW_GUARD` (1 ч до конца окна дат, не больше `PLACEMENT_ACCEPT_TIMEOUT`), `PLACEMENT_MIN_LEAD` (1 ч до публикации), `PLACEMENT_SLOT_STEP` (5 мин, целое число минут, делящее час), `PLACEMENT_REEDIT_GUARD` (24 ч), `CART_MAX_ITEMS` (50, от 1 до 200), `STUCK_SCHEDULED_PLACEMENT_AGE` (35 мин). `maxim admin` и `maxim dev` нужна только база; `maxim dev` работает только при `APP_ENV` `development` или `test`.
 
 ## Разработка
 
@@ -167,11 +187,12 @@ curl -b cookies.txt -H "X-CSRF-Token: $CSRF" -F "file=@photo.jpg" http://localho
 | Путь | Что |
 |---|---|
 | `cmd/maxim` | Точка входа |
-| `internal/bootstrap` | Конфигурация и сборка режимов |
+| `internal/bootstrap` | Конфигурация и сборка режимов; `bridge` — переходники портов между модулями |
 | `internal/platform` | Общее ядро: журнал, база, очередь заданий, входящие и исходящие обмены, ограничитель, оповещения, HTTP, хранилище, аудит |
 | `internal/account` | Модуль аккаунтов: `domain`, `app`, `postgres`, `httpapi`, `jobs` |
 | `internal/channel` | Модуль каналов: подключение кодом, права бота, приём Webhook MAX, кабинет блогера, каталог, модерация, метрики |
 | `internal/post` | Модуль поста: медиатека и производные (`imaging`), кампании, черновик и сериализация в MAX, предпросмотр, версии |
+| `internal/placement` | Модуль размещений: корзина, оформление заказа, таблица переходов P-01 … P-18, таймеры, кабинет блогера |
 | `internal/integration` | Адаптеры внешних систем и их подделки: почта, MAX |
 | `migrations`, `templates` | Миграции goose и шаблоны писем |
 | `docs`, `api` | Проектная документация и договор HTTP API |

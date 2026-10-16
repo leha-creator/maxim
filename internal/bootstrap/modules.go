@@ -19,6 +19,10 @@ import (
 	channeljobs "github.com/leha-creator/maxim/internal/channel/jobs"
 	"github.com/leha-creator/maxim/internal/integration/mail"
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
+	placementapp "github.com/leha-creator/maxim/internal/placement/app"
+	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
+	placementjobs "github.com/leha-creator/maxim/internal/placement/jobs"
+	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/cleanup"
@@ -114,7 +118,11 @@ type modules struct {
 	channelHTTP *channelhttp.Handlers
 	post        *postapp.Service
 	postHTTP    *posthttp.Handlers
-	platform    *platformJobs
+	// placement — заказы и размещения; placementStore — для метрики и команды разработчика.
+	placement      *placementapp.Service
+	placementHTTP  *placementhttp.Handlers
+	placementStore *placementpg.Store
+	platform       *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
 	queue    *job.Queue
@@ -148,22 +156,27 @@ func newModules(cfg Config, in *infra) *modules {
 	svc := accountapp.New(deps)
 	channelSvc, channelStore := newChannelService(cfg, in, txRunner, queue, auditLog)
 	postSvc := newPostService(cfg, in, txRunner, queue, auditLog, accountStore)
+	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc)
 	platform := newPlatformJobs(cfg, in, accountStore)
+	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
 	})
 	return &modules{
-		cfg:         cfg,
-		in:          in,
-		account:     svc,
-		accountHTTP: accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
-		channel:     channelSvc,
-		channelHTTP: channelhttp.New(channelSvc, log),
-		post:        postSvc,
-		postHTTP:    newPostHandlers(cfg, postSvc, in),
-		platform:    platform,
-		txRunner:    txRunner,
-		queue:       queue,
+		cfg:            cfg,
+		in:             in,
+		account:        svc,
+		accountHTTP:    accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
+		channel:        channelSvc,
+		channelHTTP:    channelhttp.New(channelSvc, log),
+		post:           postSvc,
+		postHTTP:       newPostHandlers(cfg, postSvc, in),
+		placement:      placementSvc,
+		placementHTTP:  placementhttp.New(placementSvc, log),
+		placementStore: placementStore,
+		platform:       platform,
+		txRunner:       txRunner,
+		queue:          queue,
 	}
 }
 
@@ -173,6 +186,7 @@ func (m *modules) registerJobs(w *job.Worker) {
 	accountjobs.Register(w, m.account)
 	channeljobs.Register(w, m.platform.dispatcher, m.channel)
 	postjobs.Register(w, m.post)
+	placementjobs.Register(w, m.placement)
 }
 
 // apiImpl — реализация всех операций: обработчики модулей поверх заглушек 501.
@@ -181,6 +195,7 @@ type apiImpl struct {
 	*accounthttp.Handlers
 	*channelHandlers
 	*postHandlers
+	*placementHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -194,7 +209,8 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Log:     in.log,
 		Clock:   in.clock,
 		Metrics: reg,
-		Impl:    apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP},
+		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
+			placementHandlers: m.placementHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern: newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),

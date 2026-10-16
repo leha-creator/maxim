@@ -26,6 +26,8 @@ type Channels interface {
 	// GetForOrganizationForUpdate — то же с блокировкой строки.
 	GetForOrganizationForUpdate(ctx context.Context, orgID, id uuid.UUID) (*Channel, error)
 	ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]*Channel, error)
+	// ListByIDs — каналы с ценами по идентификаторам без блокировки (модуль размещений).
+	ListByIDs(ctx context.Context, ids []uuid.UUID) ([]*Channel, error)
 	// ListUnclaimedBefore — каналы в unclaimed, ждущие кода с момента раньше before (R-12).
 	ListUnclaimedBefore(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error)
 	// ListForMetrics — каналы в moderation, active, suspended с id больше after,
@@ -169,10 +171,20 @@ type MessageReader interface {
 	ListMessages(ctx context.Context, maxChatID int64, from, to time.Time, count int) ([]MessageStat, error)
 }
 
-// PlacementSchedule — интервалы канала, занятые размещениями (R-8). Реализацию даст
-// модуль размещений; до него bootstrap подставляет пустую.
+// PlacementSchedule — интервалы канала, занятые размещениями (R-8). Реализация — модуль
+// размещений; без него bootstrap подставляет пустую.
 type PlacementSchedule interface {
+	// BusyIntervals — интервалы топа размещений канала, пересекающие [from, to).
 	BusyIntervals(ctx context.Context, channelID uuid.UUID, from, to time.Time) ([]Unavailability, error)
+	// ScheduledConflict — у канала есть запланированное размещение, чей срок
+	// [publish_at, remove_at) пересекает [from, to): интервал недоступности не добавляется.
+	ScheduledConflict(ctx context.Context, channelID uuid.UUID, from, to time.Time) (bool, error)
+}
+
+// CartLookup — какие каналы уже в корзине организации (признак in_cart каталога). Реализация —
+// модуль размещений; без него bootstrap подставляет пустую.
+type CartLookup interface {
+	InCart(ctx context.Context, orgID uuid.UUID, channelIDs []uuid.UUID) (map[uuid.UUID]bool, error)
 }
 
 // AvailabilityListener — последствия смены доступности канала для размещений

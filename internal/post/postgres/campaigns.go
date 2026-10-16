@@ -49,7 +49,8 @@ func toCampaign(r sqlc.Campaign) domain.Campaign {
 		ID: r.ID, OrganizationID: r.OrganizationID, Name: r.Name, Status: domain.CampaignStatus(r.Status),
 		DateFrom: fromPgDate(r.DateFrom), DateTo: fromPgDate(r.DateTo),
 		TimeFrom: fromPgTime(r.TimeFrom), TimeTo: fromPgTime(r.TimeTo),
-		ExtraRequirements: r.ExtraRequirements, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ExtraRequirements: r.ExtraRequirements, OrderID: r.OrderID, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -109,7 +110,7 @@ func (r *Campaigns) Update(ctx context.Context, c domain.Campaign) error {
 	if err := r.s.q(ctx).UpdateCampaign(ctx, sqlc.UpdateCampaignParams{
 		ID: c.ID, OrganizationID: c.OrganizationID, Name: c.Name, Status: string(c.Status),
 		DateFrom: pgDate(c.DateFrom), DateTo: pgDate(c.DateTo), TimeFrom: pgTime(c.TimeFrom), TimeTo: pgTime(c.TimeTo),
-		ExtraRequirements: c.ExtraRequirements, UpdatedAt: c.UpdatedAt,
+		ExtraRequirements: c.ExtraRequirements, OrderID: c.OrderID, UpdatedAt: c.UpdatedAt,
 	}); err != nil {
 		return r.s.fail(ctx, op, err)
 	}

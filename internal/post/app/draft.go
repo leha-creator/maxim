@@ -58,6 +58,15 @@ func (s *Service) SaveDraft(ctx context.Context, orgID, userID, campaignID uuid.
 		if err != nil {
 			return notFound(err, "campaign")
 		}
+		// R-19 этапа «Заказ и размещения»: у архивной кампании черновик не меняется.
+		c, err := s.Campaigns.Get(ctx, orgID, campaignID)
+		if err != nil {
+			return notFound(err, "campaign")
+		}
+		if c.Status == domain.CampaignArchived {
+			s.log.WarnContext(ctx, "post draft rejected", logx.KeyOp, op, KeyPostID, p.ID, "reason", reasonArchived)
+			return apperr.Conflict("campaign is archived").WithDetail("reason", reasonArchived).WithCause(domain.ErrArchived)
+		}
 		now := s.Clock.Now()
 		if err := p.SaveDraft(domain.DraftInput{Doc: doc, MediaIDs: in.MediaIDs, TokenCarrier: in.TokenCarrier,
 			TokenPosition: in.TokenPosition}, s.Config.AlbumLimit, now); err != nil {

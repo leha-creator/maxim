@@ -181,8 +181,8 @@ func TestUnimplementedOperationWithSession(t *testing.T) {
 	a := newTestApp(t)
 	c := a.client()
 	c.login("stub@example.ru")
-	r := c.do(http.MethodGet, "/cart", nil)
-	if code, details := r.errorCode(t); r.status != http.StatusNotImplemented || code != "not_implemented" || details["operation"] != "getCart" {
-		t.Fatalf("cart: %d %s", r.status, r.body)
+	r := c.do(http.MethodGet, "/balance", nil)
+	if code, details := r.errorCode(t); r.status != http.StatusNotImplemented || code != "not_implemented" || details["operation"] != "getBalance" {
+		t.Fatalf("balance: %d %s", r.status, r.body)
 	}
 }

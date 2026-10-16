@@ -44,6 +44,9 @@ const (
 // ErrNotDraft — период и требования меняются только в draft (R-17, 409).
 var ErrNotDraft = errors.New("post: campaign is not a draft")
 
+// ErrArchived — черновик поста архивной кампании не сохраняется (R-19 этапа «Заказ и размещения», 409).
+var ErrArchived = errors.New("post: campaign is archived")
+
 // TimeOfDay — время суток по Москве в минутах от полуночи.
 type TimeOfDay int
 
@@ -80,9 +83,31 @@ type Campaign struct {
 	DateFrom, DateTo  *Date
 	TimeFrom, TimeTo  *TimeOfDay
 	ExtraRequirements *string
-	CreatedBy         uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// OrderID — заказ кампании (R-1 этапа «Заказ и размещения»); есть с ordered.
+	OrderID   *uuid.UUID
+	CreatedBy uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// MarkOrdered — кампания оплачена: draft → ordered со ссылкой на заказ (R-1, R-19).
+// Не draft — ErrNotDraft.
+func (c *Campaign) MarkOrdered(orderID uuid.UUID, now time.Time) error {
+	if c.Status != CampaignDraft {
+		return ErrNotDraft
+	}
+	c.Status, c.OrderID, c.UpdatedAt = CampaignOrdered, &orderID, now
+	return nil
+}
+
+// Archive — заказ кампании завершён: ordered → archived (R-19). false — кампания уже
+// архивная или не оформлена: менять нечего.
+func (c *Campaign) Archive(now time.Time) bool {
+	if c.Status != CampaignOrdered {
+		return false
+	}
+	c.Status, c.UpdatedAt = CampaignArchived, now
+	return true
 }
 
 // CampaignInput — поля формы; nil — поле не передано (не меняется).
