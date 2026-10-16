@@ -1,0 +1,53 @@
+# Код доступа к базе генерируется из SQL: по записи на модуль (ARCHITECTURE.md).
+# Схема — миграции goose (секции Down sqlc пропускает).
+# Запуск: sqlc generate (CI проверяет, что сгенерированное совпадает с исходниками).
+version: "2"
+sql:
+  - &entry
+    engine: postgresql
+    schema: migrations
+    queries: internal/platform/job/queries
+    gen:
+      go: &gen
+        package: sqlc
+        out: internal/platform/job/sqlc
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+              pointer: true
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true
+          - db_type: inet
+            go_type: net/netip.Addr
+          - db_type: inet
+            nullable: true
+            go_type:
+              import: net/netip
+              type: Addr
+              pointer: true
+          - db_type: citext
+            go_type: string
+          - db_type: citext
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+  - <<: *entry
+    queries: internal/platform/audit/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/platform/audit/sqlc

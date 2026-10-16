@@ -109,7 +109,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
 
 ### Phase 2: Данные и инфраструктура
 
-- [ ] **Task 4: База, транзакции, миграции и схема аккаунтов (R-2)** (depends on 1)
+- [x] **Task 4: База, транзакции, миграции и схема аккаунтов (R-2)** (depends on 1)
   - `internal/platform/db`: `pgxpool` из `DATABASE_URL`, проверка соединения при старте, метрики пула.
   - `internal/platform/tx`: интерфейс `Runner { InTx(ctx, fn) error }` и реализация на pgx. Транзакция кладётся в `context`; `db.Querier(ctx)` возвращает транзакцию или пул. Вложенный `InTx` использует внешнюю транзакцию. Уровень `READ COMMITTED`.
   - `migrations/` (goose, SQL, `embed`), команда `maxim migrate up|down|status`. Первая миграция `00001_accounts.sql`: расширение `citext`; таблицы `user`, `auth_code` (+ `requested_ip inet`, R-2), `session`, `organization`, `organization_member`, `advertiser_profile`, `blogger_profile`, `legal_document`, `legal_acceptance`, `audit_log`, `job` строго по 04 §1, §2, §8: `id uuid` без значения по умолчанию, `created_at`/`updated_at`, `check` для перечислений 04 §9, уникальности (`user.email`, `organization.inn`, `session.token_hash`, `(legal_document.kind, version)`, `(organization_id, user_id)`), частичный уникальный индекс `job(dedupe_key) where status in ('pending','running')`, индексы `job(status, run_at)`, `auth_code(email, created_at)`, `auth_code(requested_ip, created_at)`.
@@ -120,7 +120,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Тесты: миграции `up` → `down` → `up` без ошибок; роль приложения не может `UPDATE`/`DELETE` в `audit_log` и `legal_acceptance`; `InTx` откатывает всё при ошибке.
   - Файлы: `internal/platform/{db,tx,dbtest}/*.go`, `migrations/*.sql`, `migrations/embed.go`, `sqlc.yaml`, `internal/bootstrap/migrate.go`.
 
-- [ ] **Task 5: Домен аккаунтов (R-3)** (depends on 1)
+- [x] **Task 5: Домен аккаунтов (R-3)** (depends on 1)
   - `internal/account/domain`, только стандартная библиотека и `platform/{ids,clock,apperr}`:
     - `Organization`: конструктор `NewOrganization(input, cabinet)` и `Update(patch)` с правилами 04 §2 и D-24: ИНН — 10 цифр для `legal_entity`, 12 для остальных, контрольные числа ФНС; `kpp`, подписант — только `legal_entity`; `address` обязателен для `legal_entity` и `sole_proprietor`, у `self_employed` запрещён; `tax_regime`, `vat_rate` — только в профиле блогера и обязательны ему; допустимые сочетания по таблицам 04 §2 (`// Q-37`); `blogger_full_name` обязателен блогеру `self_employed`/`sole_proprietor`, у `legal_entity` пуст. ИНН и `legal_type` не меняются. `AddCabinet(cabinet, fields)` — второй профиль у существующей организации: реквизиты не меняются, но недостающие для роли блогера поля обязательны.
     - `LoginCode`: генерация 6 цифр через `crypto/rand`; `HashCode(pepper, email, code)` — HMAC-SHA256 (R-3); `Verify(code, now)` — срок, число попыток (не больше 5), сравнение за постоянное время, однократность.
@@ -132,7 +132,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Тесты (табличные, без базы): контрольные числа ИНН (верные, неверные, неверная длина для типа); каждая строка таблиц `tax_regime`/`vat_rate`; обязательность полей по типу лица и кабинету; запрет смены ИНН; код — истёк, 5 неверных попыток, повторное использование; продление сессии; срок сессии администратора.
   - Файлы: `internal/account/domain/*.go`, `internal/account/domain/*_test.go`.
 
-- [ ] **Task 6: Очередь заданий — ядро (R-1)** (depends on 4)
+- [x] **Task 6: Очередь заданий — ядро (R-1)** (depends on 4)
   - `internal/platform/job`: `Enqueue(ctx, Job...)` пишет в таблицу `job` через транзакцию из `context` (I-10); `dedupe_key` — повтор при живом задании не создаёт второе и не считается ошибкой.
   - `Worker`: опрос раз в секунду (`FOR UPDATE SKIP LOCKED`, `status = pending`, `run_at <= now()`), отметка `running`, `locked_by` (имя хоста + PID), `locked_at`; обработчики по `kind`; успех → `succeeded`, `finished_at`; ошибка → `attempts + 1`, `run_at = now + min(30 с × 2^attempts, 1 ч)`, после `max_attempts` → `failed`. Задание в `running` дольше 10 минут → `pending` (07 §2). Плавная остановка: новые не берутся, текущие доделываются до 30 с, иначе возвращаются в `pending`.
   - `internal/platform/secretbox`: `Seal`/`Open` (AES-256-GCM, ключ `APP_SECRETS_KEY`) — для полезной нагрузки с секретами (R-1).
@@ -142,7 +142,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Тесты (`dbtest`, `clock.Manual`): задание из откатившейся транзакции не появляется; дубликат по `dedupe_key`; повтор с правильной задержкой; `failed` после `max_attempts`; два воркера не берут одно задание; брошенное задание возвращается; `Seal`/`Open` и отказ при чужом ключе.
   - Файлы: `internal/platform/job/*.go`, `internal/platform/secretbox/*.go`, `internal/bootstrap/worker.go`.
 
-- [ ] **Task 7: Хранилище файлов и журнал действий** (depends on 4)
+- [x] **Task 7: Хранилище файлов и журнал действий** (depends on 4)
   - `internal/platform/storage`: порт `ObjectStorage` (`PutPrivate(ctx, key, r, size, contentType)`, `PresignGet(ctx, key, ttl)`, `Delete`); реализация на `minio-go/v7` (`S3_ENDPOINT`, `S3_BUCKET_PRIVATE`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_USE_SSL`); `storagefake` в памяти для тестов. Ключи генерирует система: `<area>/<uuidv7>` (07 §4).
   - `internal/platform/audit`: `Record(ctx, Entry)` пишет `audit_log` в транзакции из `context`; `actor_type`, `actor_user_id`, `organization_id`, `ip` берутся из `context` (кладёт HTTP-слой); `data` — значения до и после с маскированными ИНН, телефоном, почтой.
   - Журнал: DEBUG `object stored` (`key`, `size`, `duration_ms`), ERROR `object storage failed`; DEBUG `audit recorded` (`action`, `object_type`, `object_id`).
