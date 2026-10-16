@@ -23,6 +23,8 @@
 
 Черновик HTTP API кабинетов: [api/openapi.yaml](../api/openapi.yaml); тестовый сервер с выдуманными данными и Swagger UI — [mockapi/README.md](../mockapi/README.md). При расхождении с документами 01–08 правы документы.
 
+Бэкенд: запуск, команды, конфигурация и тесты — [README.md](../README.md) в корне репозитория.
+
 Исходные материалы: [RESEARCH.md](../.ai-factory/RESEARCH.md) — исследование с источниками; [ROADMAP.md](../.ai-factory/ROADMAP.md) — этапы.
 
 Тестовый стенд заглушки API: <https://dev.plwedding.ru/docs>. Как он устроен и обновляется — [deploy/README.md](../deploy/README.md).
