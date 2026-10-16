@@ -138,6 +138,9 @@ type Call struct {
 	Upload bool
 	// ValidateBody превращает 2xx с отказом в теле в ошибку (MAX success=false).
 	ValidateBody func(Response) error
+	// Redact — поля этого вызова, скрываемые в outbound_request сверх Options.Redact
+	// (адрес подписки Webhook с секретной частью пути).
+	Redact []string
 }
 
 // Response — ответ внешней системы.
@@ -353,15 +356,16 @@ func (c *Client) send(req *http.Request, call Call) attemptResult {
 // остаётся и при откате.
 func (c *Client) record(ctx context.Context, call Call, attempt int, req *http.Request, body []byte,
 	res attemptResult, started time.Time, dur time.Duration) {
+	red := c.redactor.with(call.Redact)
 	request, _ := json.Marshal(map[string]any{
 		"method":  call.Method,
-		"url":     c.redactor.url(call.URL),
-		"headers": c.redactor.headers(req.Header),
-		"body":    c.redactor.body(body),
+		"url":     red.url(call.URL),
+		"headers": red.headers(req.Header),
+		"body":    red.body(body),
 	})
 	p := sqlc.InsertOutboundRequestParams{
 		ID: ids.New(), System: c.opts.System, Operation: call.Operation, Attempt: int32(attempt),
-		Request: request, CreatedAt: started, ResponseBody: c.redactor.bodyJSON(res.resp.Body),
+		Request: request, CreatedAt: started, ResponseBody: red.bodyJSON(res.resp.Body),
 	}
 	ms := int32(dur.Milliseconds())
 	p.DurationMs = &ms

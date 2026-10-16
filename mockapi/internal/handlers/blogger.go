@@ -27,6 +27,12 @@ func bloggerChannel(tx *store.Tx, c *store.Channel) api.BloggerChannel {
 	if out.BotPermissions == nil {
 		out.BotPermissions = []string{}
 	}
+	out.MissingPermissions = []string{}
+	for _, p := range []string{"write", "delete"} {
+		if !slices.Contains(out.BotPermissions, p) {
+			out.MissingPermissions = append(out.MissingPermissions, p)
+		}
+	}
 	for _, f := range tx.D.Formats {
 		if p := c.Prices[f.ID]; p != nil {
 			_, total := store.TotalFor(p.Amount)
@@ -59,13 +65,13 @@ func (h *Handlers) CreateChannelLinkCode(ctx context.Context, req api.CreateChan
 	if err != nil {
 		return nil, err
 	}
-	code := fmt.Sprintf("%06d", rand.IntN(1_000_000))
+	code := linkCode()
 	lc := &store.LinkCode{Code: code, OrgID: o.ID, ExpiresAt: tx.Now.Add(time.Hour)}
 	tx.D.LinkCodes = append(tx.D.LinkCodes, lc)
 	h.logger(ctx).Info("channel link code issued", "op", "Channel.LinkCode", "organization_id", o.ID) // код в журнал не пишется
 	return api.CreateChannelLinkCode201JSONResponse{
 		Code: code, ExpiresAt: lc.ExpiresAt, BotName: BotName,
-		Instruction: fmt.Sprintf("Добавьте %s администратором канала с правами на публикацию и удаление сообщений, затем отправьте боту код %s. "+
+		Instruction: fmt.Sprintf("Добавьте %s администратором канала с правами на публикацию и удаление сообщений, затем отправьте код %s сообщением в канал. "+
 			"В тестовом сервере вместо этого вызовите POST /api/v1/_mock/channels/link с этим кодом.", BotName, code),
 	}, nil
 }
@@ -403,4 +409,16 @@ func (h *Handlers) InviteRocketwork(ctx context.Context, req api.InviteRocketwor
 		h.logger(ctx).Info("rocketwork contractor activated", "op", "Rocketwork.Invite", "organization_id", o.ID)
 	}
 	return api.InviteRocketwork200JSONResponse(rocketworkStatus(tx, o)), nil
+}
+
+// linkCodeAlphabet — символы кода подключения без похожих знаков (R-1).
+const linkCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+// linkCode — код подключения канала из 8 символов, как в бэкенде.
+func linkCode() string {
+	b := make([]byte, 8)
+	for i := range b {
+		b[i] = linkCodeAlphabet[rand.IntN(len(linkCodeAlphabet))]
+	}
+	return string(b)
 }

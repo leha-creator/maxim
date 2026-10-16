@@ -123,6 +123,7 @@ type request struct {
 	buckets   []ratelimit.Bucket
 	object    string
 	objectID  string
+	redact    []string
 }
 
 func (c *Client) do(ctx context.Context, r request) (outbound.Response, error) {
@@ -148,5 +149,6 @@ func (c *Client) do(ctx context.Context, r request) (outbound.Response, error) {
 		ObjectType:   r.object,
 		ObjectID:     r.objectID,
 		ValidateBody: validateSuccess,
+		Redact:       r.redact,
 	})
 }

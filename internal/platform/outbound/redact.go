@@ -132,3 +132,18 @@ func (r redactor) text(b []byte, limit int) string {
 	}
 	return string(out)
 }
+
+// with — маскирование с дополнительными полями одного вызова.
+func (r redactor) with(extra []string) redactor {
+	if len(extra) == 0 {
+		return r
+	}
+	keys := make(map[string]bool, len(r.keys)+len(extra))
+	for k := range r.keys {
+		keys[k] = true
+	}
+	for _, k := range extra {
+		keys[strings.ToLower(k)] = true
+	}
+	return redactor{keys: keys}
+}

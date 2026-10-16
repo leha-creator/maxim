@@ -58,7 +58,8 @@ type Config struct {
 	SecretsKey     string `env:"APP_SECRETS_KEY"`  // base64, 32 байта: шифрование секретов в job.payload (R-1)
 	AuthCodePepper string `env:"AUTH_CODE_PEPPER"` // секрет HMAC кода входа (R-3)
 
-	Auth AuthConfig
+	Auth    AuthConfig
+	Channel ChannelConfig
 
 	MAX       MAXConfig
 	Alert     AlertConfig
@@ -75,6 +76,23 @@ type MAXConfig struct {
 	CACertFile  string  `env:"MAX_CA_CERT_FILE"`
 	RateGlobal  float64 `env:"MAX_RATE_GLOBAL" envDefault:"25"`
 	RatePerChat float64 `env:"MAX_RATE_PER_CHAT" envDefault:"1"`
+	// BotName — имя бота в инструкции подключения канала, например @maxim_ads_bot.
+	BotName string `env:"MAX_BOT_NAME"`
+	// WebhookPathSecret — секретная часть адреса /webhooks/max/{secret} (R-3, Q-35).
+	WebhookPathSecret string `env:"MAX_WEBHOOK_PATH_SECRET"`
+	// WebhookSecret — секрет подписки; MAX передаёт его в заголовке X-Max-Bot-Api-Secret.
+	WebhookSecret string `env:"MAX_WEBHOOK_SECRET"`
+	// WebhookURL — публичный адрес приёма без секретной части, например
+	// https://api.example.ru/api/v1/webhooks/max. worker подписывает на него бота (R-5).
+	WebhookURL string `env:"MAX_WEBHOOK_URL"`
+}
+
+// ChannelConfig — подключение каналов (S-12, A-41, D-11).
+type ChannelConfig struct {
+	LinkCodeTTL      time.Duration `env:"CHANNEL_LINK_CODE_TTL" envDefault:"60m"`
+	LinkCodesPerHour int           `env:"CHANNEL_LINK_CODES_PER_HOUR" envDefault:"10"`
+	UnclaimedTTL     time.Duration `env:"CHANNEL_UNCLAIMED_TTL" envDefault:"168h"`
+	RknThreshold     int           `env:"RKN_SUBSCRIBERS_THRESHOLD" envDefault:"10000"`
 }
 
 // AlertConfig — адресаты оповещений администратору (07 §3, R-5).
@@ -262,6 +280,11 @@ func (c Config) Validate(mode string) error {
 		if a.LoginCodeAttempts < 1 || a.CodesPerEmailHour < 1 || a.CodesPerIPHour < 1 {
 			add("AUTH_* limits", "must be positive")
 		}
+		c.validateWebhookSecrets(add)
+		ch := c.Channel
+		if ch.LinkCodeTTL <= 0 || ch.LinkCodesPerHour < 1 || ch.UnclaimedTTL <= 0 || ch.RknThreshold < 1 {
+			add("CHANNEL_*, RKN_SUBSCRIBERS_THRESHOLD", "must be positive")
+		}
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -291,6 +314,10 @@ func (c Config) validateWorker(add func(field, reason string)) {
 		if len(c.Alert.Emails) == 0 && c.Alert.MAXChatID == 0 {
 			add("ALERT_EMAILS", "at least one alert recipient (ALERT_EMAILS or ALERT_MAX_CHAT_ID) is required in production")
 		}
+		if u, err := url.Parse(c.MAX.WebhookURL); err != nil || u.Scheme != "https" || u.Host == "" {
+			add("MAX_WEBHOOK_URL", "must be an https URL in production")
+		}
+		c.validateWebhookSecrets(add)
 	}
 	if u, err := url.Parse(c.MAX.APIURL); err != nil || u.Scheme == "" || u.Host == "" {
 		add("MAX_API_URL", "must be an absolute URL")
@@ -319,6 +346,25 @@ func (c Config) validateWorker(add func(field, reason string)) {
 		if d <= 0 {
 			add("RETENTION_*", "must be positive")
 			break
+		}
+	}
+}
+
+// webhookSecretMin — наименьшая длина секретов Webhook.
+const webhookSecretMin = 32
+
+// validateWebhookSecrets — секреты приёма Webhook MAX (R-3): в продакшене обязательны,
+// заданные — не короче webhookSecretMin.
+func (c Config) validateWebhookSecrets(add func(field, reason string)) {
+	for _, s := range []struct{ field, value string }{
+		{"MAX_WEBHOOK_PATH_SECRET", c.MAX.WebhookPathSecret},
+		{"MAX_WEBHOOK_SECRET", c.MAX.WebhookSecret},
+	} {
+		switch {
+		case s.value == "" && c.Env == EnvProduction:
+			add(s.field, "required in production")
+		case s.value != "" && len(s.value) < webhookSecretMin:
+			add(s.field, fmt.Sprintf("must be at least %d characters", webhookSecretMin))
 		}
 	}
 }
@@ -389,6 +435,14 @@ func (c Config) LogValue() slog.Value {
 		slog.String("max_ca_cert_file", c.MAX.CACertFile),
 		slog.Float64("max_rate_global", c.MAX.RateGlobal),
 		slog.Float64("max_rate_per_chat", c.MAX.RatePerChat),
+		slog.String("max_bot_name", c.MAX.BotName),
+		slog.String("max_webhook_url", c.MAX.WebhookURL),
+		slog.String("max_webhook_path_secret", secret(c.MAX.WebhookPathSecret)),
+		slog.String("max_webhook_secret", secret(c.MAX.WebhookSecret)),
+		slog.String("channel_link_code_ttl", c.Channel.LinkCodeTTL.String()),
+		slog.Int("channel_link_codes_per_hour", c.Channel.LinkCodesPerHour),
+		slog.String("channel_unclaimed_ttl", c.Channel.UnclaimedTTL.String()),
+		slog.Int("rkn_subscribers_threshold", c.Channel.RknThreshold),
 		slog.Int("alert_emails", len(c.Alert.Emails)),
 		slog.Bool("alert_max_chat", c.Alert.MAXChatID != 0),
 		slog.String("downtime_threshold", c.Scheduler.DowntimeThreshold.String()),

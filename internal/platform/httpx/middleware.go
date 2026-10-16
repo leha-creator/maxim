@@ -78,7 +78,7 @@ func AccessLog(log *slog.Logger, clk clock.Clock, obs RequestObserver) Middlewar
 			ctx := context.WithValue(r.Context(), routeKey{}, holder)
 			service := isServicePath(r.URL.Path)
 			if !service {
-				log.DebugContext(ctx, "http request started", logx.KeyOp, "HTTP.Request", "method", r.Method, "path", r.URL.Path)
+				log.DebugContext(ctx, "http request started", logx.KeyOp, "HTTP.Request", "method", r.Method, "path", RedactPath(r.URL.Path))
 			}
 
 			sw := &statusWriter{ResponseWriter: w}
@@ -97,7 +97,7 @@ func AccessLog(log *slog.Logger, clk clock.Clock, obs RequestObserver) Middlewar
 			if obs != nil {
 				obs.ObserveHTTP(route, r.Method, sw.status, dur)
 			}
-			attrs := []any{logx.KeyOp, "HTTP.Request", "method", r.Method, "path", r.URL.Path, "route", route,
+			attrs := []any{logx.KeyOp, "HTTP.Request", "method", r.Method, "path", RedactPath(r.URL.Path), "route", route,
 				"status", sw.status, "bytes", sw.bytes, "duration_ms", dur.Milliseconds()}
 			switch {
 			case sw.status >= 500:
@@ -187,4 +187,24 @@ func BodyLimit(limitFor func(r *http.Request) int64) Middleware {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// secretPathPrefixes — пути, у которых следующий сегмент секретный (адрес Webhook
+// MAX, Q-35). В журнал и метрики сегмент не попадает.
+var secretPathPrefixes = []string{"/webhooks/max/"}
+
+// RedactPath заменяет секретный сегмент пути на "***".
+func RedactPath(p string) string {
+	for _, prefix := range secretPathPrefixes {
+		i := strings.Index(p, prefix)
+		if i < 0 {
+			continue
+		}
+		rest := p[i+len(prefix):]
+		if j := strings.IndexByte(rest, '/'); j >= 0 {
+			return p[:i+len(prefix)] + "***" + rest[j:]
+		}
+		return p[:i+len(prefix)] + "***"
+	}
+	return p
 }

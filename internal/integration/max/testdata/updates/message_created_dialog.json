@@ -1,0 +1,1 @@
+{"update_type":"message_created","timestamp":1760600005000,"message":{"sender":{"user_id":500100,"name":"Анна","username":"anna_blog","is_bot":false},"recipient":{"chat_id":90000000001,"chat_type":"dialog","user_id":777},"timestamp":1760600005000,"body":{"mid":"mid.dialog.0001","seq":1,"text":"Привет"}},"user_locale":"ru"}

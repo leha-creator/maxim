@@ -30,6 +30,12 @@ type maxAPI interface {
 	GetMe(ctx context.Context) (max.Bot, error)
 	SendChatMessage(ctx context.Context, chatID int64, text string) (string, error)
 	SendUserMessage(ctx context.Context, userID int64, text string) (string, error)
+	GetChat(ctx context.Context, chatID int64) (max.Chat, error)
+	GetMembership(ctx context.Context, chatID int64) (max.Membership, error)
+	DeleteMessage(ctx context.Context, chatID int64, messageID string) error
+	LeaveChat(ctx context.Context, chatID int64) error
+	ListSubscriptions(ctx context.Context) ([]max.Subscription, error)
+	Subscribe(ctx context.Context, url string, updateTypes []string, secret string) error
 }
 
 // newAlerter — оповещения администратору (07 §3, R-4, R-5).

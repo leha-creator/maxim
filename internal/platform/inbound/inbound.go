@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -57,6 +58,8 @@ type Event struct {
 	EventType   string
 	// Payload — сырое тело (JSON).
 	Payload []byte
+	// ReceivedAt — когда событие принято; заполняется при разборе.
+	ReceivedAt time.Time
 }
 
 // KeyFromBody — ключ события, если внешняя система его не передаёт: SHA-256 от тела (05 §2.2).

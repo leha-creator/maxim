@@ -177,3 +177,61 @@ func TestConfigLogValueHidesBotToken(t *testing.T) {
 		t.Fatal("development with MAX_BOT_TOKEN must use the live adapter")
 	}
 }
+
+func TestChannelConfig(t *testing.T) {
+	cfg, err := LoadConfig(validAPIEnv(), ModeAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := cfg.Channel
+	if ch.LinkCodeTTL != time.Hour || ch.LinkCodesPerHour != 10 || ch.UnclaimedTTL != 7*24*time.Hour || ch.RknThreshold != 10000 {
+		t.Fatalf("channel defaults differ from A-41, D-11: %+v", ch)
+	}
+	long := strings.Repeat("s", 32)
+	cases := []struct {
+		name  string
+		mode  string
+		edit  func(map[string]string)
+		field string
+	}{
+		{"short path secret", ModeAPI, func(m map[string]string) { m["MAX_WEBHOOK_PATH_SECRET"] = "short" },
+			"MAX_WEBHOOK_PATH_SECRET: must be at least 32 characters"},
+		{"production api without webhook secret", ModeAPI, func(m map[string]string) {
+			m["APP_ENV"], m["COOKIE_SECURE"], m["MAX_WEBHOOK_PATH_SECRET"] = "production", "true", long
+		}, "MAX_WEBHOOK_SECRET: required in production"},
+		{"zero code ttl", ModeAPI, func(m map[string]string) { m["CHANNEL_LINK_CODE_TTL"] = "0s" },
+			"CHANNEL_*, RKN_SUBSCRIBERS_THRESHOLD: must be positive"},
+		{"production worker with http webhook url", ModeWorker, func(m map[string]string) {
+			m["SMTP_HOST"], m["MAIL_FROM"], m["APP_ENV"] = "smtp", "noreply@maxim.ru", "production"
+			m["MAX_BOT_TOKEN"], m["ALERT_EMAILS"] = "t", "oncall@maxim.ru"
+			m["MAX_WEBHOOK_URL"] = "http://api.maxim.ru/api/v1/webhooks/max"
+		}, "MAX_WEBHOOK_URL: must be an https URL in production"},
+		{"production worker without webhook secrets", ModeWorker, func(m map[string]string) {
+			m["SMTP_HOST"], m["MAIL_FROM"], m["APP_ENV"] = "smtp", "noreply@maxim.ru", "production"
+			m["MAX_BOT_TOKEN"], m["ALERT_EMAILS"] = "t", "oncall@maxim.ru"
+			m["MAX_WEBHOOK_URL"] = "https://api.maxim.ru/api/v1/webhooks/max"
+		}, "MAX_WEBHOOK_PATH_SECRET: required in production"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := validAPIEnv()
+			c.edit(e)
+			_, err := LoadConfig(e, c.mode)
+			if fields := configFields(t, err); !slices.Contains(fields, c.field) {
+				t.Fatalf("fields %v do not contain %q", fields, c.field)
+			}
+		})
+	}
+
+	e := validAPIEnv()
+	e["MAX_WEBHOOK_PATH_SECRET"], e["MAX_WEBHOOK_SECRET"] = "path-"+long, "header-"+long
+	cfg, err = LoadConfig(e, ModeAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "config", cfg)
+	if strings.Contains(buf.String(), long) {
+		t.Fatal("log contains webhook secrets")
+	}
+}

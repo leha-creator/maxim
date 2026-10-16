@@ -87,3 +87,9 @@ sql:
       go:
         <<: *gen
         out: internal/platform/stuck/sqlc
+  - <<: *entry
+    queries: internal/channel/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/channel/postgres/sqlc
