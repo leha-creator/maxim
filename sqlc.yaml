@@ -51,3 +51,9 @@ sql:
       go:
         <<: *gen
         out: internal/platform/audit/sqlc
+  - <<: *entry
+    queries: internal/account/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/account/postgres/sqlc

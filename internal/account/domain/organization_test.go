@@ -170,7 +170,11 @@ func TestNewOrganizationRejects(t *testing.T) {
 		{"legal entity blogger without kpp", func() NewOrganizationInput { in := bloggerLE(); in.Fields.KPP = nil; return in }, "kpp", ReasonRequired},
 		{"legal entity blogger without signer", func() NewOrganizationInput { in := bloggerLE(); in.Fields.SignerBasisNumber = nil; return in }, "signer_basis_number", ReasonRequired},
 		{"self-employed with signer", func() NewOrganizationInput { in := bloggerSE(); in.Fields.SignerName = s("Кто-то"); return in }, "signer_name", ReasonNotAllowed},
-		{"legal entity with blogger full name", func() NewOrganizationInput { in := bloggerLE(); in.Fields.BloggerFullName = s("Иванов"); return in }, "blogger_full_name", ReasonNotAllowed},
+		{"legal entity with blogger full name", func() NewOrganizationInput {
+			in := bloggerLE()
+			in.Fields.BloggerFullName = s("Иванов")
+			return in
+		}, "blogger_full_name", ReasonNotAllowed},
 		{"bad kpp", func() NewOrganizationInput { in := bloggerLE(); in.Fields.KPP = s("12"); return in }, "kpp", ReasonInvalidFormat},
 	}
 	for _, c := range cases {

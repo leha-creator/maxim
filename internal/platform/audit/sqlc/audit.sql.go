@@ -13,6 +13,24 @@ import (
 	"github.com/google/uuid"
 )
 
+const countAuditByActorSince = `-- name: CountAuditByActorSince :one
+SELECT count(*)::int FROM audit_log
+WHERE action = $1 AND actor_user_id = $2 AND created_at > $3
+`
+
+type CountAuditByActorSinceParams struct {
+	Action      string
+	ActorUserID *uuid.UUID
+	Since       time.Time
+}
+
+func (q *Queries) CountAuditByActorSince(ctx context.Context, arg CountAuditByActorSinceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countAuditByActorSince, arg.Action, arg.ActorUserID, arg.Since)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const insertAuditLog = `-- name: InsertAuditLog :exec
 
 INSERT INTO audit_log (id, actor_type, actor_user_id, organization_id, action, object_type, object_id, reason, data, ip, created_at)

@@ -152,7 +152,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
 
 ### Phase 3: Аккаунты
 
-- [ ] **Task 8: Хранилище аккаунтов (`account/postgres`)** (depends on 4, 5)
+- [x] **Task 8: Хранилище аккаунтов (`account/postgres`)** (depends on 4, 5)
   - `internal/account/postgres/queries/*.sql` → `sqlc` → `internal/account/postgres/sqlc`. Реализации портов `domain`:
     - `Users`: найти по почте, создать, обновить `last_login_at`.
     - `AuthCodes`: создать; последний непогашенный код по почте `FOR UPDATE`; записать попытку; погасить; счётчики за час по почте и по `requested_ip` (R-2).
@@ -164,7 +164,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Тесты (`dbtest`): каждый метод; гонка двух созданий с одним ИНН → один `inn_taken`; сессия не находится после отзыва и после срока; счётчики лимитов.
   - Файлы: `internal/account/postgres/**`, запись `account` в `sqlc.yaml`.
 
-- [ ] **Task 9: Сценарии аккаунтов (`account/app`) и задание отправки кода (R-1, R-2, R-5)** (depends on 5, 6, 7, 8)
+- [x] **Task 9: Сценарии аккаунтов (`account/app`) и задание отправки кода (R-1, R-2, R-5)** (depends on 5, 6, 7, 8)
   - `internal/account/app.Service`, зависимости через `Deps` (порты, `tx.Runner`, `job` enqueuer, `audit`, `clock`, `logx`, параметры из конфигурации):
     - `RequestLoginCode(email, ip)`: лимиты 5 на почту и 20 на IP в час → `rate_limited` с `retry_after`; новый код (прежние непогашенные гаснут); в той же транзакции — задание `send_login_code` (`dedupe_key = login_code:<auth_code_id>`, `max_attempts = 5`, полезная нагрузка — `Seal(email, code)`). Ответ одинаков для нового и существующего адреса (07 §4).
     - `Login(email, code, ip, userAgent)`: проверка кода, `attempts + 1` при неверном; пользователь создаётся при первом входе; `status = blocked` → `forbidden`; сессия; `last_login_at`; аудит `auth.login`. Возвращает токен сессии и токен CSRF.
@@ -180,14 +180,14 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Тесты (`dbtest`, `storagefake`, `mailfake`, `clock.Manual`): каждый сценарий, успешный путь и отклонения S-01/S-10: `inn_taken`, лимиты по почте и IP, 5 неверных кодов, просроченный код, повторный код гасит прежний, заблокированный пользователь, второй кабинет без недостающих полей блогера, неверный тип файла, принятие чужого или устаревшего документа; повтор задания `send_login_code` не отправляет второе письмо.
   - Файлы: `internal/account/app/*.go`, `internal/account/jobs/*.go`.
 
-- [ ] **Task 10: Почта (`integration/mail`)** (depends on 1)
+- [x] **Task 10: Почта (`integration/mail`)** (depends on 1)
   - `internal/integration/mail`: SMTP-клиент (`wneessen/go-mail`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS`, `MAIL_FROM`), таймаут 10 с; реализует `account/domain.LoginCodeSender`. Шаблон письма — `templates/email/login_code.{subject,txt,html}.tmpl` (07 §6: тексты в репозитории), язык русский, срок действия в минутах, время в МСК.
   - `internal/integration/mail/mailfake`: в памяти, для тестов — последнее письмо на адрес.
   - Журнал: DEBUG `mail send started` (`template`, `to` маскированный), INFO `mail sent` (`template`, `duration_ms`), ERROR `mail send failed` (`error` без учётных данных). Тело письма не пишется.
   - Тесты: рендеринг шаблона (код подставлен, срок в минутах); отправка на SMTP-сервер Mailpit через `testcontainers-go` (в CI обязательно).
   - Файлы: `internal/integration/mail/**`, `templates/email/*`, `templates/embed.go`.
 
-- [ ] **Task 11: HTTP аккаунтов: сессия, CSRF, лимиты, обработчики (R-4, R-5)** (depends on 3, 9)
+- [x] **Task 11: HTTP аккаунтов: сессия, CSRF, лимиты, обработчики (R-4, R-5)** (depends on 3, 9)
   - `internal/platform/httpx/auth.go`: middleware читает cookie `session`, вызывает `Authenticate` (через интерфейс, без импорта модуля), кладёт принципал в `context` и поля журнала `user_id`, `organization_id`. Операции с `security: []` пропускаются; остальные без сессии → `401 unauthorized`.
   - `httpx/csrf.go`: для `POST`/`PUT`/`PATCH`/`DELETE`, кроме `requestLoginCode` и `login`, сверка `X-CSRF-Token` с cookie `csrf_token` за постоянное время → иначе `403 forbidden` (`details.reason = csrf`).
   - `internal/account/httpapi.Handlers`: `RequestLoginCode`, `Login` (cookie `session`: `HttpOnly`, `Secure` по `COOKIE_SECURE`, `SameSite=Lax`, `Path=/`, `Max-Age` по сроку; cookie `csrf_token` без `HttpOnly`), `Logout` (очистка обеих), `GetMe`, `CreateOrganization`, `GetCurrentOrganization`, `UpdateCurrentOrganization`, `UploadTaxDocument`, `ListLegalDocuments`, `AcceptLegalDocuments`. Преобразование `apigen` ↔ `domain` — только здесь. `rate_limited` → `429` с `Retry-After`. Нет организации у пользователя → `404` для `/organizations/current`.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -152,4 +153,16 @@ func Diff(before, after map[string]any, changed []string) map[string]any {
 		}
 	}
 	return map[string]any{"before": Mask(b), "after": Mask(a)}
+}
+
+// CountByUserSince — сколько раз пользователь выполнил действие начиная с since.
+// Нужен лимитам частоты, общим для всех экземпляров api (07 §4).
+func (l *Log) CountByUserSince(ctx context.Context, action string, userID uuid.UUID, since time.Time) (int, error) {
+	n, err := sqlc.New(db.Conn(ctx, l.pool)).CountAuditByActorSince(ctx, sqlc.CountAuditByActorSinceParams{
+		Action: action, ActorUserID: &userID, Since: since,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count %s: %w", action, err)
+	}
+	return int(n), nil
 }

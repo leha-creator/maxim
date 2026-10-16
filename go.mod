@@ -14,6 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
+	github.com/wneessen/go-mail v0.8.1
 	golang.org/x/sync v0.24.0
 )
 

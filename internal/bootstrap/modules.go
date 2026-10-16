@@ -2,20 +2,170 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	accountapp "github.com/leha-creator/maxim/internal/account/app"
+	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
+	accounthttp "github.com/leha-creator/maxim/internal/account/httpapi"
+	accountjobs "github.com/leha-creator/maxim/internal/account/jobs"
+	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	"github.com/leha-creator/maxim/internal/integration/mail"
+	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
+	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/clock"
+	"github.com/leha-creator/maxim/internal/platform/db"
+	"github.com/leha-creator/maxim/internal/platform/httpx"
 	"github.com/leha-creator/maxim/internal/platform/job"
+	"github.com/leha-creator/maxim/internal/platform/logx"
+	"github.com/leha-creator/maxim/internal/platform/metrics"
+	"github.com/leha-creator/maxim/internal/platform/secretbox"
+	"github.com/leha-creator/maxim/internal/platform/storage"
+	"github.com/leha-creator/maxim/internal/platform/storage/storagefake"
+	"github.com/leha-creator/maxim/internal/platform/tx"
 )
 
-// modules — собранные модули приложения. Заполняется в задаче 12 плана.
-type modules struct{}
+// infra — общие ресурсы процесса: база, часы, журнал и адаптеры внешних систем.
+// В APP_ENV=test адаптеры поддельные; в разработке Mailpit и MinIO — настоящие SMTP и S3.
+type infra struct {
+	pool    *pgxpool.Pool
+	clock   clock.Clock
+	log     *slog.Logger
+	storage storage.ObjectStorage
+	mail    accountdomain.LoginCodeSender
+	box     *secretbox.Box
+}
 
-func newModules(ctx context.Context, cfg Config, pool *pgxpool.Pool, clk clock.Clock, log *slog.Logger) (*modules, error) {
-	return &modules{}, nil
+// newInfra подключает адаптеры, нужные режиму.
+func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, log *slog.Logger) (*infra, error) {
+	in := &infra{pool: pool, clock: clock.System{}, log: log}
+	fakes := cfg.Env == EnvTest
+	if mode == ModeAPI || mode == ModeLegal {
+		if fakes {
+			in.storage = storagefake.New()
+		} else {
+			s, err := storage.NewS3(ctx, storage.S3Options{
+				Endpoint: cfg.S3.Endpoint, Region: cfg.S3.Region, Bucket: cfg.S3.BucketPrivate,
+				AccessKey: cfg.S3.AccessKey, SecretKey: cfg.S3.SecretKey, UseSSL: cfg.S3.UseSSL,
+			}, in.clock, log.With(logx.KeyModule, "storage"))
+			if err != nil {
+				return nil, err
+			}
+			in.storage = s
+		}
+	}
+	if mode == ModeWorker {
+		if fakes {
+			in.mail = mailfake.New()
+		} else {
+			m, err := mail.New(mail.Options{
+				Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, User: cfg.SMTP.User, Password: cfg.SMTP.Password,
+				TLS: cfg.SMTP.TLS, From: cfg.MailFrom,
+			}, in.clock, log.With(logx.KeyModule, "mail"))
+			if err != nil {
+				return nil, err
+			}
+			in.mail = m
+		}
+	}
+	if mode == ModeAPI || mode == ModeWorker {
+		box, err := secretbox.New(cfg.SecretsKeyBytes())
+		if err != nil {
+			return nil, err
+		}
+		in.box = box
+	}
+	return in, nil
+}
+
+// modules — собранные модули приложения.
+type modules struct {
+	account     *accountapp.Service
+	accountHTTP *accounthttp.Handlers
+}
+
+// newModules связывает порты модулей с реализациями.
+func newModules(cfg Config, in *infra) *modules {
+	log := in.log
+	txRunner := tx.NewRunner(in.pool, log.With(logx.KeyModule, "db"))
+	queue := job.NewQueue(in.pool, in.clock, log.With(logx.KeyModule, "job"))
+	auditLog := audit.New(in.pool, in.clock, log.With(logx.KeyModule, "audit"))
+	accountStore := accountpg.New(in.pool, log.With(logx.KeyModule, "account"))
+
+	deps := accountapp.Deps{
+		Users: accountStore.Users(), AuthCodes: accountStore.AuthCodes(), Sessions: accountStore.Sessions(),
+		Organizations: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
+		Sender: in.mail, Uploads: auditLog, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: log,
+		Config: accountapp.Config{
+			LoginCodeTTL: cfg.Auth.LoginCodeTTL, LoginCodeAttempts: cfg.Auth.LoginCodeAttempts,
+			CodesPerEmailHour: cfg.Auth.CodesPerEmailHour, CodesPerIPHour: cfg.Auth.CodesPerIPHour,
+			SessionTTL: cfg.Auth.SessionTTL, AdminSessionTTL: cfg.Auth.AdminSessionTTL,
+			Pepper: []byte(cfg.AuthCodePepper),
+		},
+	}
+	if in.storage != nil {
+		deps.Storage = in.storage
+	}
+	if in.box != nil {
+		deps.Sealer = in.box
+	}
+	svc := accountapp.New(deps)
+	return &modules{
+		account:     svc,
+		accountHTTP: accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
+	}
 }
 
 // registerJobs регистрирует обработчики заданий всех модулей.
-func (m *modules) registerJobs(w *job.Worker) {}
+func (m *modules) registerJobs(w *job.Worker) {
+	accountjobs.Register(w, m.account)
+}
+
+// apiImpl — реализация всех операций: обработчики модулей поверх заглушек 501.
+type apiImpl struct {
+	fallback
+	*accounthttp.Handlers
+}
+
+// apiHandler собирает HTTP-обработчик режима api.
+func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.Handler, error) {
+	trusted, err := httpx.ParsePrefixes(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS: %w", err)
+	}
+	log := in.log.With(logx.KeyModule, "http")
+	return newHandler(serverDeps{
+		Log:           in.log,
+		Clock:         in.clock,
+		Metrics:       reg,
+		Impl:          apiImpl{Handlers: m.accountHTTP},
+		Ready:         readiness(in.pool),
+		Authenticated: httpx.Authenticated,
+		Before: []httpx.Middleware{
+			httpx.ClientInfo(trusted),
+			httpx.Session(log, m.accountHTTP.Authenticate),
+			httpx.CSRF(log, csrfExempt),
+		},
+		ServeDocs: cfg.Env != EnvProduction,
+	})
+}
+
+// csrfExempt — вход и Webhook внешних систем не несут токен CSRF.
+func csrfExempt(r *http.Request) bool {
+	p := r.URL.Path
+	return p == BaseURL+"/auth/code" || p == BaseURL+"/auth/login" || strings.HasPrefix(p, BaseURL+"/webhooks/")
+}
+
+func readiness(pool *pgxpool.Pool) func(ctx context.Context) error {
+	ping := db.Ping(pool)
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		return ping(ctx)
+	}
+}

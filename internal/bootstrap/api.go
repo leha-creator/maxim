@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/metrics"
 )
@@ -75,4 +76,25 @@ func serve(ctx context.Context, log *slog.Logger, servers ...namedServer) error 
 		return errors.Join(errs...)
 	})
 	return g.Wait()
+}
+
+// runAPI — режим api: HTTP API кабинетов и метрики.
+func runAPI(ctx context.Context, cfg Config, log *slog.Logger) error {
+	pool, err := db.Open(ctx, cfg.DatabaseURL, cfg.DBMaxConns, log)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	in, err := newInfra(ctx, cfg, ModeAPI, pool, log)
+	if err != nil {
+		return err
+	}
+	reg := metrics.New()
+	h, err := apiHandler(cfg, in, newModules(cfg, in), reg)
+	if err != nil {
+		return err
+	}
+	return serve(ctx, log,
+		namedServer{name: "api", srv: newHTTPServer(cfg.HTTPAddr, h)},
+		metricsServer(cfg.MetricsAddr, reg))
 }
