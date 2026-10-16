@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // Виды событий Webhook (05 §2.2, объект Update).
@@ -18,11 +19,11 @@ const (
 	UpdateChatTitleChanged           = "chat_title_changed"
 )
 
-// ChannelUpdateTypes — события, на которые подписывается бот (R-5). События о
-// публикациях добавит этап «Автопостинг и контроль».
+// ChannelUpdateTypes — события, на которые подписывается бот (R-5): каналы, коды
+// подключения и контроль публикаций (R-17 этапа «Автопостинг и контроль»).
 var ChannelUpdateTypes = []string{
 	UpdateBotAdded, UpdateBotRemoved, UpdateBotAdminPermissionsChanged,
-	UpdateMessageCreated, UpdateChatTitleChanged,
+	UpdateMessageCreated, UpdateMessageEdited, UpdateMessageRemoved, UpdateChatTitleChanged,
 }
 
 // User — пользователь MAX в событии.
@@ -43,8 +44,10 @@ type Message struct {
 	} `json:"recipient"`
 	Timestamp int64 `json:"timestamp"`
 	Body      struct {
-		MID  string `json:"mid"`
-		Text string `json:"text"`
+		MID         string           `json:"mid"`
+		Text        string           `json:"text"`
+		Markup      json.RawMessage  `json:"markup"`
+		Attachments []wireAttachment `json:"attachments"`
 	} `json:"body"`
 }
 
@@ -58,6 +61,9 @@ type Update struct {
 	IsChannel bool     `json:"is_channel"`
 	Title     string   `json:"title"`
 	Message   *Message `json:"message"`
+	// RemovedMessageID и RemovedBy — событие message_removed: удалённое сообщение и кто удалил.
+	RemovedMessageID string `json:"message_id"`
+	RemovedBy        int64  `json:"user_id"`
 }
 
 // ErrNoUpdateType — тело не похоже на событие MAX.
@@ -107,3 +113,30 @@ func (u Update) UserID() int64 {
 
 // ChatIDString — идентификатор чата для журнала и ключей.
 func (u Update) ChatIDString() string { return strconv.FormatInt(u.ChatID, 10) }
+
+// MessageID — сообщение события: удалённое (message_removed) или из тела события.
+func (u Update) MessageID() string {
+	if u.RemovedMessageID != "" {
+		return u.RemovedMessageID
+	}
+	if u.Message != nil {
+		return u.Message.Body.MID
+	}
+	return ""
+}
+
+// MessageAt — время сообщения по MAX (S-27: время нарушения), иначе время события.
+func (u Update) MessageAt() time.Time {
+	if u.Message != nil && u.Message.Timestamp > 0 {
+		return time.UnixMilli(u.Message.Timestamp).UTC()
+	}
+	return time.UnixMilli(u.Timestamp).UTC()
+}
+
+// ContentHash — хеш сообщения события (message_edited) той же функцией, что у публикации (R-6).
+func (u Update) ContentHash() string {
+	if u.Message == nil {
+		return ""
+	}
+	return ContentHash(u.Message.Body.Text, u.Message.Body.Markup, u.Message.Body.Attachments)
+}

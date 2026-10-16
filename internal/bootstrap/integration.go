@@ -6,6 +6,7 @@ import (
 
 	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	"github.com/leha-creator/maxim/internal/integration/max"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	"github.com/leha-creator/maxim/internal/platform/alert"
@@ -37,6 +38,8 @@ type maxAPI interface {
 	LeaveChat(ctx context.Context, chatID int64) error
 	ListSubscriptions(ctx context.Context) ([]max.Subscription, error)
 	Subscribe(ctx context.Context, url string, updateTypes []string, secret string) error
+	// Публикация и контроль размещений (этап «Автопостинг и контроль»).
+	bridge.MAXPosts
 }
 
 // newAlerter — оповещения администратору (07 §3, R-4, R-5).
@@ -50,7 +53,9 @@ func newAlerter(cfg Config, in *infra) *alert.Alerter {
 // токена, иначе настоящий через outbound и общий ограничитель (05 §2.8).
 func (in *infra) connectMAX(cfg Config) error {
 	if cfg.MAXFake() {
-		in.max = maxfake.New()
+		fake := maxfake.New()
+		fake.SetNow(in.clock.Now)
+		in.max = fake
 		return nil
 	}
 	log := in.log.With(logx.KeyModule, "max")
@@ -69,6 +74,7 @@ func (in *infra) connectMAX(cfg Config) error {
 	limiter := ratelimit.New(in.pool, in.clock, log, ratelimit.Options{Metrics: limitMetrics})
 	in.max = max.New(out, limiter, max.Options{
 		BaseURL: cfg.MAX.APIURL, Token: cfg.MAX.BotToken, GlobalRate: cfg.MAX.RateGlobal, ChatRate: cfg.MAX.RatePerChat,
+		BotUserID: cfg.MAX.BotUserID,
 	}, log)
 	return nil
 }

@@ -44,6 +44,13 @@ x-backend-env: &backend-env
   PLACEMENT_SLOT_STEP: 5m
   PLACEMENT_REEDIT_GUARD: 24h
   CART_MAX_ITEMS: "50"
+  # Автопостинг и контроль: повторы публикации (T-03) и снятия (T-10), сверка (T-09), споры (T-06).
+  PUBLISH_RETRY_WINDOW: 30m
+  PUBLISH_RETRY_INTERVAL: 30s
+  REMOVE_RETRY_WINDOW: 24h
+  PLACEMENT_CLAIM_WINDOW: 24h
+  DISPUTE_DEADLINE: 72h
+  RECONCILE_INTERVAL: 5m
 
 services:
   postgres:

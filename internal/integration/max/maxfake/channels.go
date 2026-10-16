@@ -65,6 +65,12 @@ func (c *Client) DeleteMessage(_ context.Context, _ int64, messageID string) err
 	if c.failErr != nil {
 		return c.failErr
 	}
+	if c.deleteErr != nil {
+		return c.deleteErr
+	}
+	if p, ok := c.posts[messageID]; ok {
+		p.Removed = true
+	}
 	c.deleted = append(c.deleted, messageID)
 	return nil
 }
@@ -97,6 +103,8 @@ func (c *Client) Subscribe(_ context.Context, url string, updateTypes []string, 
 	if c.failErr != nil {
 		return c.failErr
 	}
+	// Подписка на тот же адрес заменяет прежнюю, как в MAX.
+	c.subs = slices.DeleteFunc(c.subs, func(s max.Subscription) bool { return s.URL == url })
 	c.subs = append(c.subs, max.Subscription{URL: url, UpdateTypes: slices.Clone(updateTypes)})
 	return nil
 }
@@ -143,7 +151,7 @@ func (c *Client) ListMessages(_ context.Context, chatID int64, from, to time.Tim
 		return nil, c.messagesErr
 	}
 	out := []max.ChannelMessage{}
-	for _, m := range c.messages[chatID] {
+	for _, m := range append(slices.Clone(c.messages[chatID]), c.postMessages(chatID)...) {
 		if !m.At.Before(from) && !m.At.After(to) {
 			out = append(out, m)
 		}

@@ -2567,9 +2567,12 @@ components:
             total_amount: { $ref: '#/components/schemas/Money' }
             refund_amount: { $ref: '#/components/schemas/Money' }
             performance_share: { type: integer, minimum: 0, maximum: 10000 }
-            publication_url: { type: string, format: uri }
-            views: { type: integer }
+            publication_url: { type: string, format: uri, description: Публичная ссылка на пост в MAX }
+            views:
+              type: integer
+              description: Просмотры поста — последнее считанное значение; после снятия — итоговое
             claim: { $ref: '#/components/schemas/PlacementClaim' }
+            dispute: { $ref: '#/components/schemas/PlacementDisputeSummary' }
             history:
               type: array
               items: { $ref: '#/components/schemas/PlacementHistoryEntry' }
@@ -2586,6 +2589,19 @@ components:
         reason: { $ref: '#/components/schemas/ClaimReason' }
         text: { type: string }
         created_at: { type: string, format: date-time }
+    PlacementDisputeSummary:
+      type: object
+      description: |
+        Спор по размещению (03 §6): открыт рекламодателем, системой при нарушении или администратором.
+        Решение принимает администратор; предложение доли в кабинетах не показывается.
+      required: [reason, opened_by_type, opened_at, deadline_at]
+      properties:
+        reason:
+          type: string
+          enum: [removed_early, content_modified, top_violated, bot_access_lost, content_mismatch, other, admin]
+        opened_by_type: { type: string, enum: [advertiser, system, admin] }
+        opened_at: { type: string, format: date-time }
+        deadline_at: { type: string, format: date-time, description: T-06 }
     PlacementHistoryEntry:
       type: object
       required: [transition, to_status, actor_type, created_at]
@@ -2799,8 +2815,11 @@ components:
               allOf: [{ $ref: '#/components/schemas/Money' }]
               description: Сумма блогеру без комиссии платформы
             payout_amount: { $ref: '#/components/schemas/Money' }
-            publication_url: { type: string, format: uri }
-            views: { type: integer }
+            publication_url: { type: string, format: uri, description: Публичная ссылка на пост в MAX }
+            views:
+              type: integer
+              description: Просмотры поста — последнее считанное значение; после снятия — итоговое
+            dispute: { $ref: '#/components/schemas/PlacementDisputeSummary' }
             post: { $ref: '#/components/schemas/BloggerPost' }
             available_actions:
               type: array

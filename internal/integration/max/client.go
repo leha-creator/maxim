@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -42,6 +43,10 @@ type Options struct {
 	GlobalRate float64
 	// ChatRate — сообщений в секунду в один чат (05 §2.8: 1 из 2).
 	ChatRate float64
+	// BotUserID — пользователь MAX бота (MAX_BOT_USER_ID); 0 — узнать через GET /me (R-8).
+	BotUserID int64
+	// Sleep — ожидание между повторами attachment.not.ready; по умолчанию — таймер.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 // Client — адаптер MAX Bot API.
@@ -50,6 +55,9 @@ type Client struct {
 	limiter *ratelimit.Limiter
 	opts    Options
 	log     *slog.Logger
+
+	botMu     sync.Mutex
+	botUserID int64
 }
 
 // NewHTTPClient — HTTP-клиент с системными корневыми сертификатами и, если
@@ -85,7 +93,10 @@ func New(out *outbound.Client, limiter *ratelimit.Limiter, opts Options, log *sl
 	if opts.ChatRate <= 0 {
 		opts.ChatRate = 1
 	}
-	return &Client{out: out, limiter: limiter, opts: opts, log: log}
+	if opts.Sleep == nil {
+		opts.Sleep = sleep
+	}
+	return &Client{out: out, limiter: limiter, opts: opts, log: log, botUserID: opts.BotUserID}
 }
 
 type priorityKey struct{}
@@ -124,6 +135,10 @@ type request struct {
 	object    string
 	objectID  string
 	redact    []string
+	// create и checkExisting — вызов создаёт объект: при таймауте перед повтором проверить,
+	// не создан ли он (03 §11).
+	create        bool
+	checkExisting func(ctx context.Context) (bool, error)
 }
 
 func (c *Client) do(ctx context.Context, r request) (outbound.Response, error) {
@@ -141,14 +156,28 @@ func (c *Client) do(ctx context.Context, r request) (outbound.Response, error) {
 		u += "?" + r.query.Encode()
 	}
 	return c.out.Do(ctx, outbound.Call{
-		Operation:    r.operation,
-		Method:       r.method,
-		URL:          u,
-		Header:       http.Header{"Authorization": {c.opts.Token}},
-		Body:         r.body,
-		ObjectType:   r.object,
-		ObjectID:     r.objectID,
-		ValidateBody: validateSuccess,
-		Redact:       r.redact,
+		Operation:     r.operation,
+		Method:        r.method,
+		URL:           u,
+		Header:        http.Header{"Authorization": {c.opts.Token}},
+		Body:          r.body,
+		ObjectType:    r.object,
+		ObjectID:      r.objectID,
+		ValidateBody:  validateSuccess,
+		Redact:        r.redact,
+		Create:        r.create,
+		CheckExisting: r.checkExisting,
 	})
+}
+
+// sleep ждёт d или отмены context.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }

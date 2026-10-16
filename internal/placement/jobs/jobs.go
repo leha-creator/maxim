@@ -1,21 +1,40 @@
-// Package jobs — обработчики заданий модуля размещений (07 §2); сценарии выполняет app.
-// publish_placement и remove_placement регистрирует этап «Автопостинг и контроль»: до него
-// worker их не берёт, задания ждут (R-12).
+// Package jobs — обработчики заданий и входящих событий модуля размещений (07 §2); сценарии
+// выполняет app. События MAX разбирает адаптер (max.ParseUpdate).
 package jobs
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/leha-creator/maxim/internal/integration/max"
 	"github.com/leha-creator/maxim/internal/placement/app"
 	"github.com/leha-creator/maxim/internal/placement/domain"
+	"github.com/leha-creator/maxim/internal/platform/inbound"
 	"github.com/leha-creator/maxim/internal/platform/job"
 )
 
-// Register регистрирует виды заданий модуля: таймеры размещений — с высоким приоритетом (R-8 этапа
-// «Интеграция планировщика»).
-func Register(w *job.Worker, svc *app.Service) {
+// Options — расписание и сроки заданий модуля (07 §8).
+type Options struct {
+	// PublishRetryWindow — T-03: публикация, взятая позже, завершается P-09 (07 §2, «После простоя»).
+	PublishRetryWindow time.Duration
+	// ReconcileInterval — T-09: период сверки публикаций.
+	ReconcileInterval time.Duration
+}
+
+// Register регистрирует виды заданий модуля. Таймеры, публикация и снятие — высокий приоритет
+// (07 §2): берутся первыми и попадают в список затронутых после простоя.
+func Register(w *job.Worker, svc *app.Service, o Options) {
+	if o.PublishRetryWindow <= 0 {
+		o.PublishRetryWindow = domain.DefaultControlRules.PublishRetryWindow
+	}
+	if o.ReconcileInterval <= 0 {
+		o.ReconcileInterval = domain.DefaultControlRules.ReconcileInterval
+	}
 	w.Register(domain.KindPlacementTimer, func(ctx context.Context, r job.Running) error {
 		var p domain.TimerPayload
 		if err := decode(r, &p); err != nil {
@@ -23,6 +42,65 @@ func Register(w *job.Worker, svc *app.Service) {
 		}
 		return svc.HandleTimer(ctx, p, r.ID)
 	}, job.HandlerOptions{Priority: job.PriorityHigh, ObjectRef: objectRef})
+
+	w.Register(domain.KindPublishPlacement, placementHandler(svc.Publish), job.HandlerOptions{
+		Priority: job.PriorityHigh, ObjectRef: objectRef,
+		Overdue: job.Overdue{After: o.PublishRetryWindow, OnExpired: placementHandler(svc.ExpirePublish)},
+	})
+	w.Register(domain.KindRemovePlacement, placementHandler(svc.Remove),
+		job.HandlerOptions{Priority: job.PriorityHigh, ObjectRef: objectRef})
+
+	// Сверка (T-09, R-12): следующий запуск создаётся независимо от исхода.
+	w.RegisterPeriodic(domain.KindReconcilePublications, job.Every(o.ReconcileInterval), func(ctx context.Context, _ job.Running) error {
+		return svc.ReconcilePublications(ctx)
+	}, job.HandlerOptions{})
+	w.Register(domain.KindCheckPublication, func(ctx context.Context, r job.Running) error {
+		var p domain.CheckPublicationPayload
+		if err := decode(r, &p); err != nil {
+			return err
+		}
+		return svc.CheckPublication(ctx, p.PublicationID, app.JobRef{ID: r.ID, Attempts: r.Attempts})
+	}, job.HandlerOptions{})
+}
+
+// RegisterEvents регистрирует обработчики событий MAX о публикациях (R-9): message_edited и
+// message_removed. message_created разбирает модуль каналов и передаёт через порт.
+func RegisterEvents(d *inbound.Dispatcher, svc *app.Service) {
+	d.Handle(inbound.SourceMAX, max.UpdateMessageEdited, handle(func(ctx context.Context, e inbound.Event, u max.Update) error {
+		return svc.MessageEdited(ctx, e.ID, u.MessageID(), u.ContentHash(), u.MessageAt())
+	}))
+	d.Handle(inbound.SourceMAX, max.UpdateMessageRemoved, handle(func(ctx context.Context, e inbound.Event, u max.Update) error {
+		return svc.MessageRemoved(ctx, e.ID, u.MessageID(), u.MessageAt())
+	}))
+}
+
+// placementHandler — обработчик задания с полезной нагрузкой PlacementPayload.
+func placementHandler(fn func(ctx context.Context, id uuid.UUID, j app.JobRef) error) job.Handler {
+	return func(ctx context.Context, r job.Running) error {
+		var p domain.PlacementPayload
+		if err := decode(r, &p); err != nil {
+			return err
+		}
+		return fn(ctx, p.PlacementID, app.JobRef{ID: r.ID, Attempts: r.Attempts})
+	}
+}
+
+// handle разбирает тело события MAX и переводит app.ErrIgnored в статус ignored.
+func handle(fn func(ctx context.Context, e inbound.Event, u max.Update) error) inbound.Handler {
+	return func(ctx context.Context, e inbound.Event) error {
+		u, err := max.ParseUpdate(e.Payload)
+		if err != nil {
+			return job.Permanent(fmt.Errorf("parse max update %s: %w", e.EventType, err))
+		}
+		if u.MessageID() == "" {
+			return inbound.ErrIgnore
+		}
+		err = fn(ctx, e, u)
+		if errors.Is(err, app.ErrIgnored) {
+			return inbound.ErrIgnore
+		}
+		return err
+	}
 }
 
 // objectRef — объект задания для списка затронутых после простоя: placement:<id>.

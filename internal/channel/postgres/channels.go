@@ -68,6 +68,16 @@ func (r *Channels) GetByMaxChatIDForUpdate(ctx context.Context, maxChatID int64)
 	return r.s.withPrices(ctx, channel(row))
 }
 
+func (r *Channels) GetByMaxChatID(ctx context.Context, maxChatID int64) (*domain.Channel, error) {
+	const op = "Channel.Channels.GetByMaxChatID"
+	r.s.debug(ctx, op, "max_chat_id", maxChatID)
+	row, err := r.s.q(ctx).GetChannelByMaxChatID(ctx, maxChatID)
+	if err != nil {
+		return nil, r.s.fail(ctx, op, err)
+	}
+	return r.s.withPrices(ctx, channel(row))
+}
+
 func (r *Channels) GetForUpdate(ctx context.Context, id uuid.UUID) (*domain.Channel, error) {
 	const op = "Channel.Channels.GetForUpdate"
 	r.s.debug(ctx, op, "channel_id", id)

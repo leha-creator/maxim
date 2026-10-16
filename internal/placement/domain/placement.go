@@ -110,6 +110,12 @@ const (
 	NoticeRescheduled  = "placement.rescheduled"
 	NoticeReturned     = "placement.returned"
 	NoticePostRejected = "order.post_rejected"
+	// Этап «Автопостинг и контроль» (R-19).
+	NoticePublished      = "placement.published"
+	NoticeFailed         = "placement.failed"
+	NoticeRemoved        = "placement.removed"
+	NoticeRemovalOverdue = "placement.removal_overdue"
+	NoticeDisputed       = "placement.disputed"
 )
 
 // NoticeTo — уведомление стороне размещения; организацию подставляет app.

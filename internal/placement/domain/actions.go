@@ -181,6 +181,10 @@ func (t TimerCode) ExpectedStatus() Status {
 		return StatusAwaitingSchedule
 	case TimerWindow:
 		return StatusCreated
+	case TimerClaim:
+		return StatusRemoved
+	case TimerDispute:
+		return StatusDisputed
 	}
 	return StatusNone
 }

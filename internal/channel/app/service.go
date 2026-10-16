@@ -105,6 +105,8 @@ type Deps struct {
 	Chats        domain.ChatReader
 	Bot          domain.ChatManager
 	Availability domain.AvailabilityListener
+	// PostListener — сообщения каналов для контроля топа; nil — пустая реализация.
+	PostListener domain.ChannelPostListener
 	Alerts       Alerter
 	Tx           tx.Runner
 	Jobs         job.Enqueuer
@@ -132,6 +134,9 @@ func New(d Deps) *Service {
 	if d.Cart == nil {
 		d.Cart = NopCart{}
 	}
+	if d.PostListener == nil {
+		d.PostListener = NopPostListener{Log: d.Log}
+	}
 	return &Service{Deps: d, log: d.Log.With(logx.KeyModule, "channel")}
 }
 
@@ -139,6 +144,17 @@ func New(d Deps) *Service {
 // размещений собирается после модуля каналов, поэтому порты задаются отдельно.
 func (s *Service) SetPlacementPorts(availability domain.AvailabilityListener, placements domain.PlacementSchedule, cart domain.CartLookup) {
 	s.Availability, s.Placements, s.Cart = availability, placements, cart
+}
+
+// SetPostListener подставляет контроль публикаций модуля размещений (R-9; bootstrap).
+func (s *Service) SetPostListener(l domain.ChannelPostListener) { s.PostListener = l }
+
+// NopPostListener — пустая реализация ChannelPostListener до модуля размещений.
+type NopPostListener struct{ Log *slog.Logger }
+
+func (n NopPostListener) ChannelPostCreated(ctx context.Context, p domain.ChannelPost) error {
+	n.Log.DebugContext(ctx, "channel post, no placements control yet", logx.KeyOp, "Channel.ChannelPost", KeyChannelID, p.ChannelID)
+	return nil
 }
 
 // NopAvailability — пустая реализация AvailabilityListener до модуля размещений (R-11).

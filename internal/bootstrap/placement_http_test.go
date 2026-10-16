@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	placementapp "github.com/leha-creator/maxim/internal/placement/app"
 	"github.com/leha-creator/maxim/internal/placement/placementtest"
 	"github.com/leha-creator/maxim/internal/platform/money"
 )
@@ -268,3 +269,98 @@ func TestCheckoutInsufficientBalanceHTTP(t *testing.T) {
 		t.Fatalf("cart %d orders %d", len(cart.Items), len(orders.Items))
 	}
 }
+
+// scheduledHTTP — размещение, запланированное через кабинеты на 20 октября 12:00 МСК.
+func (a *testApp) scheduledHTTP(adv, blg *client, title string) (orderID, pid string) {
+	a.t.Helper()
+	ch := a.activeChannel(blg, title, 1_000_000)
+	campaign := a.campaignWithPost(adv, "Кампания "+title)
+	if r := adv.do(http.MethodPost, "/cart/items", map[string]any{"channel_id": ch, "format_id": "f_1_24"}); r.status != http.StatusCreated {
+		a.t.Fatalf("add to cart: %d %s", r.status, r.body)
+	}
+	var order orderView
+	adv.do(http.MethodPost, "/campaigns/"+campaign+"/checkout", nil).json(a.t, &order)
+	a.readyVersion(order.CurrentPostVersion.ID)
+	pid = order.Placements[0].ID
+	if r := blg.do(http.MethodPost, "/blogger/placements/"+pid+"/accept", nil); r.status != http.StatusOK {
+		a.t.Fatalf("accept: %d %s", r.status, r.body)
+	}
+	a.clk.Set(time.Date(2026, 10, 20, 7, 0, 0, 0, time.UTC))
+	if r := blg.do(http.MethodPost, "/blogger/placements/"+pid+"/schedule", map[string]any{"mode": "at", "publish_at": "2026-10-20T09:00:00Z"}); r.status != http.StatusOK {
+		a.t.Fatalf("schedule: %d %s", r.status, r.body)
+	}
+	return order.ID, pid
+}
+
+type controlView struct {
+	Placements []struct {
+		Status         string `json:"status"`
+		PublicationURL string `json:"publication_url"`
+		Views          *int   `json:"views"`
+		Dispute        *struct {
+			Reason       string `json:"reason"`
+			OpenedByType string `json:"opened_by_type"`
+			DeadlineAt   string `json:"deadline_at"`
+		} `json:"dispute"`
+	} `json:"placements"`
+}
+
+func TestPublicationInCabinetsHTTP(t *testing.T) {
+	a := newTestApp(t)
+	adv := a.advertiserClient("adv-pub@example.ru")
+	blg := a.bloggerClient("blg-pub@example.ru")
+	orderID, pid := a.scheduledHTTP(adv, blg, "Рецепты")
+
+	a.clk.Set(time.Date(2026, 10, 20, 9, 0, 3, 0, time.UTC))
+	a.settle()
+	posts := a.maxFake().Posts()
+	if len(posts) != 1 {
+		t.Fatalf("posts %d", len(posts))
+	}
+	a.maxFake().SetViews(posts[0].ID, 321)
+	if err := a.mods.placement.CheckPublication(context.Background(), a.publicationID(pid), placementJobRef()); err != nil {
+		t.Fatal(err)
+	}
+	var view controlView
+	adv.do(http.MethodGet, "/orders/"+orderID, nil).json(t, &view)
+	p := view.Placements[0]
+	if p.Status != "published" || p.PublicationURL == "" || p.Views == nil || *p.Views != 321 || p.Dispute != nil {
+		t.Fatalf("published view %+v", p)
+	}
+	var blgView struct {
+		PublicationURL string `json:"publication_url"`
+		Views          *int   `json:"views"`
+	}
+	blg.do(http.MethodGet, "/blogger/placements/"+pid, nil).json(t, &blgView)
+	if blgView.PublicationURL != p.PublicationURL || blgView.Views == nil || *blgView.Views != 321 {
+		t.Fatalf("blogger view %+v", blgView)
+	}
+
+	// Чужое удаление через Webhook — спор в обоих кабинетах, без предложенной доли.
+	body := `{"update_type":"message_removed","timestamp":1792145000000,"message_id":"` + posts[0].ID + `","chat_id":1,"user_id":42}`
+	if code := a.webhook(testWebhookPath, testWebhookSecret, body); code != http.StatusOK {
+		t.Fatalf("webhook: %d", code)
+	}
+	a.settle()
+	r := adv.do(http.MethodGet, "/orders/"+orderID, nil)
+	r.json(t, &view)
+	p = view.Placements[0]
+	if p.Status != "disputed" || p.Dispute == nil || p.Dispute.Reason != "removed_early" || p.Dispute.OpenedByType != "system" {
+		t.Fatalf("disputed view %+v", p)
+	}
+	if bytes.Contains(r.body, []byte("suggested_share")) {
+		t.Fatal("suggested share shown to advertiser")
+	}
+}
+
+// publicationID — публикация размещения.
+func (a *testApp) publicationID(pid string) uuid.UUID {
+	a.t.Helper()
+	pub, err := a.mods.placementStore.Publications().GetByPlacement(context.Background(), uuid.MustParse(pid))
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	return pub.ID
+}
+
+func placementJobRef() placementapp.JobRef { return placementapp.JobRef{ID: uuid.New()} }

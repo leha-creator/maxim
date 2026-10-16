@@ -104,6 +104,8 @@ type HistoryEntry struct {
 	ReasonCode  string
 	ReasonText  string
 	JobID       *uuid.UUID
+	// InboundEventID — входящее событие, вызвавшее переход (03 §12).
+	InboundEventID *uuid.UUID
 	// IdempotencyKey — ключ действия пользователя (R-18); пусто — без ключа.
 	IdempotencyKey string
 	CreatedAt      time.Time

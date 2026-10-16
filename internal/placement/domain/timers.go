@@ -16,6 +16,10 @@ const (
 	TimerSchedule TimerCode = "T-13"
 	// TimerWindow — T-14: окно дат истекает, пока размещение в created → P-06 window_elapsed (R-11).
 	TimerWindow TimerCode = "T-14"
+	// TimerClaim — T-05: окно претензий после снятия → P-13 (этап «Приёмка», R-14).
+	TimerClaim TimerCode = "T-05"
+	// TimerDispute — T-06: срок решения по спору → оповещение, состояние не меняется (R-11).
+	TimerDispute TimerCode = "T-06"
 )
 
 // Виды заданий модуля (07 §2).
@@ -23,6 +27,10 @@ const (
 	KindPlacementTimer   = "placement_timer"
 	KindPublishPlacement = "publish_placement"
 	KindRemovePlacement  = "remove_placement"
+	// KindReconcilePublications — сверка публикаций раз в T-09 (07 §3, R-12).
+	KindReconcilePublications = "reconcile_publications"
+	// KindCheckPublication — проверка одной живой публикации по сверке (R-12).
+	KindCheckPublication = "check_publication"
 )
 
 // Timing — сроки и правила времени (A-10, 07 §8); значения — из конфигурации.
@@ -130,7 +138,21 @@ func RemoveJob(id uuid.UUID, at time.Time) Job {
 	return Job{Kind: KindRemovePlacement, DedupeKey: RemoveKey(id), RunAt: at, Payload: PlacementPayload{PlacementID: id}}
 }
 
-// allJobKeys — все задания размещения: таймеры, публикация и снятие.
+// CheckPublicationPayload — полезная нагрузка check_publication.
+type CheckPublicationPayload struct {
+	PublicationID uuid.UUID `json:"publication_id"`
+}
+
+// CheckPublicationKey — dedupe_key проверки публикации: одна живая на публикацию (R-12).
+func CheckPublicationKey(id uuid.UUID) string { return "check_publication:" + id.String() }
+
+// CheckPublicationJob — задание check_publication на runAt.
+func CheckPublicationJob(id uuid.UUID, runAt time.Time) Job {
+	return Job{Kind: KindCheckPublication, DedupeKey: CheckPublicationKey(id), RunAt: runAt,
+		Payload: CheckPublicationPayload{PublicationID: id}}
+}
+
+// allJobKeys — все задания размещения до публикации: таймеры, публикация и снятие.
 func allJobKeys(id uuid.UUID) []string {
 	return []string{TimerKey(id, TimerAccept), TimerKey(id, TimerSchedule), TimerKey(id, TimerWindow), PublishKey(id), RemoveKey(id)}
 }

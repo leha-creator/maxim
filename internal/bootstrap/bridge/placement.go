@@ -73,8 +73,9 @@ func offer(pc channelapp.PlacementChannel) domain.ChannelOffer {
 		})
 	}
 	return domain.ChannelOffer{
-		Ref:        domain.ChannelRef{ID: c.ID, Title: c.Title, IconURL: c.IconURL, Link: c.Link},
-		OwnerOrgID: c.OrganizationID, Active: c.Status == channeldomain.StatusActive, Visible: pc.Visible, Prices: prices,
+		Ref:       domain.ChannelRef{ID: c.ID, Title: c.Title, IconURL: c.IconURL, Link: c.Link},
+		MaxChatID: c.MaxChatID, OwnerOrgID: c.OrganizationID, Active: c.Status == channeldomain.StatusActive, Visible: pc.Visible,
+		Prices: prices,
 	}
 }
 

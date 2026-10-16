@@ -41,6 +41,8 @@ type ChannelOffer struct {
 	Ref ChannelRef
 	// OwnerOrgID — организация-владелец; nil у канала без владельца.
 	OwnerOrgID *uuid.UUID
+	// MaxChatID — идентификатор чата MAX (публикация, контроль).
+	MaxChatID int64
 	// Active — канал в active (I-08).
 	Active bool
 	// Visible — канал виден в каталоге: active, номер РКН подтверждён или не нужен, есть цена.

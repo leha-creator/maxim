@@ -49,6 +49,8 @@ type Scheduler interface {
 	Cancel(ctx context.Context, dedupeKey string) (bool, error)
 	// Reschedule переносит ожидающее задание на runAt; false — задания нет.
 	Reschedule(ctx context.Context, dedupeKey string, runAt time.Time) (bool, error)
+	// Exists — есть живое (ожидающее или выполняемое) задание с dedupeKey.
+	Exists(ctx context.Context, dedupeKey string) (bool, error)
 }
 
 // Queue — запись заданий в таблицу job.
@@ -131,6 +133,15 @@ func (q *Queue) Reschedule(ctx context.Context, dedupeKey string, runAt time.Tim
 	}
 	q.log.DebugContext(ctx, "job rescheduled", logx.KeyOp, "Job.Reschedule", "dedupe_key", dedupeKey, "run_at", runAt)
 	return true, nil
+}
+
+// Exists сообщает, что есть живое задание с dedupeKey (pending или running).
+func (q *Queue) Exists(ctx context.Context, dedupeKey string) (bool, error) {
+	ok, err := sqlc.New(db.Conn(ctx, q.pool)).LiveJobExists(ctx, &dedupeKey)
+	if err != nil {
+		return false, fmt.Errorf("job exists %s: %w", dedupeKey, err)
+	}
+	return ok, nil
 }
 
 // encodePayload сериализует полезную нагрузку и добавляет сквозной идентификатор.

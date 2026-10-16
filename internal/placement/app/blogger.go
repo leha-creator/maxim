@@ -29,6 +29,9 @@ type BloggerView struct {
 	AdvertiserName string
 	Post           *BloggerPost
 	Actions        []string
+	// Publication и Dispute — пост в канале и спор, если есть (R-18).
+	Publication *domain.Publication
+	Dispute     *domain.Dispute
 }
 
 // BloggerPage — страница размещений блогера.
@@ -94,6 +97,16 @@ func (s *Service) bloggerView(ctx context.Context, p domain.Placement) (BloggerV
 	}
 	view := BloggerView{Placement: p, Channel: ref, OrderNumber: o.Number, AdvertiserName: v.AdvertiserName,
 		Actions: domain.BloggerActions(&p, s.Clock.Now(), s.Config.Timing)}
+	pubs, disputes, err := s.control(ctx, []uuid.UUID{p.ID})
+	if err != nil {
+		return BloggerView{}, err
+	}
+	if pub, ok := pubs[p.ID]; ok {
+		view.Publication = &pub
+	}
+	if d, ok := disputes[p.ID]; ok {
+		view.Dispute = &d
+	}
 	if p.Status != domain.StatusCreated && v.Status == domain.VersionReady {
 		c, err := s.Campaigns.Get(ctx, o.OrganizationID, o.CampaignID)
 		if err != nil {

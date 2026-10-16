@@ -135,3 +135,63 @@ func TestDevPostVersion(t *testing.T) {
 		t.Fatal("dev command not logged")
 	}
 }
+
+func TestPlacementControlConfig(t *testing.T) {
+	cfg, err := LoadConfig(validAPIEnv(), ModeAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := cfg.Placement.Control
+	if k.PublishRetryWindow != 30*time.Minute || k.PublishRetryInterval != 30*time.Second || k.PublishFindLookback != 40*time.Minute ||
+		k.PublishMaxImages != 10 || k.RemoveRetryWindow != 24*time.Hour || k.ClaimWindow != 24*time.Hour ||
+		k.DisputeDeadline != 72*time.Hour || k.TopViolationShare != 5000 || k.ReconcileInterval != 5*time.Minute ||
+		k.ScheduledGrace != 5*time.Minute || k.ViewsRefresh != time.Hour || k.StuckRemovalOverdueAge != time.Hour {
+		t.Fatalf("control defaults: %+v", k)
+	}
+	if r := controlRules(k); r.MaxImages != 10 || r.TopViolationShare != 5000 || r.PublishRetryWindow != 30*time.Minute {
+		t.Fatalf("rules %+v", r)
+	}
+	for _, tc := range []struct {
+		key, value, field string
+		ok                bool
+	}{
+		{"PUBLISH_RETRY_INTERVAL", "30m", "PUBLISH_RETRY_INTERVAL", false},
+		{"PUBLISH_RETRY_INTERVAL", "29m", "", true},
+		{"PUBLISH_FIND_LOOKBACK", "30m", "PUBLISH_FIND_LOOKBACK", false},
+		{"PUBLISH_MAX_IMAGES", "0", "PUBLISH_MAX_IMAGES", false},
+		{"PUBLISH_MAX_IMAGES", "11", "PUBLISH_MAX_IMAGES", false},
+		{"DISPUTE_TOP_VIOLATION_SHARE", "10000", "", true},
+		{"DISPUTE_TOP_VIOLATION_SHARE", "10001", "DISPUTE_TOP_VIOLATION_SHARE", false},
+		{"RECONCILE_INTERVAL", "0s", "RECONCILE_INTERVAL", false},
+		{"REMOVE_RETRY_WINDOW", "-1h", "REMOVE_RETRY_WINDOW", false},
+		{"MAX_BOT_USER_ID", "123", "", true},
+	} {
+		env := validAPIEnv()
+		env[tc.key] = tc.value
+		_, err := LoadConfig(env, ModeAPI)
+		switch {
+		case tc.ok && err != nil:
+			t.Errorf("%s=%s: %v", tc.key, tc.value, err)
+		case !tc.ok && (err == nil || !slices.ContainsFunc(configFields(t, err), func(f string) bool { return strings.HasPrefix(f, tc.field) })):
+			t.Errorf("%s=%s: %v", tc.key, tc.value, err)
+		}
+	}
+}
+
+func TestAutopostingWiring(t *testing.T) {
+	a := newTestApp(t)
+	for _, kind := range []string{"publish_placement", "remove_placement", "check_publication", "reconcile_publications"} {
+		if !slices.Contains(a.worker.Kinds(), kind) {
+			t.Errorf("worker kinds have no %s", kind)
+		}
+	}
+	if _, ok := a.mods.channel.PostListener.(bridge.ChannelPosts); !ok {
+		t.Fatalf("channel post listener %T", a.mods.channel.PostListener)
+	}
+	if _, ok := a.mods.placement.Publisher.(bridge.PlacementPublisher); !ok {
+		t.Fatalf("publisher %T", a.mods.placement.Publisher)
+	}
+	if _, ok := a.mods.placement.Content.(bridge.PlacementContent); !ok {
+		t.Fatalf("content %T", a.mods.placement.Content)
+	}
+}

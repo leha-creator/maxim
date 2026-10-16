@@ -12,7 +12,7 @@ import (
 
 // cancelOnChannelLoss — состояния, из которых потеря канала отменяет размещение (S-25 шаг 2).
 // scheduled не меняется: публикацию решит задание publish_placement (P-09), опубликованные —
-// спор (P-14, этап «Автопостинг и контроль»).
+// спор bot_access_lost (P-14, R-10 этапа «Автопостинг и контроль»).
 var cancelOnChannelLoss = []domain.Status{domain.StatusCreated, domain.StatusAwaitingBlogger, domain.StatusAwaitingSchedule}
 
 // ChannelUnavailable — канал стал недоступен (S-25): P-06 channel_unavailable для размещений до
@@ -30,8 +30,10 @@ func (s *Service) ChannelUnavailable(ctx context.Context, channelID uuid.UUID, f
 		cancelled := 0
 		for _, p0 := range list {
 			if p0.Status == domain.StatusPublished {
-				s.log.WarnContext(ctx, "placement needs dispute, not implemented", logx.KeyOp, op, KeyPlacementID, p0.ID,
-					KeyChannelID, channelID)
+				if err := s.reportViolation(ctx, op, domain.Violation{PlacementID: p0.ID, Kind: domain.ViolationBotAccessLost,
+					OccurredAt: now, Source: domain.SourceEvent}, source{}); err != nil {
+					return err
+				}
 				continue
 			}
 			o, err := s.Orders.GetByIDForUpdate(ctx, p0.OrderID)

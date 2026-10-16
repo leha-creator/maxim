@@ -35,6 +35,7 @@ func Register(w *job.Worker, d *inbound.Dispatcher, svc *app.Service) {
 		case u.InChannel():
 			return svc.ChannelPostCreated(ctx, ev, app.ChannelPost{
 				MaxChatID: u.ChatID, MessageID: u.Message.Body.MID, Text: u.Message.Body.Text,
+				SenderID: u.SenderID(), At: u.MessageAt(),
 			})
 		}
 		return app.ErrIgnored

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,5 +279,60 @@ func TestReleaseUnclaimed(t *testing.T) {
 	e.drain()
 	if c := e.channel(-100); c.Status != domain.StatusUnclaimed || c.UnclaimedSince == nil {
 		t.Fatalf("re-added: %s", c.Status)
+	}
+}
+
+// postListener запоминает сообщения, переданные модулю размещений (R-9).
+type postListener struct {
+	mu    sync.Mutex
+	posts []domain.ChannelPost
+}
+
+func (l *postListener) ChannelPostCreated(_ context.Context, p domain.ChannelPost) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.posts = append(l.posts, p)
+	return nil
+}
+
+func (l *postListener) ids() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []string
+	for _, p := range l.posts {
+		out = append(out, p.MessageID)
+	}
+	return out
+}
+
+func TestChannelPostsPassedToPlacements(t *testing.T) {
+	e := newEnv(t)
+	l := &postListener{}
+	e.svc.SetPostListener(l)
+	org := e.org()
+	issued, _ := e.svc.CreateLinkCode(e.ctx(), org)
+	e.max.set(-100, publicCh, allRights)
+	e.event(botAdded(-100, 1))
+	e.drain()
+
+	e.event(`{"update_type":"message_created","timestamp":1792141300000,"message":{"sender":{"user_id":42},` +
+		`"recipient":{"chat_id":-100,"chat_type":"channel"},"timestamp":1792141200000,"body":{"mid":"mid.human","text":"Новый рецепт"}}}`)
+	e.event(channelPost(-100, "mid.wrong", "ZZZZZZZZ"))
+	e.event(channelPost(-100, "mid.code", issued.Code))
+	e.event(channelPost(-999, "mid.unknown", "Пост в чужом канале"))
+	e.drain()
+
+	got := l.ids()
+	if len(got) != 2 || !contains(got, "mid.human") || !contains(got, "mid.wrong") {
+		t.Fatalf("passed %v", got)
+	}
+	for _, p := range l.posts {
+		if p.MessageID == "mid.human" && (p.SenderID != 42 || !p.At.Equal(time.UnixMilli(1792141200000)) ||
+			p.InboundEventID == nil || p.ChannelID != e.channel(-100).ID) {
+			t.Fatalf("post %+v", p)
+		}
+	}
+	if st := e.eventStatus("message_created"); !contains(st, "ignored") {
+		t.Fatalf("unknown channel post: %v", st)
 	}
 }

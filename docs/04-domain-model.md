@@ -427,7 +427,9 @@ erDiagram
 | `removal_overdue` | `boolean` | да | Удаление по сроку не удалось (T-10) |
 | `views` | `integer` | нет | Последнее считанное значение |
 | `views_checked_at` | `timestamptz` | нет | |
-| `content_hash` | `text` | да | Хеш отправленного текста и вложений — для сравнения при `message_edited` |
+| `content_hash` | `text` | да | Хеш сообщения в том виде, в каком его хранит MAX: нормализованный текст, разметка и вложения по порядку (05 §2.6). Сравнивается при `message_edited` и сверке |
+
+Индексы: живые публикации (`removed_at IS NULL`) — по `id` для сверки и по `channel_id` для контроля топа; `removal_overdue` — для поиска зависших (07 §3). Своё удаление записывает `removed_at` с причиной `schedule` до вызова MAX; при ошибке запись откатывается и ставится `removal_overdue`.
 
 ### violation
 
@@ -438,7 +440,9 @@ erDiagram
 | `occurred_at` | `timestamptz` | да | Когда произошло |
 | `source` | `text` | да | `event`, `reconciliation` |
 | `inbound_event_id` | `uuid` | нет | |
-| `details` | `jsonb` | да | Например, идентификатор постороннего сообщения |
+| `details` | `jsonb` | да | Например, идентификатор постороннего сообщения. Текста сообщений нет |
+
+Неизменяема: роль приложения только добавляет строки. Пара `(placement_id, inbound_event_id)` уникальна для нарушений из событий: повтор события второй записи не создаёт.
 
 ### claim
 
@@ -453,7 +457,7 @@ erDiagram
 | `placement_id` | `uuid` | да | Уникально (I-11) |
 | `reason` | `text` | да | 03 §6 |
 | `opened_by_type` | `text` | да | `advertiser`, `system`, `admin` |
-| `claim_id`, `violation_id` | `uuid` | нет | Что стало основанием |
+| `claim_id`, `violation_id` | `uuid` | нет | Что стало основанием. У `claim_id` нет внешнего ключа, пока нет таблицы `claim` (этап «Приёмка, споры и возвраты») |
 | `deadline_at` | `timestamptz` | да | T-06 |
 | `suggested_share` | `integer` | нет | Предложение системы (03 §7) |
 | `resolution` | `text` | нет | `full_payout`, `proportional`, `full_refund` |

@@ -89,3 +89,24 @@ func FinalText(body string, m Marking, erid string, limit int) (string, error) {
 	}
 	return out, nil
 }
+
+// ErrMarkingMismatch — итоговый текст версии не совпал с собранным заново (I-01).
+var ErrMarkingMismatch = errors.New("post: final text does not match marking")
+
+// VerifyFinalText — I-01 перед публикацией (R-3 этапа «Автопостинг и контроль»): версия
+// ready, erid задан, итоговый текст равен собранному заново из body и параметров маркировки
+// версии и содержит erid, если erid над или под постом.
+func VerifyFinalText(v Version, limit int) error {
+	if v.Status != VersionReady || strings.TrimSpace(v.Erid) == "" {
+		return ErrMarkingMismatch
+	}
+	want, err := FinalText(v.Body, Marking{Carrier: v.TokenCarrier, Position: v.TokenPosition,
+		Name: v.AdvertiserName, INN: v.AdvertiserINN}, v.Erid, limit)
+	if err != nil || want != v.FinalText {
+		return ErrMarkingMismatch
+	}
+	if v.TokenPosition != PositionLink && !strings.Contains(v.FinalText, EscapeHTML(v.Erid)) {
+		return ErrMarkingMismatch
+	}
+	return nil
+}

@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/leha-creator/maxim/internal/placement/domain"
+	"github.com/leha-creator/maxim/internal/platform/alert"
+	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
@@ -24,6 +26,19 @@ func (s *Service) HandleTimer(ctx context.Context, payload domain.TimerPayload, 
 	}
 	if err != nil {
 		return err
+	}
+	switch payload.Timer {
+	case domain.TimerClaim:
+		if p0.Status != domain.StatusRemoved {
+			s.log.DebugContext(ctx, "placement timer outdated", logx.KeyOp, op, KeyPlacementID, p0.ID, "timer", payload.Timer,
+				"status", p0.Status)
+			return nil
+		}
+		// R-14: P-13 — этап «Приёмка, споры и возвраты»; таймер ждёт, повторяясь раз в час.
+		s.log.DebugContext(ctx, "auto acceptance not implemented yet", logx.KeyOp, op, KeyPlacementID, p0.ID)
+		return job.Retry(errAutoAcceptancePending, time.Hour)
+	case domain.TimerDispute:
+		return s.disputeDeadline(ctx, op, p0)
 	}
 	return s.Tx.InTx(ctx, func(ctx context.Context) error {
 		o, err := s.Orders.GetByIDForUpdate(ctx, p0.OrderID)
@@ -72,4 +87,50 @@ func (s *Service) OverdueScheduled(ctx context.Context, olderThan time.Time) ([]
 // CountByStatus — число размещений по состояниям (07 §5.5).
 func (s *Service) CountByStatus(ctx context.Context) (map[domain.Status]int, error) {
 	return s.Placements.CountByStatus(ctx)
+}
+
+// errAutoAcceptancePending — автоприёмка (P-13) появится с этапом приёмки (R-14).
+var errAutoAcceptancePending = errors.New("placement: auto acceptance is not implemented yet")
+
+// disputeDeadline — T-06 (R-11): спор не решён к сроку — оповещение старшему администратору,
+// состояние не меняется.
+func (s *Service) disputeDeadline(ctx context.Context, op string, p domain.Placement) error {
+	if p.Status != domain.StatusDisputed {
+		s.log.DebugContext(ctx, "placement timer outdated", logx.KeyOp, op, KeyPlacementID, p.ID, "timer", domain.TimerDispute,
+			"status", p.Status)
+		return nil
+	}
+	d, err := s.Disputes.GetByPlacement(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	if d.Resolution != "" {
+		s.log.DebugContext(ctx, "placement timer outdated", logx.KeyOp, op, KeyPlacementID, p.ID, "timer", domain.TimerDispute,
+			"reason", "resolved")
+		return nil
+	}
+	s.log.WarnContext(ctx, "dispute deadline passed", logx.KeyOp, op, KeyPlacementID, p.ID, "deadline_at", d.DeadlineAt,
+		"reason", d.Reason)
+	s.raise(ctx, op, alert.Alert{
+		Reason: "dispute_overdue", ObjectKey: p.ID.String(), Level: alert.LevelWarn,
+		Summary: "Спор по размещению не решён в срок (T-06)",
+		Fields:  map[string]any{"placement_id": p.ID, "dispute_id": d.ID, "deadline_at": d.DeadlineAt},
+	})
+	s.log.InfoContext(ctx, "placement timer fired", logx.KeyOp, op, KeyPlacementID, p.ID, "timer", domain.TimerDispute,
+		"result", p.Status)
+	return nil
+}
+
+// OverdueRemovals — ключи публикаций с removal_overdue, отмеченных раньше olderThan (07 §3):
+// проверка зависших для platform/stuck.
+func (s *Service) OverdueRemovals(ctx context.Context, olderThan time.Time) ([]string, error) {
+	list, err := s.Publications.OverdueRemovals(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(list))
+	for _, id := range list {
+		out = append(out, "publication:"+id.String())
+	}
+	return out, nil
 }

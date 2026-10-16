@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/leha-creator/maxim/internal/integration/max"
 )
@@ -32,6 +33,15 @@ type Client struct {
 
 	messages    map[int64][]max.ChannelMessage
 	messagesErr error
+
+	now                func() time.Time
+	posts              map[string]*Post
+	postOrder          []string
+	uploads            int
+	uploadErr          error
+	sendErr            error
+	sendAfterCreateErr error
+	deleteErr          error
 }
 
 // New создаёт пустой Client.

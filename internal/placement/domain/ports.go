@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,6 +94,8 @@ type Placements interface {
 	CountByOrders(ctx context.Context, orderIDs []uuid.UUID) (map[uuid.UUID]map[Status]int, error)
 	// OverdueScheduled — размещения в scheduled с publish_at раньше before (07 §3).
 	OverdueScheduled(ctx context.Context, before time.Time) ([]uuid.UUID, error)
+	// ScheduledWithoutPublication — scheduled с publish_at раньше before без публикации (05 §2.8 шаг 5).
+	ScheduledWithoutPublication(ctx context.Context, before time.Time) ([]ScheduledRef, error)
 }
 
 // History — история состояний (03 §12). Только добавление.
@@ -196,4 +199,133 @@ type Notice struct {
 // Реализация — модуль notification; до него — NopNotifier.
 type Notifier interface {
 	Notify(ctx context.Context, n Notice) error
+}
+
+// OutgoingPost — пост к отправке в канал (05 §2.6): итоговый текст и токены изображений по порядку.
+type OutgoingPost struct {
+	Text        string
+	ImageTokens []string
+	// Recover* — как найти свой пост при таймауте отправки, чтобы не опубликовать дважды
+	// (03 §11, R-5): сообщение бота не раньше RecoverSince, текст содержит RecoverNeedle (erid).
+	RecoverSenderID int64
+	RecoverSince    time.Time
+	RecoverNeedle   string
+}
+
+// ChannelPublisher — публикация и чтение постов канала в MAX (R-1). Реализация — integration/max
+// через переходник в bootstrap. Вызывается только из обработчиков заданий вне транзакции (I-13).
+// Ошибки, которые не повторяются (отказ 4xx), помечены job.Permanent; код отказа MAX —
+// в *ExternalError.
+type ChannelPublisher interface {
+	// UploadImage загружает изображение и возвращает токен вложения. Токены не переиспользуются.
+	UploadImage(ctx context.Context, chatID int64, r io.Reader, size int64, contentType string) (string, error)
+	// SendPost публикует пост в канал.
+	SendPost(ctx context.Context, chatID int64, post OutgoingPost) (SentMessage, error)
+	// GetMessage читает сообщение; нет сообщения — ErrMessageNotFound.
+	GetMessage(ctx context.Context, messageID string) (ChannelMessage, error)
+	// DeleteMessage удаляет сообщение; успех проверяется по телу ответа.
+	DeleteMessage(ctx context.Context, chatID int64, messageID string) error
+	// ListMessages — сообщения канала за [from, to], новые первыми.
+	ListMessages(ctx context.Context, chatID int64, from, to time.Time) ([]ChannelMessage, error)
+	// FindPost ищет сообщение автора senderID за [from, to], текст которого содержит needle
+	// (поиск своей публикации после неизвестного исхода, R-5); nil — не найдено.
+	FindPost(ctx context.Context, chatID int64, from, to time.Time, senderID int64, needle string) (*ChannelMessage, error)
+	// BotUserID — пользователь MAX бота платформы (R-8).
+	BotUserID(ctx context.Context) (int64, error)
+}
+
+// ExternalError — отказ внешней системы с её кодом (для reason_text истории). Код — машинный,
+// без персональных данных.
+type ExternalError struct {
+	Code string
+	Err  error
+}
+
+func (e *ExternalError) Error() string { return "placement: external system rejected: " + e.Code }
+func (e *ExternalError) Unwrap() error { return e.Err }
+
+// PublicationContent — содержание версии поста для публикации (R-1). Реализация — модуль post.
+type PublicationContent interface {
+	// Get — версия с итоговым текстом, проверкой маркировки и изображениями по порядку.
+	Get(ctx context.Context, versionID uuid.UUID) (Content, error)
+	// Open открывает файл производной из закрытой области хранилища; закрывает вызывающий.
+	Open(ctx context.Context, derivativeID uuid.UUID) (io.ReadCloser, error)
+}
+
+// LivePlacement — живая публикация канала вместе с размещением (контроль топа, R-10).
+type LivePlacement struct {
+	Placement   Placement
+	Publication Publication
+}
+
+// Publications — публикации (04 §5).
+type Publications interface {
+	// Insert — новая публикация; у размещения уже есть — ErrPublicationExists.
+	Insert(ctx context.Context, pub Publication) error
+	// GetByPlacement — публикация размещения без блокировки; ErrNotFound, если нет.
+	GetByPlacement(ctx context.Context, placementID uuid.UUID) (Publication, error)
+	// GetByPlacementForUpdate — то же с блокировкой строки.
+	GetByPlacementForUpdate(ctx context.Context, placementID uuid.UUID) (Publication, error)
+	// GetForUpdate — публикация по идентификатору с блокировкой; ErrNotFound, если нет.
+	GetForUpdate(ctx context.Context, id uuid.UUID) (Publication, error)
+	// FindByMessageID — публикация по идентификатору сообщения MAX без блокировки.
+	FindByMessageID(ctx context.Context, messageID string) (Publication, bool, error)
+	// Update — снятие, намерение, removal_overdue, просмотры.
+	Update(ctx context.Context, pub Publication) error
+	// ListLive — живые публикации по id после after, не больше limit.
+	ListLive(ctx context.Context, after uuid.UUID, limit int) ([]Publication, error)
+	// ListLiveByChannel — живые публикации канала с размещениями в published или disputed.
+	ListLiveByChannel(ctx context.Context, channelID uuid.UUID) ([]LivePlacement, error)
+	// ListByPlacements — публикации размещений (ответы кабинетов).
+	ListByPlacements(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]Publication, error)
+	// OverdueRemovals — публикации с removal_overdue, отмеченные раньше before (07 §3).
+	OverdueRemovals(ctx context.Context, before time.Time) ([]uuid.UUID, error)
+}
+
+// Violations — нарушения (04 §5). Только добавление (R-20).
+type Violations interface {
+	// Insert — новое нарушение; повтор того же события — ErrDuplicateViolation.
+	Insert(ctx context.Context, v Violation) error
+}
+
+// Disputes — споры (04 §5).
+type Disputes interface {
+	// Insert — новый спор; у размещения уже есть — ErrDisputeExists.
+	Insert(ctx context.Context, d Dispute) error
+	// GetByPlacement — спор размещения; ErrNotFound, если нет.
+	GetByPlacement(ctx context.Context, placementID uuid.UUID) (Dispute, error)
+	// ListByPlacements — споры размещений (ответы кабинетов).
+	ListByPlacements(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]Dispute, error)
+}
+
+// ScheduledRef — запланированное размещение и его время публикации.
+type ScheduledRef struct {
+	ID        uuid.UUID
+	PublishAt time.Time
+}
+
+// CallPriority — приоритет вызовов ChannelPublisher для общего ограничителя MAX (05 §2.8):
+// публикация и снятие ждут токен без предела, сверка уступает им (R-15).
+type CallPriority int
+
+const (
+	// CallPublish — публикация и снятие.
+	CallPublish CallPriority = iota + 1
+	// CallReconcile — сверка и контроль.
+	CallReconcile
+)
+
+type callPriorityKey struct{}
+
+// WithCallPriority задаёт приоритет вызовов в context.
+func WithCallPriority(ctx context.Context, p CallPriority) context.Context {
+	return context.WithValue(ctx, callPriorityKey{}, p)
+}
+
+// CallPriorityFrom — приоритет вызовов из context; без него — сверка.
+func CallPriorityFrom(ctx context.Context) CallPriority {
+	if p, ok := ctx.Value(callPriorityKey{}).(CallPriority); ok {
+		return p
+	}
+	return CallReconcile
 }

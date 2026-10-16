@@ -47,7 +47,8 @@ UPDATE placement SET
     status_reason = @status_reason, sent_to_blogger_at = @sent_to_blogger_at,
     accept_deadline_at = @accept_deadline_at, schedule_deadline_at = @schedule_deadline_at,
     publish_at = @publish_at, remove_at = @remove_at, published_at = @published_at, removed_at = @removed_at,
-    claim_deadline_at = @claim_deadline_at, lock_version = @lock_version, updated_at = @updated_at
+    claim_deadline_at = @claim_deadline_at, final_views = @final_views, lock_version = @lock_version,
+    updated_at = @updated_at
 WHERE id = @id AND status = @prev_status AND lock_version = @prev_lock_version;
 
 -- name: ListPlacementsByOrder :many
@@ -99,3 +100,10 @@ WHERE order_id = ANY(@order_ids::uuid[]) GROUP BY order_id, status;
 -- name: OverdueScheduled :many
 -- 07 §3: размещение в scheduled с прошедшим publish_at.
 SELECT id FROM placement WHERE status = 'scheduled' AND publish_at < @before ORDER BY publish_at LIMIT 1000;
+
+-- name: ScheduledWithoutPublication :many
+-- 05 §2.8 шаг 5: scheduled с прошедшим publish_at без публикации.
+SELECT p.id, p.publish_at FROM placement p
+WHERE p.status = 'scheduled' AND p.publish_at < @before
+  AND NOT EXISTS (SELECT 1 FROM publication pub WHERE pub.placement_id = p.id)
+ORDER BY p.publish_at LIMIT 1000;

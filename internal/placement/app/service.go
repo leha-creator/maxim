@@ -10,10 +10,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/leha-creator/maxim/internal/placement/domain"
+	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/apperr"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/clock"
@@ -34,6 +36,7 @@ const (
 // управляет их обработчик (этап «Автопостинг и контроль»).
 const (
 	timerAttempts     = 5
+	checkAttempts     = 3
 	unboundedAttempts = 1000
 )
 
@@ -63,10 +66,13 @@ type Config struct {
 	FeeRateBP int
 	Timing    domain.Timing
 	Cart      domain.CartRules
+	// Control — публикация, снятие и контроль (этап «Автопостинг и контроль»).
+	Control domain.ControlRules
 }
 
 func (c *Config) defaults() {
 	c.Timing = c.Timing.WithDefaults()
+	c.Control = c.Control.WithDefaults()
 	if c.Cart.MaxItems == 0 {
 		c.Cart.MaxItems = 50
 	}
@@ -86,12 +92,23 @@ type Deps struct {
 	Holds       domain.Holds
 	Contractors domain.ContractorGate
 	Notifier    domain.Notifier
-	Tx          tx.Runner
-	Jobs        job.Scheduler
-	Audit       audit.Recorder
-	Clock       clock.Clock
-	Log         *slog.Logger
-	Config      Config
+	// Публикации, нарушения, споры и внешние вызовы (этап «Автопостинг и контроль»). Publisher
+	// и Content нужны только в режиме worker.
+	Publications domain.Publications
+	Violations   domain.Violations
+	Disputes     domain.Disputes
+	Publisher    domain.ChannelPublisher
+	Content      domain.PublicationContent
+	// Alerts — оповещения администратору (07 §3); nil — только журнал.
+	Alerts Alerter
+	// Metrics — метрики публикации и контроля (07 §5.5); nil — без метрик.
+	Metrics Observer
+	Tx      tx.Runner
+	Jobs    job.Scheduler
+	Audit   audit.Recorder
+	Clock   clock.Clock
+	Log     *slog.Logger
+	Config  Config
 }
 
 // Service — сценарии модуля размещений.
@@ -103,6 +120,9 @@ type Service struct {
 // New создаёт сервис.
 func New(d Deps) *Service {
 	d.Config.defaults()
+	if d.Metrics == nil {
+		d.Metrics = NopObserver{}
+	}
 	return &Service{Deps: d, log: d.Log.With(logx.KeyModule, "placement")}
 }
 
@@ -206,3 +226,35 @@ func (s *Service) repeat(ctx context.Context, op string, key string, args ...any
 }
 
 func uuidPtr(id uuid.UUID) *uuid.UUID { return &id }
+
+// Alerter — оповещения администратору (07 §3).
+type Alerter interface {
+	Raise(ctx context.Context, a alert.Alert) error
+}
+
+// Observer — метрики публикации и контроля (07 §5.5, R-15).
+type Observer interface {
+	// PublishDelay — задержка публикации относительно publish_at.
+	PublishDelay(d time.Duration)
+	// RemoveDelay — задержка снятия относительно remove_at.
+	RemoveDelay(d time.Duration)
+	// Violation — найдено нарушение.
+	Violation(kind domain.ViolationKind, source domain.ViolationSource)
+}
+
+// NopObserver — метрики не собираются.
+type NopObserver struct{}
+
+func (NopObserver) PublishDelay(time.Duration)                             {}
+func (NopObserver) RemoveDelay(time.Duration)                              {}
+func (NopObserver) Violation(domain.ViolationKind, domain.ViolationSource) {}
+
+// raise поднимает оповещение; ошибка оповещения не отменяет сценарий — она в журнале.
+func (s *Service) raise(ctx context.Context, op string, a alert.Alert) {
+	if s.Alerts == nil {
+		return
+	}
+	if err := s.Alerts.Raise(ctx, a); err != nil {
+		s.log.ErrorContext(ctx, "alert raise failed", logx.KeyOp, op, "reason", a.Reason, logx.KeyError, err.Error())
+	}
+}

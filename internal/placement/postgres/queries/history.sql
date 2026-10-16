@@ -3,10 +3,10 @@
 -- name: InsertHistory :exec
 INSERT INTO placement_state_history (
     id, placement_id, transition, from_status, to_status, actor_type, actor_user_id, reason_code, reason_text,
-    job_id, idempotency_key, created_at
+    job_id, inbound_event_id, idempotency_key, created_at
 ) VALUES (
     @id, @placement_id, @transition, @from_status, @to_status, @actor_type, @actor_user_id, @reason_code, @reason_text,
-    @job_id, @idempotency_key, @created_at
+    @job_id, @inbound_event_id, @idempotency_key, @created_at
 );
 
 -- name: ListHistoryByPlacements :many

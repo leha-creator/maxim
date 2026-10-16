@@ -16,7 +16,7 @@ func toHistory(r sqlc.PlacementStateHistory) domain.HistoryEntry {
 	return domain.HistoryEntry{
 		ID: r.ID, PlacementID: r.PlacementID, Transition: domain.TransitionCode(r.Transition),
 		From: domain.Status(str(r.FromStatus)), To: domain.Status(r.ToStatus), ActorType: domain.ActorType(r.ActorType),
-		ActorUserID: r.ActorUserID, ReasonCode: str(r.ReasonCode), ReasonText: str(r.ReasonText), JobID: r.JobID,
+		ActorUserID: r.ActorUserID, ReasonCode: str(r.ReasonCode), ReasonText: str(r.ReasonText), JobID: r.JobID, InboundEventID: r.InboundEventID,
 		IdempotencyKey: str(r.IdempotencyKey), CreatedAt: r.CreatedAt,
 	}
 }
@@ -26,7 +26,7 @@ func (r *History) Insert(ctx context.Context, h domain.HistoryEntry) error {
 	if err := r.s.q(ctx).InsertHistory(ctx, sqlc.InsertHistoryParams{
 		ID: h.ID, PlacementID: h.PlacementID, Transition: string(h.Transition), FromStatus: text(string(h.From)),
 		ToStatus: string(h.To), ActorType: string(h.ActorType), ActorUserID: h.ActorUserID, ReasonCode: text(h.ReasonCode),
-		ReasonText: text(h.ReasonText), JobID: h.JobID, IdempotencyKey: text(h.IdempotencyKey), CreatedAt: h.CreatedAt,
+		ReasonText: text(h.ReasonText), JobID: h.JobID, InboundEventID: h.InboundEventID, IdempotencyKey: text(h.IdempotencyKey), CreatedAt: h.CreatedAt,
 	}); err != nil {
 		return r.s.fail(ctx, op, err, "placement_id", h.PlacementID)
 	}

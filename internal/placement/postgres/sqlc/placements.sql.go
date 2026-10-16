@@ -841,14 +841,48 @@ func (q *Queries) ScheduledOverlapping(ctx context.Context, arg ScheduledOverlap
 	return items, nil
 }
 
+const scheduledWithoutPublication = `-- name: ScheduledWithoutPublication :many
+SELECT p.id, p.publish_at FROM placement p
+WHERE p.status = 'scheduled' AND p.publish_at < $1
+  AND NOT EXISTS (SELECT 1 FROM publication pub WHERE pub.placement_id = p.id)
+ORDER BY p.publish_at LIMIT 1000
+`
+
+type ScheduledWithoutPublicationRow struct {
+	ID        uuid.UUID
+	PublishAt *time.Time
+}
+
+// 05 §2.8 шаг 5: scheduled с прошедшим publish_at без публикации.
+func (q *Queries) ScheduledWithoutPublication(ctx context.Context, before *time.Time) ([]ScheduledWithoutPublicationRow, error) {
+	rows, err := q.db.Query(ctx, scheduledWithoutPublication, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScheduledWithoutPublicationRow{}
+	for rows.Next() {
+		var i ScheduledWithoutPublicationRow
+		if err := rows.Scan(&i.ID, &i.PublishAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePlacement = `-- name: UpdatePlacement :execrows
 UPDATE placement SET
     post_version_id = $1, status = $2, status_changed_at = $3,
     status_reason = $4, sent_to_blogger_at = $5,
     accept_deadline_at = $6, schedule_deadline_at = $7,
     publish_at = $8, remove_at = $9, published_at = $10, removed_at = $11,
-    claim_deadline_at = $12, lock_version = $13, updated_at = $14
-WHERE id = $15 AND status = $16 AND lock_version = $17
+    claim_deadline_at = $12, final_views = $13, lock_version = $14,
+    updated_at = $15
+WHERE id = $16 AND status = $17 AND lock_version = $18
 `
 
 type UpdatePlacementParams struct {
@@ -864,6 +898,7 @@ type UpdatePlacementParams struct {
 	PublishedAt        *time.Time
 	RemovedAt          *time.Time
 	ClaimDeadlineAt    *time.Time
+	FinalViews         *int32
 	LockVersion        int32
 	UpdatedAt          time.Time
 	ID                 uuid.UUID
@@ -886,6 +921,7 @@ func (q *Queries) UpdatePlacement(ctx context.Context, arg UpdatePlacementParams
 		arg.PublishedAt,
 		arg.RemovedAt,
 		arg.ClaimDeadlineAt,
+		arg.FinalViews,
 		arg.LockVersion,
 		arg.UpdatedAt,
 		arg.ID,

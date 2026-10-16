@@ -51,11 +51,23 @@ func (s *Store) Placements() *Placements { return &Placements{s} }
 // History возвращает репозиторий истории состояний.
 func (s *Store) History() *History { return &History{s} }
 
+// Publications возвращает репозиторий публикаций.
+func (s *Store) Publications() *Publications { return &Publications{s} }
+
+// Violations возвращает репозиторий нарушений.
+func (s *Store) Violations() *Violations { return &Violations{s} }
+
+// Disputes возвращает репозиторий споров.
+func (s *Store) Disputes() *Disputes { return &Disputes{s} }
+
 var (
-	_ domain.Carts      = (*Carts)(nil)
-	_ domain.Orders     = (*Orders)(nil)
-	_ domain.Placements = (*Placements)(nil)
-	_ domain.History    = (*History)(nil)
+	_ domain.Carts        = (*Carts)(nil)
+	_ domain.Orders       = (*Orders)(nil)
+	_ domain.Placements   = (*Placements)(nil)
+	_ domain.History      = (*History)(nil)
+	_ domain.Publications = (*Publications)(nil)
+	_ domain.Violations   = (*Violations)(nil)
+	_ domain.Disputes     = (*Disputes)(nil)
 )
 
 func (s *Store) q(ctx context.Context) *sqlc.Queries {

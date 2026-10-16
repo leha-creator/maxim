@@ -67,10 +67,10 @@ const insertHistory = `-- name: InsertHistory :exec
 
 INSERT INTO placement_state_history (
     id, placement_id, transition, from_status, to_status, actor_type, actor_user_id, reason_code, reason_text,
-    job_id, idempotency_key, created_at
+    job_id, inbound_event_id, idempotency_key, created_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-    $10, $11, $12
+    $10, $11, $12, $13
 )
 `
 
@@ -85,6 +85,7 @@ type InsertHistoryParams struct {
 	ReasonCode     *string
 	ReasonText     *string
 	JobID          *uuid.UUID
+	InboundEventID *uuid.UUID
 	IdempotencyKey *string
 	CreatedAt      time.Time
 }
@@ -102,6 +103,7 @@ func (q *Queries) InsertHistory(ctx context.Context, arg InsertHistoryParams) er
 		arg.ReasonCode,
 		arg.ReasonText,
 		arg.JobID,
+		arg.InboundEventID,
 		arg.IdempotencyKey,
 		arg.CreatedAt,
 	)

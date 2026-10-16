@@ -22,6 +22,9 @@ type placementHandlers = placementhttp.Handlers
 // stuckScheduledPlacement — проверка зависших размещений в scheduled (07 §3).
 const stuckScheduledPlacement = "placement_scheduled_overdue"
 
+// stuckRemovalOverdue — проверка публикаций, которые не удалось снять по сроку (07 §3).
+const stuckRemovalOverdue = "publication_removal_overdue"
+
 // newPlacementService собирает модуль размещений. Порты других модулей — переходники
 // пакета bridge; порты будущих модулей — пустые реализации с метками этапов (R-2 … R-4):
 //
@@ -35,8 +38,10 @@ func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sc
 	log := in.log.With(logx.KeyModule, "placement")
 	store := placementpg.New(in.pool, log)
 	p := cfg.Placement
-	svc := placementapp.New(placementapp.Deps{
+	deps := placementapp.Deps{
 		Carts: store.Carts(), Orders: store.Orders(), Placements: store.Placements(), History: store.History(),
+		Publications: store.Publications(), Violations: store.Violations(), Disputes: store.Disputes(),
+		Content:  bridge.PlacementContent{Svc: posts},
 		Channels: bridge.PlacementChannels{Svc: channels}, Campaigns: bridge.PlacementCampaigns{Svc: posts},
 		Versions:    bridge.PlacementVersions{Svc: posts},
 		Holds:       bridge.UnlimitedHolds{Log: log},
@@ -49,13 +54,42 @@ func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sc
 				AcceptTimeout: p.AcceptTimeout, ScheduleTimeout: p.ScheduleTimeout, WindowGuard: p.WindowGuard,
 				MinLead: p.MinLead, SlotStep: p.SlotStep, ReeditGuard: p.ReeditGuard,
 			},
-			Cart: domain.CartRules{MaxItems: p.CartMaxItems},
+			Cart:    domain.CartRules{MaxItems: p.CartMaxItems},
+			Control: controlRules(p.Control),
 		},
-	})
+	}
+	if in.max != nil {
+		// Публикация и контроль — только в worker: в api адаптера MAX нет (07 §1).
+		deps.Publisher = bridge.PlacementPublisher{API: in.max}
+	}
+	if in.alerter != nil {
+		deps.Alerts = in.alerter
+	}
+	if in.reg != nil {
+		deps.Metrics = placementpg.NewControlMetrics(in.reg)
+	}
+	svc := placementapp.New(deps)
 	posts.SetVersionListener(bridge.VersionListener{Svc: svc})
 	link := bridge.ChannelPlacements{Svc: svc}
 	channels.SetPlacementPorts(link, link, link)
+	channels.SetPostListener(bridge.ChannelPosts{Svc: svc})
 	return svc, store
+}
+
+// controlRules — правила публикации, снятия и контроля из конфигурации (07 §8).
+func controlRules(c PlacementControlConfig) domain.ControlRules {
+	return domain.ControlRules{
+		PublishRetryWindow: c.PublishRetryWindow, PublishRetryInterval: c.PublishRetryInterval,
+		PublishFindLookback: c.PublishFindLookback, MaxImages: c.PublishMaxImages, RemoveRetryWindow: c.RemoveRetryWindow,
+		ClaimWindow: c.ClaimWindow, DisputeDeadline: c.DisputeDeadline, TopViolationShare: c.TopViolationShare,
+		ReconcileInterval: c.ReconcileInterval, ScheduledGrace: c.ScheduledGrace, ViewsRefresh: c.ViewsRefresh,
+	}
+}
+
+// stuckRemovalCheck — публикация с removal_overdue дольше порога (07 §3).
+func stuckRemovalCheck(cfg Config, svc *placementapp.Service) stuck.Check {
+	return stuck.Check{Name: stuckRemovalOverdue, Threshold: cfg.Placement.Control.StuckRemovalOverdueAge,
+		Level: alert.LevelWarn, Find: svc.OverdueRemovals}
 }
 
 // stuckScheduledCheck — размещение в scheduled дольше порога после publish_at (07 §3).

@@ -16,15 +16,18 @@ import (
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	channelapp "github.com/leha-creator/maxim/internal/channel/app"
 	channelpg "github.com/leha-creator/maxim/internal/channel/postgres"
+	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	"github.com/leha-creator/maxim/internal/placement/app"
 	"github.com/leha-creator/maxim/internal/placement/domain"
 	"github.com/leha-creator/maxim/internal/placement/jobs"
 	"github.com/leha-creator/maxim/internal/placement/placementtest"
 	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
+	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/apperr"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/dbtest"
+	"github.com/leha-creator/maxim/internal/platform/inbound"
 	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/money"
@@ -33,6 +36,7 @@ import (
 	postapp "github.com/leha-creator/maxim/internal/post/app"
 	postdomain "github.com/leha-creator/maxim/internal/post/domain"
 	"github.com/leha-creator/maxim/internal/post/imaging"
+	postjobs "github.com/leha-creator/maxim/internal/post/jobs"
 	postpg "github.com/leha-creator/maxim/internal/post/postgres"
 	"github.com/leha-creator/maxim/internal/post/posttest"
 )
@@ -84,6 +88,11 @@ type env struct {
 	notices     *placementtest.Notifier
 	contractors *placementtest.Contractors
 	worker      *job.Worker
+	dispatcher  *inbound.Dispatcher
+	recorder    *inbound.Recorder
+	max         *maxfake.Client
+	alerts      *alerts
+	files       *storagefake.Storage
 	tx          tx.Runner
 	adv         uuid.UUID
 	advUser     uuid.UUID
@@ -99,7 +108,8 @@ func newEnv(t *testing.T) *env {
 	queue := job.NewQueue(d.Pool, clk, log)
 	auditLog := audit.New(d.Pool, clk, log)
 	e := &env{t: t, d: d, clk: clk, logs: logs, holds: placementtest.NewHolds(), notices: &placementtest.Notifier{},
-		contractors: &placementtest.Contractors{}, tx: txr}
+		contractors: &placementtest.Contractors{}, tx: txr, max: maxfake.New(), alerts: &alerts{}, files: storagefake.New()}
+	e.max.SetNow(clk.Now)
 
 	cs := channelpg.New(d.Pool, log)
 	e.channels = channelapp.New(channelapp.Deps{
@@ -113,7 +123,7 @@ func newEnv(t *testing.T) *env {
 		MediaFiles: ps.MediaFiles(), Derivatives: ps.Derivatives(), Campaigns: ps.Campaigns(), Posts: ps.Posts(),
 		Versions: ps.Versions(), Requisites: requisites{},
 		Renderer: imaging.New(imaging.Options{PreviewSide: 640, MaxBytes: 50 << 20, Concurrency: 1}, clk, log),
-		Storage:  storagefake.New(), Uploads: auditLog, Tx: txr, Jobs: queue, Audit: auditLog, Clock: clk, Log: log,
+		Storage:  e.files, Uploads: auditLog, Tx: txr, Jobs: queue, Audit: auditLog, Clock: clk, Log: log,
 	})
 	e.store = placementpg.New(d.Pool, log)
 	e.svc = app.New(app.Deps{
@@ -121,14 +131,22 @@ func newEnv(t *testing.T) *env {
 		Channels: bridge.PlacementChannels{Svc: e.channels}, Campaigns: bridge.PlacementCampaigns{Svc: e.post},
 		Versions: bridge.PlacementVersions{Svc: e.post},
 		Holds:    e.holds, Contractors: e.contractors, Notifier: e.notices,
+		Publications: e.store.Publications(), Violations: e.store.Violations(), Disputes: e.store.Disputes(),
+		Publisher: bridge.PlacementPublisher{API: e.max}, Content: bridge.PlacementContent{Svc: e.post}, Alerts: e.alerts,
 		Tx: txr, Jobs: queue, Audit: auditLog, Clock: clk, Log: log,
 		Config: app.Config{FeeRateBP: 1500},
 	})
 	e.post.SetVersionListener(bridge.VersionListener{Svc: e.svc})
 	link := bridge.ChannelPlacements{Svc: e.svc}
 	e.channels.SetPlacementPorts(link, link, link)
+	e.channels.SetPostListener(bridge.ChannelPosts{Svc: e.svc})
 	e.worker = job.NewWorker(d.Pool, clk, log)
-	jobs.Register(e.worker, e.svc)
+	jobs.Register(e.worker, e.svc, jobs.Options{})
+	postjobs.Register(e.worker, e.post)
+	e.dispatcher = inbound.NewDispatcher(d.Pool, clk, log)
+	jobs.RegisterEvents(e.dispatcher, e.svc)
+	e.dispatcher.Register(e.worker)
+	e.recorder = inbound.NewRecorder(d.Pool, txr, queue, clk, log)
 	e.adv, e.advUser = posttest.Advertiser(t, d.Pool)
 	return e
 }
@@ -291,6 +309,30 @@ func (e *env) logged(msg string) []map[string]any {
 		if json.Unmarshal([]byte(line), &m) == nil {
 			out = append(out, m)
 		}
+	}
+	return out
+}
+
+// alerts — запись оповещений администратору.
+type alerts struct {
+	mu   sync.Mutex
+	list []alert.Alert
+}
+
+func (a *alerts) Raise(_ context.Context, al alert.Alert) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.list = append(a.list, al)
+	return nil
+}
+
+// reasons — причины оповещений по порядку.
+func (a *alerts) reasons() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]string, 0, len(a.list))
+	for _, al := range a.list {
+		out = append(out, al.Reason)
 	}
 	return out
 }

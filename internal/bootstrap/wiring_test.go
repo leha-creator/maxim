@@ -39,7 +39,8 @@ func TestAssembledApp(t *testing.T) {
 
 func TestMAXEventHandlersRegistered(t *testing.T) {
 	a := newTestApp(t)
-	for _, ev := range []string{"bot_added", "bot_removed", "bot_admin_permissions_changed", "message_created", "chat_title_changed"} {
+	for _, ev := range []string{"bot_added", "bot_removed", "bot_admin_permissions_changed", "message_created",
+		"message_edited", "message_removed", "chat_title_changed"} {
 		if !a.mods.platform.dispatcher.Handles(inbound.SourceMAX, ev) {
 			t.Errorf("no handler for MAX event %s", ev)
 		}
@@ -58,6 +59,18 @@ func TestSubscribeMAX(t *testing.T) {
 	subs, _ := fake.ListSubscriptions(ctx)
 	if len(subs) != 1 || subs[0].URL != url || !slices.Contains(subs[0].UpdateTypes, "bot_admin_permissions_changed") {
 		t.Fatalf("subscriptions %+v", subs)
+	}
+	// Подписка без событий о публикациях обновляется (R-17); полная — нет.
+	old := []string{"bot_added", "bot_removed", "bot_admin_permissions_changed", "message_created", "chat_title_changed"}
+	if err := fake.Subscribe(ctx, url, old, "s"); err != nil {
+		t.Fatal(err)
+	}
+	if err := subscribeMAX(ctx, fake, url, "s"); err != nil {
+		t.Fatal(err)
+	}
+	subs, _ = fake.ListSubscriptions(ctx)
+	if len(subs) != 1 || !slices.Contains(subs[0].UpdateTypes, "message_removed") || !slices.Contains(subs[0].UpdateTypes, "message_edited") {
+		t.Fatalf("subscription not updated: %+v", subs)
 	}
 	cfg := Config{MAX: MAXConfig{WebhookURL: "https://api.maxim.example/api/v1/webhooks/max/", WebhookPathSecret: "secret"}}
 	if got := maxWebhookURL(cfg); got != url {

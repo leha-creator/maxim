@@ -115,7 +115,8 @@ func toAdvertiserPlacement(v app.PlacementView) apigen.AdvertiserPlacement {
 	return apigen.AdvertiserPlacement{
 		Id: p.ID, OrderId: p.OrderID, Channel: channelRef(v.Channel), Status: apigen.PlacementStatus(p.Status),
 		StatusReason: opt(p.StatusReason), StatusChangedAt: utc(p.StatusChangedAt), TotalAmount: int64(p.TotalAmount),
-		RefundAmount: moneyPtr(p.RefundAmount), PerformanceShare: p.PerformanceShare, Views: p.FinalViews,
+		RefundAmount: moneyPtr(p.RefundAmount), PerformanceShare: p.PerformanceShare,
+		PublicationUrl: publicationURL(v.Publication), Views: views(p, v.Publication), Dispute: disputeSummary(v.Dispute),
 		History: toHistory(v.History), AvailableActions: actions,
 		FormatId: p.FormatID, TopHours: p.TopHours, DurationHours: p.DurationHours,
 		WindowStart: utc(p.WindowStart), WindowEnd: utc(p.WindowEnd), TimeFrom: p.TimeFrom.String(), TimeTo: p.TimeTo.String(),
@@ -134,7 +135,8 @@ func toBloggerPlacement(v app.BloggerView) apigen.BloggerPlacement {
 	out := apigen.BloggerPlacement{
 		Id: p.ID, OrderNumber: v.OrderNumber, AdvertiserName: opt(v.AdvertiserName), Channel: channelRef(v.Channel),
 		Status: apigen.PlacementStatus(p.Status), StatusReason: opt(p.StatusReason), StatusChangedAt: utc(p.StatusChangedAt),
-		BloggerAmount: int64(p.BloggerAmount), PayoutAmount: moneyPtr(p.PayoutAmount), Views: p.FinalViews,
+		BloggerAmount: int64(p.BloggerAmount), PayoutAmount: moneyPtr(p.PayoutAmount),
+		PublicationUrl: publicationURL(v.Publication), Views: views(p, v.Publication), Dispute: disputeSummary(v.Dispute),
 		AvailableActions: actions,
 		FormatId:         p.FormatID, TopHours: p.TopHours, DurationHours: p.DurationHours,
 		WindowStart: utc(p.WindowStart), WindowEnd: utc(p.WindowEnd), TimeFrom: p.TimeFrom.String(), TimeTo: p.TimeTo.String(),
@@ -151,4 +153,34 @@ func toBloggerPlacement(v app.BloggerView) apigen.BloggerPlacement {
 			ExtraRequirements: opt(v.Post.ExtraRequirements)}
 	}
 	return out
+}
+
+// publicationURL — публичная ссылка на пост в MAX; нет публикации или ссылки — поля нет.
+func publicationURL(pub *domain.Publication) *string {
+	if pub == nil || pub.URL == "" {
+		return nil
+	}
+	return &pub.URL
+}
+
+// views — просмотры (R-18): после снятия — итоговые, иначе последнее считанное значение.
+func views(p domain.Placement, pub *domain.Publication) *int {
+	if p.FinalViews != nil {
+		return p.FinalViews
+	}
+	if pub != nil {
+		return pub.Views
+	}
+	return nil
+}
+
+// disputeSummary — сводка спора без предложенной доли: это материал администратора (R-18).
+func disputeSummary(d *domain.Dispute) *apigen.PlacementDisputeSummary {
+	if d == nil {
+		return nil
+	}
+	return &apigen.PlacementDisputeSummary{
+		Reason: apigen.PlacementDisputeSummaryReason(d.Reason), OpenedByType: apigen.PlacementDisputeSummaryOpenedByType(d.OpenedBy),
+		OpenedAt: utc(d.CreatedAt), DeadlineAt: utc(d.DeadlineAt),
+	}
 }

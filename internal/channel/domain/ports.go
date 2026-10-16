@@ -19,6 +19,8 @@ type Channels interface {
 	Save(ctx context.Context, c *Channel) error
 	// GetByMaxChatIDForUpdate — канал по идентификатору чата MAX с блокировкой строки (R-6).
 	GetByMaxChatIDForUpdate(ctx context.Context, maxChatID int64) (*Channel, error)
+	// GetByMaxChatID — канал по идентификатору чата MAX без блокировки.
+	GetByMaxChatID(ctx context.Context, maxChatID int64) (*Channel, error)
 	// GetForUpdate — канал по идентификатору с блокировкой строки (задания worker).
 	GetForUpdate(ctx context.Context, id uuid.UUID) (*Channel, error)
 	// GetForOrganization — канал организации; ErrNotFound для чужого.
@@ -193,4 +195,22 @@ type CartLookup interface {
 type AvailabilityListener interface {
 	ChannelUnavailable(ctx context.Context, change StatusChange) error
 	ChannelRestored(ctx context.Context, change StatusChange) error
+}
+
+// ChannelPost — сообщение известного канала, которое не разобрано как код подключения
+// (message_created, R-9 этапа «Автопостинг и контроль»). Текста нет (07 §5.4).
+type ChannelPost struct {
+	ChannelID uuid.UUID
+	MaxChatID int64
+	MessageID string
+	// SenderID — автор; 0 — пост от имени канала.
+	SenderID       int64
+	At             time.Time
+	InboundEventID *uuid.UUID
+}
+
+// ChannelPostListener — сообщения каналов для контроля «часов в топе» (S-27). Реализация —
+// модуль размещений; без него bootstrap подставляет пустую. Вызывается вне транзакции канала.
+type ChannelPostListener interface {
+	ChannelPostCreated(ctx context.Context, p ChannelPost) error
 }

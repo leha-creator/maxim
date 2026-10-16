@@ -292,6 +292,18 @@ func (q *Queries) LastHeartbeat(ctx context.Context) (time.Time, error) {
 	return seen_at, err
 }
 
+const liveJobExists = `-- name: LiveJobExists :one
+SELECT EXISTS (SELECT 1 FROM job WHERE dedupe_key = $1 AND status IN ('pending', 'running')) AS found
+`
+
+// Есть живое (ожидающее или выполняемое) задание с dedupe_key.
+func (q *Queries) LiveJobExists(ctx context.Context, dedupeKey *string) (bool, error) {
+	row := q.db.QueryRow(ctx, liveJobExists, dedupeKey)
+	var found bool
+	err := row.Scan(&found)
+	return found, err
+}
+
 const oldestReadyJobs = `-- name: OldestReadyJobs :many
 SELECT kind, min(run_at)::timestamptz AS oldest_run_at
 FROM job

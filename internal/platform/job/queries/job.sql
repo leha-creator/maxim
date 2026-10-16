@@ -109,3 +109,7 @@ SELECT kind, min(run_at)::timestamptz AS oldest_run_at
 FROM job
 WHERE status = 'pending' AND run_at <= @now::timestamptz
 GROUP BY kind;
+
+-- name: LiveJobExists :one
+-- Есть живое (ожидающее или выполняемое) задание с dedupe_key.
+SELECT EXISTS (SELECT 1 FROM job WHERE dedupe_key = @dedupe_key AND status IN ('pending', 'running')) AS found;

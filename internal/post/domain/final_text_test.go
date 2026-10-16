@@ -81,3 +81,36 @@ func TestFinalTextLimit(t *testing.T) {
 		t.Fatalf("200-char name: want ErrFinalTextTooLong, got %v", err)
 	}
 }
+
+func TestVerifyFinalText(t *testing.T) {
+	body := `Текст <a href="https://a.test/">ссылка</a>`
+	for _, carrier := range []domain.TokenCarrier{domain.CarrierText, domain.CarrierMedia} {
+		for _, position := range []domain.TokenPosition{domain.PositionAbove, domain.PositionBelow, domain.PositionLink} {
+			v := domain.Version{Status: domain.VersionApproved, Body: body, TokenCarrier: carrier, TokenPosition: position,
+				AdvertiserName: "ООО «Ромашка»", AdvertiserINN: "7707083893"}
+			if err := v.MarkReady("2VtzqvXYZ", domain.DefaultFinalTextLimit); err != nil {
+				t.Fatal(err)
+			}
+			if err := domain.VerifyFinalText(v, domain.DefaultFinalTextLimit); err != nil {
+				t.Fatalf("%s/%s: %v", carrier, position, err)
+			}
+			forged := v
+			forged.FinalText = strings.ReplaceAll(v.FinalText, "2VtzqvXYZ", "OTHER")
+			if forged.FinalText == v.FinalText {
+				forged.FinalText += " "
+			}
+			if err := domain.VerifyFinalText(forged, domain.DefaultFinalTextLimit); !errors.Is(err, domain.ErrMarkingMismatch) {
+				t.Fatalf("%s/%s forged text: %v", carrier, position, err)
+			}
+			otherErid := v
+			otherErid.Erid = "OTHER"
+			if err := domain.VerifyFinalText(otherErid, domain.DefaultFinalTextLimit); !errors.Is(err, domain.ErrMarkingMismatch) {
+				t.Fatalf("%s/%s other erid: %v", carrier, position, err)
+			}
+		}
+	}
+	notReady := domain.Version{Status: domain.VersionApproved, Body: body}
+	if err := domain.VerifyFinalText(notReady, domain.DefaultFinalTextLimit); !errors.Is(err, domain.ErrMarkingMismatch) {
+		t.Fatalf("approved version: %v", err)
+	}
+}

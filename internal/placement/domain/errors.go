@@ -86,3 +86,15 @@ type InsufficientBalanceError struct{ Missing money.Kopecks }
 func (e *InsufficientBalanceError) Error() string {
 	return fmt.Sprintf("placement: insufficient balance: missing %d", e.Missing)
 }
+
+// Ошибки публикаций, нарушений и споров (I-11, R-10).
+var (
+	// ErrMessageNotFound — сообщения нет в MAX (удалено).
+	ErrMessageNotFound = errors.New("placement: max message not found")
+	// ErrPublicationExists — у размещения уже есть публикация (I-11).
+	ErrPublicationExists = errors.New("placement: publication already exists")
+	// ErrDuplicateViolation — нарушение по этому событию уже записано (R-10).
+	ErrDuplicateViolation = errors.New("placement: violation already recorded for event")
+	// ErrDisputeExists — у размещения уже есть спор (I-11).
+	ErrDisputeExists = errors.New("placement: dispute already exists")
+)

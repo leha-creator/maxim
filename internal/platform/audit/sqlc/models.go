@@ -166,6 +166,24 @@ type ChannelUnavailability struct {
 	CreatedAt time.Time
 }
 
+type Dispute struct {
+	ID                uuid.UUID
+	PlacementID       uuid.UUID
+	Reason            string
+	OpenedByType      string
+	ClaimID           *uuid.UUID
+	ViolationID       *uuid.UUID
+	DeadlineAt        time.Time
+	SuggestedShare    *int32
+	Resolution        *string
+	PerformanceShare  *int32
+	ResolutionComment *string
+	ResolvedBy        *uuid.UUID
+	ResolvedAt        *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type InboundEvent struct {
 	ID          uuid.UUID
 	Source      string
@@ -431,6 +449,23 @@ type PostVersionMedium struct {
 	CreatedAt         time.Time
 }
 
+type Publication struct {
+	ID             uuid.UUID
+	PlacementID    uuid.UUID
+	ChannelID      uuid.UUID
+	MaxMessageID   string
+	Url            *string
+	PublishedAt    time.Time
+	RemovedAt      *time.Time
+	RemovalReason  *string
+	RemovalOverdue bool
+	Views          *int32
+	ViewsCheckedAt *time.Time
+	ContentHash    string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type RateLimitBucket struct {
 	Key        string
 	Tokens     float64
@@ -457,6 +492,17 @@ type User struct {
 	LastLoginAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type Violation struct {
+	ID             uuid.UUID
+	PlacementID    uuid.UUID
+	Kind           string
+	OccurredAt     time.Time
+	Source         string
+	InboundEventID *uuid.UUID
+	Details        []byte
+	CreatedAt      time.Time
 }
 
 type WorkerHeartbeat struct {

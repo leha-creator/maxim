@@ -121,11 +121,11 @@ maxim/
 │   │   ├── jobs/                    #   build_media_derivative, publish_media_derivative, purge_media
 │   │   └── posttest/                #   тестовые данные: организация рекламодателя
 │   ├── placement/                   # корзина, заказ, размещения, публикации, нарушения, споры (04 §5)
-│   │   ├── domain/                  #   состояния и ЕДИНСТВЕННАЯ таблица переходов, окно, таймеры, выбор времени, корзина, оформление, заказ, порты
-│   │   ├── app/                     #   корзина, оформление, заказы, правка поста, действия блогера, таймеры, события версии и канала
-│   │   ├── postgres/                #   cart_item, order, placement, placement_state_history; метрика maxim_placements
+│   │   ├── domain/                  #   состояния и ЕДИНСТВЕННАЯ таблица переходов, окно, таймеры, выбор времени, корзина, оформление, заказ, публикация, контроль, спор, порты
+│   │   ├── app/                     #   корзина, оформление, заказы, правка поста, действия блогера, таймеры, события версии и канала, публикация, снятие, нарушения, сверка
+│   │   ├── postgres/                #   cart_item, order, placement, placement_state_history, publication, violation, dispute; метрики maxim_placements и контроля
 │   │   ├── httpapi/                 #   операции корзины, заказов и кабинета блогера; checkoutCampaign
-│   │   ├── jobs/                    #   placement_timer (publish_placement, remove_placement — этап автопостинга)
+│   │   ├── jobs/                    #   placement_timer, publish_placement, remove_placement, reconcile_publications, check_publication; события message_edited, message_removed
 │   │   └── placementtest/           #   поддельные удержания, уведомления, исполнитель; блогер с каналом
 │   ├── marking/                     # объекты ОРД, erid, отчётность (04 §6)
 │   ├── ledger/                      # счета учёта, проводки, удержания — ЕДИНСТВЕННЫЙ вход в ledger_* (06 §2)
@@ -184,6 +184,7 @@ integration/* ──────────────────────
 - **Версия поста для следующих этапов.** `post/app.CreateVersion(ctx, orgID, campaignID, userID, orderNumber)` работает в транзакции вызывающего: оформление заказа создаёт версию вместе с заказом. Переходы `ApproveVersion`, `RejectVersion`, `MarkVersionReady` — сервисные методы `post/app`; роль администратора и получение erid проверяют вызывающие этапы. Неизменяемость версии в `ready` закреплена триггером базы.
 - **Порты к будущим модулям.** Модуль, которого ещё нет, представлен портом с пустой реализацией в `bootstrap/bridge`: `placement/domain.Holds` (`UnlimitedHolds` — баланс не ограничен до этапа «Приём оплаты и учёт денег»), `placement/domain.ContractorGate` (`AllowAllContractors` — до этапа выплат), `placement/domain.Notifier` (`NopNotifier` — до модуля уведомлений). Вызовы — в транзакции перехода (I-10): удержание и снятие, постановка уведомления.
 - **Связи модуля размещений.** `bootstrap` подставляет `placement/app` в порты модуля каналов (`AvailabilityListener` — отмена размещений при потере канала, `PlacementSchedule` — занятые топы в карточке и запрет интервала недоступности поверх запланированного размещения, `CartLookup` — признак `in_cart`) и в `post/domain.VersionListener` (последствия смены версии поста в той же транзакции). Модули собираются по порядку, поэтому порты задаются методами `SetPlacementPorts` и `SetVersionListener`. Оформление заказа принадлежит `placement/app.Checkout`: кампанию блокирует и переводит в `ordered` модуль `post` (порт `Campaigns`), версию создаёт `post/app.CreateVersion` в той же транзакции.
+- **Публикация и контроль.** Внешние вызовы MAX — порт `placement/domain.ChannelPublisher` (переходник `bridge.PlacementPublisher` над `integration/max`), содержание версии и файлы изображений — порт `placement/domain.PublicationContent` (`bridge.PlacementContent` над `post/app.PublicationContent` и `OpenDerivative`). Приоритет ограничителя MAX задаётся в `context` (`domain.WithCallPriority`): публикация и снятие — `PriorityPublish`, сверка — `PriorityReconcile`. Сообщения каналов для контроля топа модуль каналов передаёт через порт `channel/domain.ChannelPostListener` (`bridge.ChannelPosts`, `SetPostListener`); `message_edited` и `message_removed` модуль размещений разбирает сам (`placement/jobs.RegisterEvents`). Публикация идёт в три шага: предусловия в транзакции, вызовы MAX вне её, публикация и P-08 в транзакции (I-13).
 - **Порядок блокировок.** Сценарии модуля размещений блокируют строки в одном порядке: каналы (по `channel_id`) → заказ → размещения. Так I-06 и I-08 проверяются под блокировкой канала, а одновременные действия блогера, события версии и потеря канала не блокируют друг друга навстречу.
 
 ## Key Principles

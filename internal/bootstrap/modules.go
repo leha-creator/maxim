@@ -159,6 +159,7 @@ func newModules(cfg Config, in *infra) *modules {
 	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc)
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
+	platform.stuck.Add(stuckRemovalCheck(cfg, placementSvc))
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
 	})
@@ -186,7 +187,11 @@ func (m *modules) registerJobs(w *job.Worker) {
 	accountjobs.Register(w, m.account)
 	channeljobs.Register(w, m.platform.dispatcher, m.channel)
 	postjobs.Register(w, m.post)
-	placementjobs.Register(w, m.placement)
+	placementjobs.Register(w, m.placement, placementjobs.Options{
+		PublishRetryWindow: m.cfg.Placement.Control.PublishRetryWindow,
+		ReconcileInterval:  m.cfg.Placement.Control.ReconcileInterval,
+	})
+	placementjobs.RegisterEvents(m.platform.dispatcher, m.placement)
 }
 
 // apiImpl — реализация всех операций: обработчики модулей поверх заглушек 501.

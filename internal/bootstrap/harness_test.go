@@ -70,7 +70,9 @@ func newTestApp(t *testing.T) *testApp {
 	}
 	clk := clock.NewManual(testStart)
 	cfg := testConfig()
-	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: maxfake.New(), box: box}
+	fake := maxfake.New()
+	fake.SetNow(clk.Now)
+	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: fake, box: box}
 	in.alerter = newAlerter(cfg, in)
 	m := newModules(cfg, in)
 	h, err := apiHandler(cfg, in, m, metrics.New())

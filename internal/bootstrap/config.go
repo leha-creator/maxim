@@ -82,6 +82,8 @@ type MAXConfig struct {
 	CACertFile  string  `env:"MAX_CA_CERT_FILE"`
 	RateGlobal  float64 `env:"MAX_RATE_GLOBAL" envDefault:"25"`
 	RatePerChat float64 `env:"MAX_RATE_PER_CHAT" envDefault:"1"`
+	// BotUserID — пользователь MAX бота платформы (R-8); 0 — узнать через GET /me.
+	BotUserID int64 `env:"MAX_BOT_USER_ID"`
 	// BotName — имя бота в инструкции подключения канала, например @maxim_ads_bot.
 	BotName string `env:"MAX_BOT_NAME"`
 	// WebhookPathSecret — секретная часть адреса /webhooks/max/{secret} (R-3, Q-35).
@@ -153,6 +155,36 @@ type PlacementConfig struct {
 	CartMaxItems int `env:"CART_MAX_ITEMS" envDefault:"50"`
 	// StuckScheduledAge — размещение в scheduled с прошедшим publish_at считается зависшим (07 §3).
 	StuckScheduledAge time.Duration `env:"STUCK_SCHEDULED_PLACEMENT_AGE" envDefault:"35m"`
+	// Control — публикация, снятие и контроль (этап «Автопостинг и контроль»).
+	Control PlacementControlConfig
+}
+
+// PlacementControlConfig — сроки публикации, снятия, сверки и споров (03 §5, 05 §2.8, 07 §8).
+type PlacementControlConfig struct {
+	// PublishRetryWindow — T-03: повторы публикации от publish_at; дальше P-09 (R-4).
+	PublishRetryWindow time.Duration `env:"PUBLISH_RETRY_WINDOW" envDefault:"30m"`
+	// PublishRetryInterval — пауза между попытками публикации.
+	PublishRetryInterval time.Duration `env:"PUBLISH_RETRY_INTERVAL" envDefault:"30s"`
+	// PublishFindLookback — окно поиска своего поста после неизвестного исхода (R-5).
+	PublishFindLookback time.Duration `env:"PUBLISH_FIND_LOOKBACK" envDefault:"40m"`
+	// PublishMaxImages — изображений в посте (A-23, Q-05).
+	PublishMaxImages int `env:"PUBLISH_MAX_IMAGES" envDefault:"10"`
+	// RemoveRetryWindow — T-10: повторы снятия от remove_at (R-7).
+	RemoveRetryWindow time.Duration `env:"REMOVE_RETRY_WINDOW" envDefault:"24h"`
+	// ClaimWindow — T-05: окно претензий после снятия (R-14).
+	ClaimWindow time.Duration `env:"PLACEMENT_CLAIM_WINDOW" envDefault:"24h"`
+	// DisputeDeadline — T-06: срок решения по спору (R-11).
+	DisputeDeadline time.Duration `env:"DISPUTE_DEADLINE" envDefault:"72h"`
+	// TopViolationShare — предложение доли при top_violated, базисные пункты (03 §7).
+	TopViolationShare int `env:"DISPUTE_TOP_VIOLATION_SHARE" envDefault:"5000"`
+	// ReconcileInterval — T-09: период сверки публикаций (A-27).
+	ReconcileInterval time.Duration `env:"RECONCILE_INTERVAL" envDefault:"5m"`
+	// ScheduledGrace — scheduled без публикации дольше этого после publish_at проверяется сверкой (05 §2.8).
+	ScheduledGrace time.Duration `env:"RECONCILE_SCHEDULED_GRACE" envDefault:"5m"`
+	// ViewsRefresh — просмотры публикации перечитываются не чаще (03 §8).
+	ViewsRefresh time.Duration `env:"PUBLICATION_VIEWS_REFRESH" envDefault:"1h"`
+	// StuckRemovalOverdueAge — публикация с removal_overdue дольше считается зависшей (07 §3).
+	StuckRemovalOverdueAge time.Duration `env:"STUCK_REMOVAL_OVERDUE_AGE" envDefault:"1h"`
 }
 
 // Пределы MAX для изображений и текста (05 §2.6, A-38).
@@ -666,5 +698,37 @@ func (c Config) validatePlacement(add func(field, reason string)) {
 	}
 	if p.CartMaxItems < 1 || p.CartMaxItems > maxCartItems {
 		add("CART_MAX_ITEMS", fmt.Sprintf("must be between 1 and %d", maxCartItems))
+	}
+	c.validateControl(add)
+}
+
+// validateControl — сроки публикации, снятия и контроля (R-4, R-5, R-7, R-11, R-12).
+func (c Config) validateControl(add func(field, reason string)) {
+	k := c.Placement.Control
+	for _, d := range []struct {
+		field string
+		value time.Duration
+	}{
+		{"PUBLISH_RETRY_WINDOW", k.PublishRetryWindow}, {"PUBLISH_RETRY_INTERVAL", k.PublishRetryInterval},
+		{"PUBLISH_FIND_LOOKBACK", k.PublishFindLookback}, {"REMOVE_RETRY_WINDOW", k.RemoveRetryWindow},
+		{"PLACEMENT_CLAIM_WINDOW", k.ClaimWindow}, {"DISPUTE_DEADLINE", k.DisputeDeadline},
+		{"RECONCILE_INTERVAL", k.ReconcileInterval}, {"RECONCILE_SCHEDULED_GRACE", k.ScheduledGrace},
+		{"PUBLICATION_VIEWS_REFRESH", k.ViewsRefresh}, {"STUCK_REMOVAL_OVERDUE_AGE", k.StuckRemovalOverdueAge},
+	} {
+		if d.value <= 0 {
+			add(d.field, "must be positive")
+		}
+	}
+	if k.PublishRetryInterval >= k.PublishRetryWindow {
+		add("PUBLISH_RETRY_INTERVAL", "must be less than PUBLISH_RETRY_WINDOW")
+	}
+	if k.PublishFindLookback <= k.PublishRetryWindow {
+		add("PUBLISH_FIND_LOOKBACK", "must exceed PUBLISH_RETRY_WINDOW")
+	}
+	if k.PublishMaxImages < 1 || k.PublishMaxImages > maxAlbumLimit {
+		add("PUBLISH_MAX_IMAGES", fmt.Sprintf("must be between 1 and %d", maxAlbumLimit))
+	}
+	if k.TopViolationShare < 0 || k.TopViolationShare > 10000 {
+		add("DISPUTE_TOP_VIOLATION_SHARE", "must be between 0 and 10000")
 	}
 }

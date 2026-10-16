@@ -30,6 +30,9 @@ WHERE id = @id AND lock_version = @prev_lock_version;
 -- name: GetChannelByMaxChatIDForUpdate :one
 SELECT * FROM channel WHERE max_chat_id = @max_chat_id FOR UPDATE;
 
+-- name: GetChannelByMaxChatID :one
+SELECT * FROM channel WHERE max_chat_id = @max_chat_id;
+
 -- name: GetChannelForUpdate :one
 SELECT * FROM channel WHERE id = @id FOR UPDATE;
 

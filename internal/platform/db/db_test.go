@@ -22,7 +22,7 @@ func TestMigrationsDownAndUp(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	log := logx.Discard()
-	for range 7 { // откат 00007, 00006, 00005, 00004, 00003, 00002 и 00001
+	for range 8 { // откат 00008, 00007, 00006, 00005, 00004, 00003, 00002 и 00001
 		if err := db.MigrateURL(ctx, d.OwnerURL, dbtest.AppRole, db.MigrateDown, log); err != nil {
 			t.Fatalf("down: %v", err)
 		}

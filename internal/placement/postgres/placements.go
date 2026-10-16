@@ -129,7 +129,7 @@ func (r *Placements) UpdateIfStatus(ctx context.Context, p domain.Placement, sta
 		StatusReason: text(p.StatusReason), SentToBloggerAt: p.SentToBloggerAt, AcceptDeadlineAt: p.AcceptDeadlineAt,
 		ScheduleDeadlineAt: p.ScheduleDeadlineAt, PublishAt: p.PublishAt, RemoveAt: p.RemoveAt,
 		PublishedAt: p.PublishedAt, RemovedAt: p.RemovedAt, ClaimDeadlineAt: p.ClaimDeadlineAt,
-		LockVersion: int32(p.LockVersion), UpdatedAt: p.UpdatedAt,
+		FinalViews: int32Ptr(p.FinalViews), LockVersion: int32(p.LockVersion), UpdatedAt: p.UpdatedAt,
 		PrevStatus: string(status), PrevLockVersion: int32(lockVersion),
 	})
 	if err != nil {
@@ -247,4 +247,20 @@ func (r *Placements) OverdueScheduled(ctx context.Context, before time.Time) ([]
 		return nil, r.s.fail(ctx, "Placement.Placements.OverdueScheduled", err)
 	}
 	return ids, nil
+}
+
+func (r *Placements) ScheduledWithoutPublication(ctx context.Context, before time.Time) ([]domain.ScheduledRef, error) {
+	rows, err := r.s.q(ctx).ScheduledWithoutPublication(ctx, &before)
+	if err != nil {
+		return nil, r.s.fail(ctx, "Placement.Placements.ScheduledWithoutPublication", err)
+	}
+	out := make([]domain.ScheduledRef, 0, len(rows))
+	for _, row := range rows {
+		ref := domain.ScheduledRef{ID: row.ID}
+		if row.PublishAt != nil {
+			ref.PublishAt = *row.PublishAt
+		}
+		out = append(out, ref)
+	}
+	return out, nil
 }

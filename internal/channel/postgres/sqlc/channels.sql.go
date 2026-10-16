@@ -12,6 +12,47 @@ import (
 	"github.com/google/uuid"
 )
 
+const getChannelByMaxChatID = `-- name: GetChannelByMaxChatID :one
+SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE max_chat_id = $1
+`
+
+func (q *Queries) GetChannelByMaxChatID(ctx context.Context, maxChatID int64) (Channel, error) {
+	row := q.db.QueryRow(ctx, getChannelByMaxChatID, maxChatID)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.MaxChatID,
+		&i.Title,
+		&i.MaxDescription,
+		&i.IconUrl,
+		&i.Link,
+		&i.IsPublic,
+		&i.AddedByMaxUserID,
+		&i.Description,
+		&i.CategoryID,
+		&i.Status,
+		&i.StatusReason,
+		&i.StatusBeforeDisconnect,
+		&i.UnclaimedSince,
+		&i.BotIsAdmin,
+		&i.BotPermissions,
+		&i.BotPermissionsCheckedAt,
+		&i.SubscribersCount,
+		&i.RknNumber,
+		&i.RknStatus,
+		&i.RknCheckedAt,
+		&i.RknCheckedBy,
+		&i.Rating,
+		&i.ModeratedAt,
+		&i.ModeratedBy,
+		&i.LockVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getChannelByMaxChatIDForUpdate = `-- name: GetChannelByMaxChatIDForUpdate :one
 SELECT id, organization_id, max_chat_id, title, max_description, icon_url, link, is_public, added_by_max_user_id, description, category_id, status, status_reason, status_before_disconnect, unclaimed_since, bot_is_admin, bot_permissions, bot_permissions_checked_at, subscribers_count, rkn_number, rkn_status, rkn_checked_at, rkn_checked_by, rating, moderated_at, moderated_by, lock_version, created_at, updated_at FROM channel WHERE max_chat_id = $1 FOR UPDATE
 `

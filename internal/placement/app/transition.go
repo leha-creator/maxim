@@ -15,9 +15,10 @@ import (
 
 // source — источник перехода для истории (03 §12): задание, пользователь, ключ идемпотентности.
 type source struct {
-	JobID  *uuid.UUID
-	UserID *uuid.UUID
-	Key    string
+	JobID          *uuid.UUID
+	InboundEventID *uuid.UUID
+	UserID         *uuid.UUID
+	Key            string
 }
 
 // apply сохраняет результат перехода (I-10): строку размещения «если состояние и
@@ -40,7 +41,9 @@ func (s *Service) record(ctx context.Context, op string, o domain.Order, p domai
 	if c.UserID == nil {
 		c.UserID = src.UserID
 	}
-	if err := s.History.Insert(ctx, domain.NewHistoryEntry(ids.New(), c, src.JobID, src.Key)); err != nil {
+	h := domain.NewHistoryEntry(ids.New(), c, src.JobID, src.Key)
+	h.InboundEventID = src.InboundEventID
+	if err := s.History.Insert(ctx, h); err != nil {
 		return err
 	}
 	for _, key := range c.CancelJobs {
@@ -91,8 +94,15 @@ func (s *Service) rejected(ctx context.Context, op string, p domain.Placement, c
 // toJob переводит задание домена в задание очереди: попытки и приоритет — по виду (07 §2).
 func toJob(j domain.Job) job.Job {
 	attempts := unboundedAttempts
-	if j.Kind == domain.KindPlacementTimer {
+	switch j.Kind {
+	case domain.KindPlacementTimer:
 		attempts = timerAttempts
+		// T-05 ждёт этапа приёмки, повторяясь раз в час: предела нет (R-14).
+		if p, ok := j.Payload.(domain.TimerPayload); ok && p.Timer == domain.TimerClaim {
+			attempts = unboundedAttempts
+		}
+	case domain.KindCheckPublication:
+		attempts = checkAttempts
 	}
 	return job.Job{Kind: j.Kind, DedupeKey: j.DedupeKey, RunAt: j.RunAt, Payload: j.Payload, MaxAttempts: attempts}
 }

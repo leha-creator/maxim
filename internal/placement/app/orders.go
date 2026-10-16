@@ -14,6 +14,9 @@ type PlacementView struct {
 	Channel   domain.ChannelRef
 	History   []domain.HistoryEntry
 	Actions   []string
+	// Publication и Dispute — пост в канале и спор, если есть (R-18 этапа «Автопостинг и контроль»).
+	Publication *domain.Publication
+	Dispute     *domain.Dispute
 }
 
 // OrderSummary — строка списка заказов: название кампании и число размещений по состояниям.
@@ -121,6 +124,10 @@ func (s *Service) placementViews(ctx context.Context, ps []domain.Placement) ([]
 	if err != nil {
 		return nil, err
 	}
+	pubs, disputes, err := s.control(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]PlacementView, 0, len(ps))
 	for _, p := range ps {
 		ref := offers[p.ChannelID].Ref
@@ -131,7 +138,14 @@ func (s *Service) placementViews(ctx context.Context, ps []domain.Placement) ([]
 		if h == nil {
 			h = []domain.HistoryEntry{}
 		}
-		out = append(out, PlacementView{Placement: p, Channel: ref, History: h, Actions: domain.AdvertiserActions(&p)})
+		view := PlacementView{Placement: p, Channel: ref, History: h, Actions: domain.AdvertiserActions(&p)}
+		if pub, ok := pubs[p.ID]; ok {
+			view.Publication = &pub
+		}
+		if d, ok := disputes[p.ID]; ok {
+			view.Dispute = &d
+		}
+		out = append(out, view)
 	}
 	return out, nil
 }
@@ -150,4 +164,20 @@ func orEmpty(m map[domain.Status]int) map[domain.Status]int {
 		return map[domain.Status]int{}
 	}
 	return m
+}
+
+// control — публикации и споры размещений одним запросом на каждую таблицу (R-18).
+func (s *Service) control(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.Publication, map[uuid.UUID]domain.Dispute, error) {
+	if s.Publications == nil || s.Disputes == nil {
+		return map[uuid.UUID]domain.Publication{}, map[uuid.UUID]domain.Dispute{}, nil
+	}
+	pubs, err := s.Publications.ListByPlacements(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	disputes, err := s.Disputes.ListByPlacements(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pubs, disputes, nil
 }

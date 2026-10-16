@@ -19,6 +19,10 @@ type ChannelPost struct {
 	MaxChatID int64
 	MessageID string
 	Text      string
+	// SenderID — автор; 0 — пост от имени канала.
+	SenderID int64
+	// At — время сообщения по MAX.
+	At time.Time
 }
 
 func deleteJob(chatID int64, messageID string) job.Job {
@@ -28,17 +32,20 @@ func deleteJob(chatID int64, messageID string) job.Job {
 	}
 }
 
-// ChannelPostCreated — сообщение в канале (05 §2.2). Здесь разбирается только код
-// подключения (05 §2.4 шаг 3); остальные сообщения — этап «Автопостинг и контроль».
+// ChannelPostCreated — сообщение в канале (05 §2.2). Код подключения разбирается здесь
+// (05 §2.4 шаг 3); остальные сообщения известного канала передаются модулю размещений —
+// контроль «часов в топе» (R-9 этапа «Автопостинг и контроль»). Сообщение, разобранное как
+// код, топ не нарушает: бот его удаляет.
 func (s *Service) ChannelPostCreated(ctx context.Context, ev EventRef, p ChannelPost) error {
 	const op = "Channel.LinkByCode"
 	code, ok := domain.NormalizeLinkCode(p.Text)
 	if !ok {
-		return ErrIgnored
+		return s.passPost(ctx, ev, p)
 	}
 	ctx = logx.With(ctx, "max_chat_id", p.MaxChatID)
 	now := s.Clock.Now()
-	return s.Tx.InTx(ctx, func(ctx context.Context) error {
+	notCode := false
+	err := s.Tx.InTx(ctx, func(ctx context.Context) error {
 		c, err := s.Channels.GetByMaxChatIDForUpdate(ctx, p.MaxChatID)
 		if errors.Is(err, domain.ErrNotFound) {
 			// R-6: код мог прийти раньше, чем разобран bot_added.
@@ -56,6 +63,7 @@ func (s *Service) ChannelPostCreated(ctx context.Context, ev EventRef, p Channel
 		if errors.Is(err, domain.ErrNotFound) {
 			// Неверный или просроченный код не обрабатывается (S-12, отклонения).
 			s.log.WarnContext(ctx, "channel link code not found", logx.KeyOp, op, KeyChannelID, c.ID, "status", c.Status)
+			notCode = true
 			return nil
 		}
 		if err != nil {
@@ -96,6 +104,31 @@ func (s *Service) ChannelPostCreated(ctx context.Context, ev EventRef, p Channel
 		s.log.InfoContext(ctx, "channel linked", logx.KeyOp, op, KeyChannelID, c.ID,
 			logx.KeyOrganizationID, lc.OrganizationID, "status", c.Status)
 		return s.Jobs.Enqueue(ctx, deleteJob(p.MaxChatID, p.MessageID))
+	})
+	if err != nil || !notCode {
+		return err
+	}
+	return s.passPost(ctx, ev, p)
+}
+
+// passPost передаёт сообщение известного канала модулю размещений (R-9). Неизвестный
+// канал — ErrIgnored. Слушатель работает в своей транзакции: строка канала не блокируется.
+func (s *Service) passPost(ctx context.Context, ev EventRef, p ChannelPost) error {
+	const op = "Channel.ChannelPost"
+	ctx = logx.With(ctx, "max_chat_id", p.MaxChatID)
+	c, err := s.Channels.GetByMaxChatID(ctx, p.MaxChatID)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.log.DebugContext(ctx, "channel post in unknown chat", logx.KeyOp, op)
+		return ErrIgnored
+	}
+	if err != nil {
+		return err
+	}
+	eventID := ev.ID
+	s.log.DebugContext(ctx, "channel post passed to placements", logx.KeyOp, op, KeyChannelID, c.ID, "message_id", p.MessageID)
+	return s.PostListener.ChannelPostCreated(ctx, domain.ChannelPost{
+		ChannelID: c.ID, MaxChatID: p.MaxChatID, MessageID: p.MessageID, SenderID: p.SenderID, At: p.At,
+		InboundEventID: &eventID,
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/leha-creator/maxim/internal/placement/domain"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
@@ -34,4 +35,36 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	for status, n := range counts {
 		ch <- prometheus.MustNewConstMetric(c.count, prometheus.GaugeValue, float64(n), string(status))
 	}
+}
+
+// ControlMetrics — метрики публикации и контроля (07 §5.5, R-15): задержка публикации и снятия
+// относительно плана, число нарушений по виду и источнику. Реализует app.Observer.
+type ControlMetrics struct {
+	publishDelay prometheus.Histogram
+	removeDelay  prometheus.Histogram
+	violations   *prometheus.CounterVec
+}
+
+// delayBuckets — от секунды до часа: требование точности — 10 с (07 §2).
+var delayBuckets = []float64{1, 2, 5, 10, 30, 60, 300, 900, 1800, 3600}
+
+// NewControlMetrics создаёт и регистрирует метрики в reg.
+func NewControlMetrics(reg interface{ MustRegister(...prometheus.Collector) }) *ControlMetrics {
+	m := &ControlMetrics{
+		publishDelay: prometheus.NewHistogram(prometheus.HistogramOpts{Name: "maxim_placement_publish_delay_seconds",
+			Help: "Publication delay relative to publish_at.", Buckets: delayBuckets}),
+		removeDelay: prometheus.NewHistogram(prometheus.HistogramOpts{Name: "maxim_placement_remove_delay_seconds",
+			Help: "Removal delay relative to remove_at.", Buckets: delayBuckets}),
+		violations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "maxim_placement_violations_total",
+			Help: "Placement violations found by control."}, []string{"kind", "source"}),
+	}
+	reg.MustRegister(m.publishDelay, m.removeDelay, m.violations)
+	return m
+}
+
+func (m *ControlMetrics) PublishDelay(d time.Duration) { m.publishDelay.Observe(max(d.Seconds(), 0)) }
+func (m *ControlMetrics) RemoveDelay(d time.Duration)  { m.removeDelay.Observe(max(d.Seconds(), 0)) }
+
+func (m *ControlMetrics) Violation(kind domain.ViolationKind, source domain.ViolationSource) {
+	m.violations.WithLabelValues(string(kind), string(source)).Inc()
 }

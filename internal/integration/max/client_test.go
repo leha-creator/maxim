@@ -47,7 +47,7 @@ func newClient(t *testing.T, srv *httptest.Server, httpClient *http.Client) (*ma
 		clk.Advance(w)
 		return nil
 	}})
-	return max.New(out, lim, max.Options{BaseURL: srv.URL, Token: token}, log), d
+	return max.New(out, lim, max.Options{BaseURL: srv.URL, Token: token, Sleep: noSleep}, log), d
 }
 
 func TestSendChatMessage(t *testing.T) {

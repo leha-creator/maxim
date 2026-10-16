@@ -152,14 +152,30 @@ func ensureMAXSubscription(ctx context.Context, cfg Config, in *infra) {
 	in.log.InfoContext(ctx, "max webhook subscription ok", logx.KeyOp, op)
 }
 
-// subscribeMAX — подписка, если адреса нет среди текущих подписок бота.
+// subscribeMAX — подписка, если адреса нет среди текущих подписок бота или подписка на него
+// не включает какой-либо нужный вид события (R-17 этапа «Автопостинг и контроль»).
 func subscribeMAX(ctx context.Context, api maxAPI, url, secret string) error {
 	subs, err := api.ListSubscriptions(ctx)
 	if err != nil {
 		return err
 	}
-	if slices.ContainsFunc(subs, func(s max.Subscription) bool { return s.URL == url }) {
+	i := slices.IndexFunc(subs, func(s max.Subscription) bool { return s.URL == url })
+	if i >= 0 && !missingTypes(subs[i].UpdateTypes) {
 		return nil
 	}
 	return api.Subscribe(ctx, url, max.ChannelUpdateTypes, secret)
+}
+
+// missingTypes — в подписке нет какого-либо вида из max.ChannelUpdateTypes. Пустой список у MAX
+// означает «все виды».
+func missingTypes(have []string) bool {
+	if len(have) == 0 {
+		return false
+	}
+	for _, t := range max.ChannelUpdateTypes {
+		if !slices.Contains(have, t) {
+			return true
+		}
+	}
+	return false
 }
