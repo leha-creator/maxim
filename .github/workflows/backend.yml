@@ -1,0 +1,84 @@
+# Проверки бэкенда: генерация кода, vet, тесты с настоящей PostgreSQL, MinIO и
+# Mailpit (testcontainers), сборка образа. Деплой заглушки API — deploy.yml.
+name: backend
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - go.mod
+      - go.sum
+      - cmd/**
+      - internal/**
+      - migrations/**
+      - templates/**
+      - api/openapi.yaml
+      - sqlc.yaml
+      - Dockerfile
+      - Dockerfile.dockerignore
+      - .github/workflows/backend.yml
+  pull_request:
+    branches: [master]
+    paths:
+      - go.mod
+      - go.sum
+      - cmd/**
+      - internal/**
+      - migrations/**
+      - templates/**
+      - api/openapi.yaml
+      - sqlc.yaml
+      - Dockerfile
+      - Dockerfile.dockerignore
+      - .github/workflows/backend.yml
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          # Как в deploy.yml: встроенная спецификация сжата, байты зависят от версии Go.
+          go-version: "1.27"
+          cache-dependency-path: go.sum
+      - uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: "1.30.0"
+      - name: Generated code is up to date
+        run: |
+          go generate ./internal/apigen
+          sqlc generate
+          git diff --exit-code -- internal || { echo "::error::generated code differs: run go generate ./internal/apigen and sqlc generate"; exit 1; }
+      - name: sqlc vet
+        run: sqlc vet
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race -count=1 ./...
+
+  image:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          build-args: VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,99 @@
+# Локальное окружение бэкенда: PostgreSQL, MinIO, Mailpit и сам бэкенд.
+#   docker compose -f compose.dev.yml up --build
+# API — http://localhost:8080 (Swagger UI: /docs), письма — http://localhost:8025,
+# консоль MinIO — http://localhost:9001 (minio / minio-secret).
+# Порты на хосте меняются переменными DEV_*_PORT, если стандартные заняты.
+# Секреты ниже — только для разработки.
+name: maxim-dev
+
+x-backend-env: &backend-env
+  APP_ENV: development
+  LOG_LEVEL: debug
+  DATABASE_URL: postgres://maxim_app:maxim_app@postgres:5432/maxim?sslmode=disable
+  S3_ENDPOINT: minio:9000
+  S3_REGION: us-east-1
+  S3_BUCKET_PRIVATE: maxim-private
+  S3_ACCESS_KEY: minio
+  S3_SECRET_KEY: minio-secret
+  S3_USE_SSL: "false"
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_TLS: none
+  MAIL_FROM: noreply@maxim.local
+  APP_SECRETS_KEY: ZGV2LW9ubHktc2VjcmV0cy1rZXktMzItYnl0ZXMhISE=
+  AUTH_CODE_PEPPER: dev-only-pepper-at-least-32-characters
+  COOKIE_SECURE: "false"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: maxim
+      POSTGRES_USER: maxim
+      POSTGRES_PASSWORD: maxim
+    ports: ["${DEV_POSTGRES_PORT:-5432}:5432"]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./deploy/dev/postgres-init.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maxim -d maxim"]
+      interval: 2s
+      retries: 30
+
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio-secret
+    ports: ["${DEV_MINIO_PORT:-9000}:9000", "${DEV_MINIO_CONSOLE_PORT:-9001}:9001"]
+    volumes: [minio:/data]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      retries: 30
+
+  minio-init:
+    image: pgsty/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set local http://minio:9000 minio minio-secret && mc mb --ignore-existing local/maxim-private
+
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    ports: ["${DEV_SMTP_PORT:-1025}:1025", "${DEV_MAILPIT_PORT:-8025}:8025"]
+
+  migrate:
+    build: { context: ., dockerfile: Dockerfile }
+    image: maxim:dev
+    command: ["migrate", "up"]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgres://maxim:maxim@postgres:5432/maxim?sslmode=disable
+      DB_APP_ROLE: maxim_app
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    image: maxim:dev
+    command: ["api"]
+    environment: *backend-env
+    ports: ["${DEV_API_PORT:-8080}:8080", "${DEV_API_METRICS_PORT:-9090}:9090"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+
+  worker:
+    image: maxim:dev
+    command: ["worker"]
+    environment: *backend-env
+    ports: ["${DEV_WORKER_METRICS_PORT:-9091}:9090"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mailpit: { condition: service_started }
+
+volumes:
+  postgres: {}
+  minio: {}

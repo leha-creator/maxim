@@ -1,0 +1,10 @@
+# Контекст сборки бэкенда (Dockerfile в корне): только исходники Go.
+# Документация, mockapi и прочее в образ не попадают.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!migrations/
+!templates/
+**/*_test.go

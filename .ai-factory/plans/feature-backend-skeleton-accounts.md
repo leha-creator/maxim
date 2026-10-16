@@ -223,7 +223,7 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
 
 ### Phase 5: Окружение, CI, документы
 
-- [ ] **Task 15: Локальное окружение и образ** (depends on 12)
+- [x] **Task 15: Локальное окружение и образ** (depends on 12)
   - `Dockerfile` в корне: сборка на `golang:1.27`, итог — `gcr.io/distroless/static:nonroot`, бинарник `maxim`, `ENTRYPOINT ["/maxim"]`, версия через `--build-arg`.
   - `compose.dev.yml`: PostgreSQL 17 (две роли: владелец для миграций и `maxim_app`), MinIO с созданием закрытой корзины, Mailpit (SMTP 1025, веб 8025); сервисы `migrate`, `api`, `worker` из того же образа. `.env.example` со всеми переменными и безопасными значениями для разработки.
   - `.dockerignore` дополнить, чтобы `docs/` и `mockapi/` не попадали в контекст сборки бэкенда.
@@ -231,13 +231,13 @@ Open questions, влияющие на этап: Q-01 (бот MAX на ИП — �
   - Проверка: `docker compose -f compose.dev.yml up` → вход по коду из письма в Mailpit проходит через Swagger/`curl`.
   - Файлы: `Dockerfile`, `compose.dev.yml`, `.env.example`, `.dockerignore`.
 
-- [ ] **Task 16: Проверки бэкенда в CI** (depends on 14)
+- [x] **Task 16: Проверки бэкенда в CI** (depends on 14)
   - `.github/workflows/backend.yml` (на `pull_request` и `push` в `master`, отдельно от `deploy.yml`): `setup-go` 1.27 (как в `deploy.yml`), `sqlc-dev/setup-sqlc`; шаги: `go generate ./...` и `sqlc generate` без изменений в git; `sqlc vet`; `go vet ./...`; `go test -race ./...` с `CI=true` (Docker на `ubuntu-latest` есть — `testcontainers-go` работает); `docker build` корневого `Dockerfile` без публикации.
   - `deploy.yml` не меняется: деплой `mockapi` остаётся как есть.
   - Журнал: не применимо (конфигурация CI); в шагах — `::error::` с понятной причиной.
   - Файлы: `.github/workflows/backend.yml`.
 
-- [ ] **Task 17: Синхронизация документов с решениями этапа** (depends on 2, 9, 11)
+- [x] **Task 17: Синхронизация документов с решениями этапа** (depends on 2, 9, 11)
   - После подтверждения R-1 … R-8 внести их в документы, чтобы правы были документы (README «Соглашения»):
     - 07 §2 — строка `send_login_code` в таблице видов заданий (R-1); 07 §4 — HMAC кода (R-3), CSRF double-submit (R-4), форматы документа о режиме (R-5), ключ `APP_SECRETS_KEY` для полезной нагрузки (R-1).
     - 04 §2 — поле `auth_code.requested_ip` (R-2); 04 §2 `legal_document` — способ публикации до API администратора (R-8).

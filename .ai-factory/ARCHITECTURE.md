@@ -32,7 +32,10 @@
 | Метрики | `prometheus/client_golang`, отдельный адрес `/metrics` | 07 §5.5 |
 | Хранилище | `minio/minio-go/v7` | Любое S3-совместимое, подписанные ссылки |
 | Изображения | `golang.org/x/image` (WebP, шрифты), `disintegration/imaging` | Плашка и превью без внешних процессов (D-04) |
-| Тесты с базой | `testcontainers-go` (модуль postgres) | 07 §9: настоящая PostgreSQL |
+| Тесты с базой | `testcontainers-go` (модуль postgres), пакет `platform/dbtest`: контейнер на тестовый пакет, миграции от владельца, тесты под ролью приложения | 07 §9: настоящая PostgreSQL; права роли проверяются тестами |
+| Почта | `wneessen/go-mail` (SMTP), шаблоны `templates/email/*.tmpl` | 07 §6: тексты в репозитории; в разработке — Mailpit |
+| Секреты в базе | `platform/secretbox`: AES-256-GCM, ключ `APP_SECRETS_KEY` | 07 §4: секрет в базе — только зашифрованным (R-1) |
+| Права роли в миграциях | Параметр сессии `maxim.app_role`, который выставляет `maxim migrate` из `DB_APP_ROLE` | Миграции остаются разбираемыми `sqlc` |
 
 ## Folder Structure
 
@@ -66,9 +69,11 @@ maxim/
 │   │   ├── outbound/                #   обёртка внешних вызовов: outbound_request, повторы, предохранитель (05 §1)
 │   │   ├── audit/                   #   запись audit_log
 │   │   ├── logx/                    #   slog: поля из context, маскирование (07 §5.4)
-│   │   ├── metrics/
+│   │   ├── metrics/                 #   реестр Prometheus, HTTP-метрики (07 §5.5)
+│   │   ├── secretbox/               #   шифрование секретов в полезной нагрузке заданий (R-1)
+│   │   ├── dbtest/                  #   PostgreSQL в testcontainers для тестов
 │   │   ├── httpx/                   #   middleware: request_id, сессия, CSRF, лимиты, ошибки → JSON
-│   │   └── storage/                 #   порт ObjectStorage + реализация на minio-go
+│   │   └── storage/                 #   порт ObjectStorage + реализация на minio-go; storagefake/
 │   │
 │   ├── integration/                 # ── АДАПТЕРЫ ВНЕШНИХ СИСТЕМ ──
 │   │   ├── max/                     #   клиент MAX Bot API, ограничитель 30 rps, разбор Webhook
@@ -87,6 +92,7 @@ maxim/
 │   │   │   ├── queries/*.sql        #   исходники sqlc
 │   │   │   └── sqlc/                #   СГЕНЕРИРОВАНО
 │   │   ├── httpapi/                 #   обработчики операций OpenAPI этого модуля
+│   │   ├── accounttest/             #   тестовые данные модуля (корректные ИНН, реквизиты)
 │   │   └── jobs/                    #   обработчики видов заданий модуля (если есть)
 │   │
 │   ├── channel/                     # каналы, метрики, категории, форматы, цены, каталог (04 §3)
@@ -100,7 +106,9 @@ maxim/
 │
 ├── migrations/                      # goose, одна схема на всё приложение: 00001_init.sql …
 ├── sqlc.yaml                        # по записи на модуль: queries → <module>/postgres/sqlc
-├── templates/                       # тексты уведомлений и писем (07 §6)
+├── templates/                       # тексты уведомлений и писем (07 §6): email/*.tmpl, embed.go
+├── compose.dev.yml                  # локальное окружение: PostgreSQL, MinIO, Mailpit, migrate, api, worker
+├── Dockerfile                       # образ бэкенда (distroless); контекст — Dockerfile.dockerignore
 ├── docs/                            # проектная документация (справочно)
 └── mockapi/                         # тестовый сервер в памяти (справочно, отдельный модуль)
 ```
