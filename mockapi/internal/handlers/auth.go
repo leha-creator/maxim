@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -169,7 +172,7 @@ func organization(o *store.Organization) api.Organization {
 		SignerPosition: o.SignerPosition, SignerName: o.SignerName, SignerBasisName: o.SignerBasisName,
 		SignerBasisNumber: o.SignerBasisNumber, BankAccount: o.BankAccount, BankName: o.BankName,
 		BankCorrAccount: o.BankCorrAccount, BankBik: o.BankBik, BloggerFullName: o.BloggerFullName,
-		Status: api.OrganizationStatus(o.Status), Cabinets: cabinets(o), CreatedAt: o.CreatedAt,
+		Status: api.OrganizationStatus(o.Status), Cabinets: cabinets(o), TaxDocumentUploaded: o.TaxDocUploaded, CreatedAt: o.CreatedAt,
 	}
 }
 
@@ -293,6 +296,50 @@ func (h *Handlers) UpdateCurrentOrganization(ctx context.Context, req api.Update
 	return api.UpdateCurrentOrganization200JSONResponse(organization(o)), nil
 }
 
+const maxTaxDocument = 10 << 20
+
+// UploadTaxDocument проверяет тип и размер файла и запоминает только признак загрузки.
+func (h *Handlers) UploadTaxDocument(ctx context.Context, req api.UploadTaxDocumentRequestObject) (api.UploadTaxDocumentResponseObject, error) {
+	h.logger(ctx).Debug("tax document upload started", "op", "Organization.UploadTaxDocument")
+	var data []byte
+	for {
+		part, err := req.Body.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, store.Validation("file", "malformed multipart body")
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		if data, err = io.ReadAll(io.LimitReader(part, maxTaxDocument+1)); err != nil {
+			return nil, store.Validation("file", "cannot read file")
+		}
+	}
+	if data == nil {
+		return nil, store.Validation("file", "file part is missing")
+	}
+	if len(data) > maxTaxDocument {
+		return nil, store.Validation("file", "file is larger than 10 MB")
+	}
+	mime := http.DetectContentType(data) // тип — по содержимому, не по расширению
+	if !slices.Contains([]string{"application/pdf", "image/jpeg", "image/png"}, mime) {
+		return nil, store.Validation("file", "only PDF, JPEG and PNG are accepted")
+	}
+
+	tx, done := h.st.Begin(ctx)
+	defer done()
+	_, o, err := blogger(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	o.TaxDocUploaded = true
+	h.logger(ctx).Info("tax document uploaded", "op", "Organization.UploadTaxDocument",
+		"organization_id", o.ID, "size", len(data), "content_type", mime)
+	return api.UploadTaxDocument200JSONResponse(organization(o)), nil
+}
+
 // ---------------------------------------------------------------- документы и уведомления
 
 func (h *Handlers) ListLegalDocuments(ctx context.Context, req api.ListLegalDocumentsRequestObject) (api.ListLegalDocumentsResponseObject, error) {
@@ -308,7 +355,7 @@ func (h *Handlers) ListLegalDocuments(ctx context.Context, req api.ListLegalDocu
 		if u.OrgID != nil {
 			_, accepted = tx.D.Acceptances[*u.OrgID][d.ID]
 		}
-		items = append(items, api.LegalDocument{Id: d.ID, Kind: api.LegalDocumentKind(d.Kind), Version: d.Version,
+		items = append(items, api.LegalDocument{Id: d.ID, Kind: api.LegalDocumentKind(d.Kind), Version: d.Version, PublishedAt: d.PublishedAt,
 			Title: d.Title, Url: d.URL, Accepted: accepted})
 	}
 	return api.ListLegalDocuments200JSONResponse{Items: items}, nil

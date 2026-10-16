@@ -77,6 +77,7 @@ var cases = map[string]opCase{
 	"createOrganization":        {user: blg}, // блогер открывает кабинет рекламодателя
 	"getCurrentOrganization":    {user: adv},
 	"updateCurrentOrganization": {user: adv},
+	"uploadTaxDocument":         {user: blg},
 	"listLegalDocuments":        {user: adv},
 	"acceptLegalDocuments":      {user: adv},
 	"listNotifications":         {user: adv, query: "unread=true"},

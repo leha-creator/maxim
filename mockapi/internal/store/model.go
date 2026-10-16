@@ -45,6 +45,7 @@ type Organization struct {
 	BankCorrAccount   *string
 	BankBik           *string
 	BloggerFullName   *string
+	TaxDocUploaded    bool
 	Status            string
 	IsAdvertiser      bool
 	IsBlogger         bool
@@ -52,11 +53,12 @@ type Organization struct {
 }
 
 type LegalDocument struct {
-	ID      uuid.UUID
-	Kind    string
-	Version string
-	Title   string
-	URL     string
+	ID          uuid.UUID
+	Kind        string
+	Version     int
+	PublishedAt time.Time
+	Title       string
+	URL         string
 }
 
 type Notification struct {
