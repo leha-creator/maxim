@@ -14,6 +14,26 @@ type unimplemented struct{}
 
 var _ apigen.StrictServerInterface = unimplemented{}
 
+func (unimplemented) ListAdminChannels(context.Context, apigen.ListAdminChannelsRequestObject) (apigen.ListAdminChannelsResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminChannels")
+}
+
+func (unimplemented) GetAdminChannel(context.Context, apigen.GetAdminChannelRequestObject) (apigen.GetAdminChannelResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminChannel")
+}
+
+func (unimplemented) ApproveChannel(context.Context, apigen.ApproveChannelRequestObject) (apigen.ApproveChannelResponseObject, error) {
+	return nil, apperr.NotImplemented("approveChannel")
+}
+
+func (unimplemented) RejectChannel(context.Context, apigen.RejectChannelRequestObject) (apigen.RejectChannelResponseObject, error) {
+	return nil, apperr.NotImplemented("rejectChannel")
+}
+
+func (unimplemented) SetChannelRknCheck(context.Context, apigen.SetChannelRknCheckRequestObject) (apigen.SetChannelRknCheckResponseObject, error) {
+	return nil, apperr.NotImplemented("setChannelRknCheck")
+}
+
 func (unimplemented) RequestLoginCode(context.Context, apigen.RequestLoginCodeRequestObject) (apigen.RequestLoginCodeResponseObject, error) {
 	return nil, apperr.NotImplemented("requestLoginCode")
 }

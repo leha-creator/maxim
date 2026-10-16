@@ -43,6 +43,14 @@ type Config struct {
 	EarlyCodeWindow time.Duration
 	// EarlyCodeRetry — через сколько повторить разбор такого кода.
 	EarlyCodeRetry time.Duration
+	// FeeRateBP — комиссия платформы в базисных пунктах (PLATFORM_FEE_RATE_BP, A-30: 1500).
+	FeeRateBP int
+	// RknRecheckInterval — через сколько подтверждённый номер РКН пора проверить снова (R-17).
+	RknRecheckInterval time.Duration
+	// Unavailability — пределы интервалов недоступности (R-6).
+	Unavailability domain.UnavailabilityLimits
+	// Metrics — окна и пороги суточных метрик (R-14, R-15).
+	Metrics domain.MetricsConfig
 }
 
 func (c *Config) defaults() {
@@ -64,6 +72,11 @@ func (c *Config) defaults() {
 	if c.EarlyCodeRetry == 0 {
 		c.EarlyCodeRetry = time.Minute
 	}
+	if c.RknRecheckInterval == 0 {
+		c.RknRecheckInterval = 2160 * time.Hour
+	}
+	c.Unavailability = c.Unavailability.WithDefaults()
+	c.Metrics = c.Metrics.WithDefaults()
 }
 
 // Alerter — оповещения администратору (07 §3).
@@ -74,9 +87,19 @@ type Alerter interface {
 // Deps — зависимости сервиса; связывает bootstrap. ChatReader и ChatManager нужны
 // только в режиме worker.
 type Deps struct {
-	Channels     domain.Channels
-	LinkCodes    domain.LinkCodes
-	Categories   domain.Categories
+	Channels   domain.Channels
+	LinkCodes  domain.LinkCodes
+	Categories domain.Categories
+	Formats    domain.Formats
+	Prices     domain.Prices
+	Unavail    domain.Unavailabilities
+	Metrics    domain.Metrics
+	Catalog    domain.Catalog
+	Admin      domain.AdminChannels
+	// Messages — чтение сообщений канала (только worker).
+	Messages domain.MessageReader
+	// Placements — занятые размещениями интервалы (R-8); nil — пустая реализация.
+	Placements   domain.PlacementSchedule
 	Chats        domain.ChatReader
 	Bot          domain.ChatManager
 	Availability domain.AvailabilityListener
@@ -100,6 +123,9 @@ func New(d Deps) *Service {
 	d.Config.defaults()
 	if d.Availability == nil {
 		d.Availability = NopAvailability{Log: d.Log}
+	}
+	if d.Placements == nil {
+		d.Placements = NopPlacements{}
 	}
 	return &Service{Deps: d, log: d.Log.With(logx.KeyModule, "channel")}
 }
@@ -152,8 +178,13 @@ func (s *Service) save(ctx context.Context, op string, c *domain.Channel, change
 	if change.AvailabilityLost() {
 		level = slog.LevelWarn
 	}
+	// У rejected причина — текст администратора: в журнал приложения он не пишется (07 §5.4).
+	logReason := change.Reason
+	if change.To == domain.StatusRejected && logReason != "" {
+		logReason = "moderation_rejected"
+	}
 	s.log.Log(ctx, level, "channel status changed", logx.KeyOp, op, KeyChannelID, c.ID,
-		"from", change.From, "to", change.To, "reason", change.Reason, "missing", c.MissingPermissions())
+		"from", change.From, "to", change.To, "reason", logReason, "missing", c.MissingPermissions())
 	return nil
 }
 
@@ -162,4 +193,25 @@ func orgOf(c *domain.Channel) uuid.UUID {
 		return uuid.Nil
 	}
 	return *c.OrganizationID
+}
+
+// NopPlacements — пустая реализация PlacementSchedule до модуля размещений (R-8).
+type NopPlacements struct{}
+
+func (NopPlacements) BusyIntervals(context.Context, uuid.UUID, time.Time, time.Time) ([]domain.Unavailability, error) {
+	return nil, nil
+}
+
+// ruleError переводит нарушение правила домена в 422 с details.reason (R-4 … R-6, R-10).
+func ruleError(err error) error {
+	var re *domain.RuleError
+	if errors.As(err, &re) {
+		return apperr.Validation(re.Field, re.Reason).WithCause(err)
+	}
+	return err
+}
+
+// notEditable — 409 для канала, который блогер не правит в его состоянии.
+func notEditable(c *domain.Channel) error {
+	return apperr.Conflict("channel cannot be edited in its current status").WithDetail("status", string(c.Status))
 }

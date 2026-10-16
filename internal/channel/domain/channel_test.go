@@ -77,7 +77,7 @@ func TestRightsRefreshedResolvesStatus(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.from)+"/"+tc.wantReason+"/"+string(tc.want), func(t *testing.T) {
 			c := channelIn(tc.from)
-			change := c.RightsRefreshed(tc.info, tc.m, t0)
+			change := c.RightsRefreshed(tc.info, tc.m, 10000, t0)
 			if c.Status != tc.want || c.StatusReason != tc.wantReason {
 				t.Fatalf("status = %s/%q, want %s/%q", c.Status, c.StatusReason, tc.want, tc.wantReason)
 			}
@@ -92,25 +92,27 @@ func TestRightsRefreshedResolvesStatus(t *testing.T) {
 }
 
 func TestSuspendedForOtherReasonStays(t *testing.T) {
+	// rkn_required снимается сам, когда номер подтверждён или подписчиков меньше порога
+	// (R-16 этапа «Каталог», TestRknRule); причину, которую ставит администратор, — нет.
 	c := channelIn(StatusSuspended)
-	c.StatusReason = "rkn_required"
-	c.RightsRefreshed(pub, allOK, t0)
-	if c.Status != StatusSuspended || c.StatusReason != "rkn_required" {
+	c.StatusReason = "admin_hold"
+	c.RightsRefreshed(pub, allOK, 10000, t0)
+	if c.Status != StatusSuspended || c.StatusReason != "admin_hold" {
 		t.Fatalf("status = %s/%s", c.Status, c.StatusReason)
 	}
 }
 
 func TestAvailabilityFlags(t *testing.T) {
 	c := channelIn(StatusActive)
-	lost := c.RightsRefreshed(pub, Membership{IsAdmin: true, Permissions: []string{"write"}}, t0)
+	lost := c.RightsRefreshed(pub, Membership{IsAdmin: true, Permissions: []string{"write"}}, 10000, t0)
 	if !lost.AvailabilityLost() || lost.AvailabilityRestored() {
 		t.Fatalf("lost = %+v", lost)
 	}
-	back := c.RightsRefreshed(pub, allOK, t0)
+	back := c.RightsRefreshed(pub, allOK, 10000, t0)
 	if !back.AvailabilityRestored() || back.AvailabilityLost() || c.Status != StatusActive {
 		t.Fatalf("restored = %+v", back)
 	}
-	same := c.RightsRefreshed(pub, allOK, t0)
+	same := c.RightsRefreshed(pub, allOK, 10000, t0)
 	if same.Changed() || same.AvailabilityRestored() {
 		t.Fatalf("no-op change = %+v", same)
 	}
@@ -162,7 +164,7 @@ func TestBotRemovedAndReAdded(t *testing.T) {
 			if (c.OrganizationID != nil) != tc.withOwner {
 				t.Fatalf("owner kept = %v, want %v", c.OrganizationID != nil, tc.withOwner)
 			}
-			c.RightsRefreshed(pub, allOK, t0.Add(2*time.Hour))
+			c.RightsRefreshed(pub, allOK, 10000, t0.Add(2*time.Hour))
 			if c.Status != tc.afterOK {
 				t.Fatalf("after refresh: %s, want %s", c.Status, tc.afterOK)
 			}
@@ -192,30 +194,30 @@ func TestBotAddedToLinkedChannelKeepsAddedBy(t *testing.T) {
 
 func TestLinkTo(t *testing.T) {
 	c := NewChannel(uuid.New(), -100, 7, t0)
-	c.RightsRefreshed(pub, allOK, t0)
-	change, err := c.LinkTo(orgA, t0)
+	c.RightsRefreshed(pub, allOK, 10000, t0)
+	change, err := c.LinkTo(orgA, 10000, t0)
 	if err != nil || c.Status != StatusModeration || change.From != StatusUnclaimed || change.To != StatusModeration {
 		t.Fatalf("link: err %v, status %s, change %+v", err, c.Status, change)
 	}
 	if c.UnclaimedSince != nil || *c.OrganizationID != orgA {
 		t.Fatal("unclaimed_since or organization not updated")
 	}
-	if _, err := c.LinkTo(orgA, t0); !errors.Is(err, ErrAlreadyLinked) {
+	if _, err := c.LinkTo(orgA, 10000, t0); !errors.Is(err, ErrAlreadyLinked) {
 		t.Fatalf("same org: %v", err)
 	}
-	if _, err := c.LinkTo(orgB, t0); !errors.Is(err, ErrLinkedToOther) || *c.OrganizationID != orgA {
+	if _, err := c.LinkTo(orgB, 10000, t0); !errors.Is(err, ErrLinkedToOther) || *c.OrganizationID != orgA {
 		t.Fatalf("other org: %v", err)
 	}
 
 	noRights := NewChannel(uuid.New(), -101, 7, t0)
-	noRights.RightsRefreshed(pub, Membership{IsAdmin: true, Permissions: []string{"write"}}, t0)
-	if _, err := noRights.LinkTo(orgA, t0); err != nil || noRights.Status != StatusPendingRights {
+	noRights.RightsRefreshed(pub, Membership{IsAdmin: true, Permissions: []string{"write"}}, 10000, t0)
+	if _, err := noRights.LinkTo(orgA, 10000, t0); err != nil || noRights.Status != StatusPendingRights {
 		t.Fatalf("without delete: %v, %s", err, noRights.Status)
 	}
 
 	released := NewChannel(uuid.New(), -102, 7, t0)
 	released.ReleaseUnclaimed(t0)
-	if _, err := released.LinkTo(orgA, t0); !errors.Is(err, ErrNotLinkable) {
+	if _, err := released.LinkTo(orgA, 10000, t0); !errors.Is(err, ErrNotLinkable) {
 		t.Fatalf("released: %v", err)
 	}
 }

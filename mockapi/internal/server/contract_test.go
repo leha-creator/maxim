@@ -25,6 +25,8 @@ type opCase struct {
 	body    any
 	noBody  bool
 	prepare func(e *env) (params map[string]string, body any)
+	// status — ожидаемый статус вместо 2xx: операции, которых нет в тестовом сервере.
+	status int
 }
 
 const (
@@ -153,6 +155,13 @@ var cases = map[string]opCase{
 	"getRocketworkStatus": {user: blg},
 	"inviteRocketwork":    {user: blg, noBody: true},
 
+	// администратор: тестовый сервер отвечает 501
+	"listAdminChannels":  {user: adv, status: http.StatusNotImplemented},
+	"getAdminChannel":    {user: adv, params: id(seed.ChannelModerate), status: http.StatusNotImplemented},
+	"approveChannel":     {user: adv, params: id(seed.ChannelModerate), noBody: true, status: http.StatusNotImplemented},
+	"rejectChannel":      {user: adv, params: id(seed.ChannelModerate), status: http.StatusNotImplemented},
+	"setChannelRknCheck": {user: adv, params: id(seed.ChannelModerate), status: http.StatusNotImplemented},
+
 	// webhooks
 	"maxWebhook":        {params: map[string]string{"secret": "test-secret"}},
 	"rocketworkWebhook": {},
@@ -228,6 +237,12 @@ func TestEveryOperation(t *testing.T) {
 				path += "?" + c.query
 			}
 			r := e.do(e.client(c.user), o.method, path, body, contentType)
+			if c.status != 0 {
+				if r.status != c.status {
+					t.Errorf("%s %s: status %d, want %d\nbody=%s", o.method, path, r.status, c.status, truncate(r.body))
+				}
+				return
+			}
 			if r.status < 200 || r.status > 299 {
 				t.Errorf("%s %s: status %d, want 2xx\nrequest_id=%s body=%s", o.method, path, r.status, r.header.Get("X-Request-Id"), truncate(r.body))
 			}

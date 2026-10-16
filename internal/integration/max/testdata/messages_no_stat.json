@@ -1,0 +1,15 @@
+{
+  "messages": [
+    {
+      "recipient": {"chat_id": -70000000001, "chat_type": "channel"},
+      "timestamp": 1760511600000,
+      "body": {"mid": "mid.2", "seq": 2, "text": "Суп за 15 минут"}
+    },
+    {
+      "recipient": {"chat_id": -70000000001, "chat_type": "channel"},
+      "timestamp": 1760425200000,
+      "body": {"mid": "mid.1", "seq": 1, "text": "Пирог"},
+      "stat": {}
+    }
+  ]
+}

@@ -51,7 +51,11 @@ func (h *Handlers) ListBloggerChannels(ctx context.Context, _ apigen.ListBlogger
 	}
 	items := make([]apigen.BloggerChannel, 0, len(list))
 	for _, c := range list {
-		items = append(items, bloggerChannel(c))
+		v, err := h.view(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, v)
 	}
 	h.log.DebugContext(ctx, "blogger channels listed", logx.KeyOp, "Channel.List", "count", len(items))
 	return apigen.ListBloggerChannels200JSONResponse{Items: items}, nil
@@ -80,7 +84,11 @@ func (h *Handlers) GetBloggerChannel(ctx context.Context, req apigen.GetBloggerC
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetBloggerChannel200JSONResponse(bloggerChannel(c)), nil
+	v, err := h.view(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.GetBloggerChannel200JSONResponse(v), nil
 }
 
 func (h *Handlers) UpdateBloggerChannel(ctx context.Context, req apigen.UpdateBloggerChannelRequestObject) (apigen.UpdateBloggerChannelResponseObject, error) {
@@ -95,7 +103,11 @@ func (h *Handlers) UpdateBloggerChannel(ctx context.Context, req apigen.UpdateBl
 	if err != nil {
 		return nil, err
 	}
-	return apigen.UpdateBloggerChannel200JSONResponse(bloggerChannel(c)), nil
+	v, err := h.view(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.UpdateBloggerChannel200JSONResponse(v), nil
 }
 
 func (h *Handlers) ListChannelCategories(ctx context.Context, _ apigen.ListChannelCategoriesRequestObject) (apigen.ListChannelCategoriesResponseObject, error) {
@@ -110,9 +122,8 @@ func (h *Handlers) ListChannelCategories(ctx context.Context, _ apigen.ListChann
 	return apigen.ListChannelCategories200JSONResponse{Items: items}, nil
 }
 
-// bloggerChannel — канал для кабинета. Цены и недоступность — этап «Каталог»:
-// пока пустые массивы (схема требует поля).
-func bloggerChannel(c *domain.Channel) apigen.BloggerChannel {
+// bloggerChannel — канал для кабинета без интервалов недоступности; их добавляет view.
+func bloggerChannel(c *domain.Channel, feeRateBP int) apigen.BloggerChannel {
 	perms := c.BotPermissions
 	if perms == nil {
 		perms = []string{}
@@ -123,7 +134,7 @@ func bloggerChannel(c *domain.Channel) apigen.BloggerChannel {
 		CategoryId: c.CategoryID, SubscribersCount: c.SubscribersCount, BotIsAdmin: c.BotIsAdmin,
 		BotPermissions: perms, MissingPermissions: c.MissingPermissions(), RknNumber: opt(c.RknNumber),
 		RknStatus: apigen.RknStatus(c.RknStatus), Rating: c.Rating,
-		Prices: []apigen.BloggerPrice{}, Unavailability: []apigen.Unavailability{},
+		Prices: bloggerPrices(c.Prices, feeRateBP), Unavailability: []apigen.Unavailability{},
 	}
 }
 

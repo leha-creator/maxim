@@ -69,6 +69,19 @@ func Register(w *job.Worker, d *inbound.Dispatcher, svc *app.Service) {
 		}
 		return svc.ReplyDialog(ctx, p.MaxUserID)
 	}, job.HandlerOptions{NoFailureAlert: true})
+	// Суточные метрики (R-13, R-20): раз в сутки в 00:05 по Москве ставятся задания по
+	// каналам, распределённые по суткам. Канал, которого нет в MAX (404), — Permanent:
+	// его отключат события бота.
+	w.RegisterPeriodic(app.KindScheduleChannelMetrics, job.DailyAt(0, 5), func(ctx context.Context, _ job.Running) error {
+		return svc.ScheduleMetrics(ctx)
+	}, job.HandlerOptions{})
+	w.Register(app.KindRefreshChannelMetrics, func(ctx context.Context, r job.Running) error {
+		var p app.MetricsPayload
+		if err := decode(r, &p); err != nil {
+			return err
+		}
+		return svc.RefreshMetrics(ctx, p)
+	}, job.HandlerOptions{})
 	// Раз в сутки по Москве в 05:00, после cleanup (R-12).
 	w.RegisterPeriodic(app.KindReleaseUnclaimedChannels, job.DailyAt(5, 0), func(ctx context.Context, _ job.Running) error {
 		return svc.ReleaseUnclaimed(ctx)

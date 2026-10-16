@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AdvertiserProfile struct {
@@ -105,6 +106,37 @@ type ChannelCategory struct {
 	IsActive  bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type ChannelMetric struct {
+	ID               uuid.UUID
+	ChannelID        uuid.UUID
+	Date             pgtype.Date
+	SubscribersCount int32
+	AvgViews         *int32
+	EngagementBp     *int32
+	PostsPerWeek     pgtype.Numeric
+	AnomalyFlags     []string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type ChannelPrice struct {
+	ID        uuid.UUID
+	ChannelID uuid.UUID
+	FormatID  string
+	Amount    int64
+	IsEnabled bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type ChannelUnavailability struct {
+	ID        uuid.UUID
+	ChannelID uuid.UUID
+	StartsAt  time.Time
+	EndsAt    time.Time
+	CreatedAt time.Time
 }
 
 type InboundEvent struct {
@@ -214,6 +246,17 @@ type OutboundRequest struct {
 	ObjectType     *string
 	ObjectID       *string
 	CreatedAt      time.Time
+}
+
+type PlacementFormat struct {
+	ID            string
+	Name          string
+	TopHours      int32
+	DurationHours int32
+	IsActive      bool
+	Position      int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type RateLimitBucket struct {

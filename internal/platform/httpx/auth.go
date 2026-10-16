@@ -102,3 +102,20 @@ func RequireCabinet(ctx context.Context, cabinet string) (*Principal, error) {
 	}
 	return p, nil
 }
+
+// ReasonAdminRequired — у пользователя нет нужной роли администратора (07 §4).
+const ReasonAdminRequired = "admin_required"
+
+// RequireAdmin проверяет, что у пользователя одна из ролей администратора roles:
+// 401 без сессии, 403 с details.reason = admin_required без роли. Отказ пишется в журнал.
+func RequireAdmin(ctx context.Context, log *slog.Logger, op string, roles ...string) (*Principal, error) {
+	p, ok := PrincipalFrom(ctx)
+	if !ok {
+		return nil, apperr.Unauthorized("session is missing")
+	}
+	if p.AdminRole == "" || !slices.Contains(roles, p.AdminRole) {
+		log.WarnContext(ctx, "admin access denied", logx.KeyOp, op, logx.KeyUserID, p.UserID, "required_roles", roles)
+		return nil, apperr.Forbidden(ReasonAdminRequired)
+	}
+	return p, nil
+}

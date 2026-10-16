@@ -183,11 +183,11 @@ erDiagram
 | `unclaimed_since` | `timestamptz` | нет | С какого момента канал ждёт кода подключения; через 7 суток бот уходит (A-41) |
 | `moderated_at`, `moderated_by` | `timestamptz`, `uuid` | нет | |
 
-Ограничение: канал может быть `active` только при `organization_id is not null`, `is_public`, правах `write` и `delete`, заполненной категории, хотя бы одной включённой цене и (`subscribers_count < 10000` или `rkn_status = 'confirmed'`). В базе ограничение закреплено проверкой без цены (её добавит этап «Каталог») и без порога РКН (параметр конфигурации `RKN_SUBSCRIBERS_THRESHOLD`, проверяет модуль каналов).
+Ограничение: канал может быть `active` только при `organization_id is not null`, `is_public`, правах `write` и `delete`, заполненной категории, хотя бы одной включённой цене и (`subscribers_count < 10000` или `rkn_status = 'confirmed'`). В базе ограничение закреплено проверкой `channel_active_requirements` и отложенным триггером-ограничением `channel_active_requires_price` на `channel` и `channel_price`: при фиксации транзакции у канала в `active` есть включённая цена активного формата. Порог РКН — параметр конфигурации `RKN_SUBSCRIBERS_THRESHOLD`, его проверяет модуль каналов.
 
 ### channel_metrics
 
-Суточный снимок. Уникальная пара `(channel_id, date)`.
+Суточный снимок; поля `id`, `created_at`, `updated_at`. Уникальная пара `(channel_id, date)`, дата — сутки по Москве. Повтор расчёта в те же сутки перезаписывает снимок. Снимки хранятся бессрочно (не больше 365 строк на канал в год); карточка и экран администратора показывают последние 30.
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
@@ -224,9 +224,11 @@ erDiagram
 | `amount` | `bigint` | да | Цена блогера без комиссии. От 10 000 до 1 000 000 000 копеек |
 | `is_enabled` | `boolean` | да | |
 
+Также `id`, `created_at`, `updated_at`. Набор цен канала заменяется целиком (S-13); строки удаляются.
+
 ### channel_unavailability
 
-`channel_id uuid`, `starts_at timestamptz`, `ends_at timestamptz`. Интервалы, в которые блогер не принимает публикации (S-13). `publish_at` не может попасть в такой интервал.
+`id uuid`, `channel_id uuid`, `starts_at timestamptz`, `ends_at timestamptz`, `created_at timestamptz`, проверка `starts_at < ends_at`. Интервалы, в которые блогер не принимает публикации (S-13). `publish_at` не может попасть в такой интервал. Закончившиеся интервалы удаляет задание `cleanup` через 30 суток после окончания.
 
 ## 4. Медиатека и посты
 

@@ -20,7 +20,8 @@ func TestAssembledApp(t *testing.T) {
 		t.Fatalf("readyz: %d", resp.StatusCode)
 	}
 	for _, kind := range []string{"send_login_code", "process_inbound_event", "send_alert", "check_stuck_objects", "cleanup",
-		"refresh_channel_info", "delete_max_message", "leave_max_chat", "reply_bot_dialog", "release_unclaimed_channels"} {
+		"refresh_channel_info", "delete_max_message", "leave_max_chat", "reply_bot_dialog", "release_unclaimed_channels",
+		"schedule_channel_metrics", "refresh_channel_metrics"} {
 		if !slices.Contains(a.worker.Kinds(), kind) {
 			t.Fatalf("worker kinds %v have no %s", a.worker.Kinds(), kind)
 		}

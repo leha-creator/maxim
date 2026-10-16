@@ -34,6 +34,8 @@ const (
 	ModeWorker  = "worker"
 	ModeMigrate = "migrate"
 	ModeLegal   = "legal"
+	// ModeAdmin — роли администратора (maxim admin grant|revoke).
+	ModeAdmin = "admin"
 )
 
 // Config — вся конфигурация приложения. Источник — только переменные окружения (07 §8).
@@ -93,6 +95,17 @@ type ChannelConfig struct {
 	LinkCodesPerHour int           `env:"CHANNEL_LINK_CODES_PER_HOUR" envDefault:"10"`
 	UnclaimedTTL     time.Duration `env:"CHANNEL_UNCLAIMED_TTL" envDefault:"168h"`
 	RknThreshold     int           `env:"RKN_SUBSCRIBERS_THRESHOLD" envDefault:"10000"`
+	// RknRecheckInterval — через сколько подтверждённый номер РКН пора проверить снова (06 §6.3, R-17).
+	RknRecheckInterval time.Duration `env:"RKN_RECHECK_INTERVAL" envDefault:"2160h"`
+	// FeeRateBP — комиссия платформы сверху цены блогера, базисные пункты (06 §3, A-30).
+	FeeRateBP int `env:"PLATFORM_FEE_RATE_BP" envDefault:"1500"`
+	// Пороги флагов аномалий метрик (05 §2.7, R-15).
+	MetricsSubscribersSpikeBP int `env:"METRICS_SUBSCRIBERS_SPIKE_BP" envDefault:"2000"`
+	MetricsViewsMinBP         int `env:"METRICS_VIEWS_MIN_BP" envDefault:"100"`
+	// Пределы интервалов недоступности (R-6).
+	UnavailabilityMaxDays     int `env:"CHANNEL_UNAVAILABILITY_MAX_DAYS" envDefault:"90"`
+	UnavailabilityHorizonDays int `env:"CHANNEL_UNAVAILABILITY_HORIZON_DAYS" envDefault:"365"`
+	UnavailabilityMaxCount    int `env:"CHANNEL_UNAVAILABILITY_MAX_COUNT" envDefault:"50"`
 }
 
 // AlertConfig — адресаты оповещений администратору (07 §3, R-5).
@@ -116,6 +129,8 @@ type RetentionConfig struct {
 	AuthCode        time.Duration `env:"RETENTION_AUTH_CODE" envDefault:"168h"` // 7 суток после истечения
 	Session         time.Duration `env:"RETENTION_SESSION" envDefault:"168h"`
 	Alert           time.Duration `env:"RETENTION_ALERT" envDefault:"2160h"` // 90 суток после закрытия
+	// ChannelUnavailability — интервалы недоступности после окончания (R-6: 30 суток).
+	ChannelUnavailability time.Duration `env:"RETENTION_CHANNEL_UNAVAILABILITY" envDefault:"720h"`
 }
 
 // MAXFake сообщает, что вместо MAX работает поддельный адаптер: в тестовом
@@ -240,6 +255,9 @@ func (c Config) Validate(mode string) error {
 		require("DB_APP_ROLE", c.DBAppRole)
 		return finish(bad)
 	}
+	if mode == ModeAdmin {
+		return finish(bad) // только база
+	}
 	if c.DBMaxConns < 1 {
 		add("DB_MAX_CONNS", "must be positive")
 	}
@@ -285,6 +303,9 @@ func (c Config) Validate(mode string) error {
 		if ch.LinkCodeTTL <= 0 || ch.LinkCodesPerHour < 1 || ch.UnclaimedTTL <= 0 || ch.RknThreshold < 1 {
 			add("CHANNEL_*, RKN_SUBSCRIBERS_THRESHOLD", "must be positive")
 		}
+	}
+	if mode == ModeAPI || mode == ModeWorker {
+		c.validateCatalog(add)
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -342,7 +363,7 @@ func (c Config) validateWorker(add func(field, reason string)) {
 		add("DOWNTIME_THRESHOLD, STUCK_*", "must be positive")
 	}
 	r := c.Retention
-	for _, d := range []time.Duration{r.OutboundRequest, r.JobFinished, r.JobFailed, r.InboundEvent, r.AuthCode, r.Session, r.Alert} {
+	for _, d := range []time.Duration{r.OutboundRequest, r.JobFinished, r.JobFailed, r.InboundEvent, r.AuthCode, r.Session, r.Alert, r.ChannelUnavailability} {
 		if d <= 0 {
 			add("RETENTION_*", "must be positive")
 			break
@@ -443,6 +464,13 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("channel_link_codes_per_hour", c.Channel.LinkCodesPerHour),
 		slog.String("channel_unclaimed_ttl", c.Channel.UnclaimedTTL.String()),
 		slog.Int("rkn_subscribers_threshold", c.Channel.RknThreshold),
+		slog.String("rkn_recheck_interval", c.Channel.RknRecheckInterval.String()),
+		slog.Int("platform_fee_rate_bp", c.Channel.FeeRateBP),
+		slog.Int("metrics_subscribers_spike_bp", c.Channel.MetricsSubscribersSpikeBP),
+		slog.Int("metrics_views_min_bp", c.Channel.MetricsViewsMinBP),
+		slog.Int("channel_unavailability_max_days", c.Channel.UnavailabilityMaxDays),
+		slog.Int("channel_unavailability_horizon_days", c.Channel.UnavailabilityHorizonDays),
+		slog.Int("channel_unavailability_max_count", c.Channel.UnavailabilityMaxCount),
 		slog.Int("alert_emails", len(c.Alert.Emails)),
 		slog.Bool("alert_max_chat", c.Alert.MAXChatID != 0),
 		slog.String("downtime_threshold", c.Scheduler.DowntimeThreshold.String()),
@@ -462,4 +490,28 @@ func redactURL(u string) string {
 		creds = creds[:colon] + ":***"
 	}
 	return fmt.Sprintf("%s%s%s", u[:scheme+3], creds, u[at:])
+}
+
+// validateCatalog — параметры каталога (этап «Каталог»): комиссия, пороги метрик,
+// пределы интервалов недоступности, повторная проверка РКН.
+func (c Config) validateCatalog(add func(field, reason string)) {
+	ch := c.Channel
+	if ch.FeeRateBP < 0 || ch.FeeRateBP > 10000 {
+		add("PLATFORM_FEE_RATE_BP", "must be 0..10000")
+	}
+	if ch.MetricsSubscribersSpikeBP < 1 {
+		add("METRICS_SUBSCRIBERS_SPIKE_BP", "must be positive")
+	}
+	if ch.MetricsViewsMinBP < 0 || ch.MetricsViewsMinBP > 10000 {
+		add("METRICS_VIEWS_MIN_BP", "must be 0..10000")
+	}
+	if ch.UnavailabilityMaxDays < 1 || ch.UnavailabilityHorizonDays < 1 || ch.UnavailabilityMaxCount < 1 {
+		add("CHANNEL_UNAVAILABILITY_*", "must be positive")
+	}
+	if ch.RknRecheckInterval <= 0 {
+		add("RKN_RECHECK_INTERVAL", "must be positive")
+	}
+	if ch.RknThreshold < 1 {
+		add("RKN_SUBSCRIBERS_THRESHOLD", "must be positive")
+	}
 }

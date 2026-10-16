@@ -319,6 +319,39 @@ func (q *Queries) ListChannelsByOrganization(ctx context.Context, organizationID
 	return items, nil
 }
 
+const listChannelsForMetrics = `-- name: ListChannelsForMetrics :many
+SELECT id FROM channel
+WHERE status IN ('moderation', 'active', 'suspended') AND id > $1::uuid
+ORDER BY id
+LIMIT $2
+`
+
+type ListChannelsForMetricsParams struct {
+	After uuid.UUID
+	Lim   int32
+}
+
+// R-13: каналы, которым считаются суточные метрики, порцией по id.
+func (q *Queries) ListChannelsForMetrics(ctx context.Context, arg ListChannelsForMetricsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listChannelsForMetrics, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnclaimedChannelsBefore = `-- name: ListUnclaimedChannelsBefore :many
 SELECT id FROM channel
 WHERE status = 'unclaimed' AND unclaimed_since < $1::timestamptz
@@ -360,8 +393,9 @@ UPDATE channel SET
     bot_is_admin = $14, bot_permissions = $15,
     bot_permissions_checked_at = $16, subscribers_count = $17,
     rkn_number = $18, rkn_status = $19, rkn_checked_at = $20,
-    lock_version = $21, updated_at = $22
-WHERE id = $23 AND lock_version = $24
+    rkn_checked_by = $21, moderated_at = $22, moderated_by = $23,
+    lock_version = $24, updated_at = $25
+WHERE id = $26 AND lock_version = $27
 `
 
 type SaveChannelParams struct {
@@ -385,6 +419,9 @@ type SaveChannelParams struct {
 	RknNumber               *string
 	RknStatus               string
 	RknCheckedAt            *time.Time
+	RknCheckedBy            *uuid.UUID
+	ModeratedAt             *time.Time
+	ModeratedBy             *uuid.UUID
 	LockVersion             int32
 	UpdatedAt               time.Time
 	ID                      uuid.UUID
@@ -414,6 +451,9 @@ func (q *Queries) SaveChannel(ctx context.Context, arg SaveChannelParams) (int64
 		arg.RknNumber,
 		arg.RknStatus,
 		arg.RknCheckedAt,
+		arg.RknCheckedBy,
+		arg.ModeratedAt,
+		arg.ModeratedBy,
 		arg.LockVersion,
 		arg.UpdatedAt,
 		arg.ID,

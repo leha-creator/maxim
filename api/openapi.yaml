@@ -5,7 +5,8 @@ info:
   description: |
     HTTP API кабинетов рекламодателя и блогера. Черновик: составлен по документам
     `docs/02-scenarios.md`, `docs/03-placement.md`, `docs/04-domain-model.md`, `docs/08-screens.md`.
-    При расхождении правы документы. Раздел администратора пока не описан.
+    При расхождении правы документы. Из раздела администратора описаны операции для каналов
+    (тег `admin-channels`, этап «Каталог»); остальные операции администратора — этап «API администратора».
 
     Соглашения:
     - Деньги — целые копейки (`int64`). Суммы считает сервер; клиент передаёт идентификаторы.
@@ -54,6 +55,11 @@ tags:
     description: Запросы и размещения блогера (S-14; `blg/placements`, `blg/placement`)
   - name: blogger-payouts
     description: Выплаты и Рокет Ворк (S-11, S-15; `blg/payouts`)
+  - name: admin-channels
+    description: |
+      Модерация каналов и проверка номера РКН администратором (S-16, 06 §6.3). Нужна роль
+      администратора `moderator` или `senior` (07 §4), иначе `403` с `details.reason = admin_required`.
+      Тестовый сервер эти операции не реализует (`501`).
   - name: webhooks
     description: Входящие события внешних систем. Тестовый сервер принимает и ничего не делает
   - name: _mock
@@ -337,7 +343,18 @@ paths:
       tags: [catalog]
       operationId: listCatalogChannels
       summary: Каналы каталога
-      description: Только каналы в состоянии `active`. Цены — итог для рекламодателя, с комиссией платформы.
+      description: |
+        Нужен открытый кабинет рекламодателя. В каталоге виден канал в состоянии `active`, у которого
+        есть включённая цена активного формата и подписчиков меньше порога РКН (10 000) или номер РКН
+        подтверждён. Цены — итог для рекламодателя, с комиссией платформы.
+
+        Цена для фильтра `price_from`/`price_to` и сортировок по цене и CPV — цена формата `format_id`,
+        без него — минимальная включённая цена канала. `cpv` — эта цена, делённая на `avg_views`,
+        в копейках с округлением вниз. Каналы без значения ключа сортировки (нет `avg_views`,
+        `engagement_bp`) идут в конце; при равенстве ключа порядок — по `id`.
+
+        Курсор относится к своей сортировке: курсор другой сортировки или испорченный — `422`
+        с `details.reason = invalid_cursor`. При смене фильтров выдача начинается с первой страницы.
       parameters:
         - name: q
           in: query
@@ -366,7 +383,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [subscribers_desc, price_asc, price_desc, engagement_desc, rating_desc]
+            enum: [subscribers_desc, price_asc, price_desc, engagement_desc, rating_desc, avg_views_desc, cpv_asc]
             default: subscribers_desc
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -1116,7 +1133,15 @@ paths:
       tags: [blogger-channels]
       operationId: setBloggerChannelPrices
       summary: Цены по форматам (S-13)
-      description: Цена блогера без комиссии, от 100 до 10 000 000 ₽. Передаётся полный набор форматов.
+      description: |
+        Цена блогера без комиссии, от 100 до 10 000 000 ₽. Передаётся полный набор форматов:
+        формат, которого нет в наборе, удаляется. Цена для рекламодателя `total_amount` —
+        `amount + floor(amount × комиссия / 10000)`.
+
+        Канал в `unclaimed`, `disconnected` или `blocked` цены не принимает — `409`.
+        `422` с `details.reason`: `duplicate_format` — формат повторяется; `unknown_format` —
+        формата нет среди активных; `active_requires_price` — у канала в `active` должна
+        остаться хотя бы одна включённая цена.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1138,12 +1163,20 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /blogger/channels/{id}/unavailability:
     post:
       tags: [blogger-channels]
       operationId: addChannelUnavailability
       summary: Добавить интервал недоступности
+      description: |
+        Интервал, в который блогер не принимает публикации (S-13). Прошедшие интервалы в ответах
+        не показываются. Канал в `unclaimed`, `disconnected` или `blocked` интервалы не принимает — `409`.
+        `422` с `details.reason`: `in_past` — начало не раньше конца или конец уже прошёл;
+        `too_long` — длиннее 90 суток; `too_far` — начало дальше 365 суток от текущего момента;
+        `overlap` — пересекается с интервалом канала (соприкосновение границ — не пересечение);
+        `too_many` — у канала уже 50 действующих интервалов.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1161,6 +1194,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /blogger/channels/{id}/unavailability/{unavailabilityId}:
     delete:
@@ -1379,6 +1413,145 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- admin: channels
+  /admin/channels:
+    get:
+      tags: [admin-channels]
+      operationId: listAdminChannels
+      summary: Каналы для администратора (очередь модерации)
+      description: |
+        Каналы всех организаций, кроме `unclaimed`, по времени последнего изменения, старые первыми.
+        `rkn_recheck_due = true` — номер РКН подтверждён больше 90 суток назад и его пора проверить снова
+        (06 §6.3); канал при этом продолжает работать.
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ChannelStatus' }
+        - name: rkn_status
+          in: query
+          schema: { $ref: '#/components/schemas/RknStatus' }
+        - name: rkn_recheck_due
+          in: query
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Каналы
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminChannelListItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/channels/{id}:
+    get:
+      tags: [admin-channels]
+      operationId: getAdminChannel
+      summary: Канал для модерации (S-16 шаг 1)
+      description: Сведения из MAX, метрики за 30 суток, флаги аномалий, история модерации.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Канал
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannel' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/channels/{id}/approve:
+    post:
+      tags: [admin-channels]
+      operationId: approveChannel
+      summary: Одобрить канал (S-16 шаг 3)
+      description: |
+        Только из `moderation`. Нужны права бота и публичность канала, категория, включённая цена,
+        а при подписчиках от 10 000 — подтверждённый номер РКН. Чего не хватает — `409` с
+        `details.missing` из `rights`, `category`, `price`, `rkn`. Канал в другом состоянии — `409`
+        с `details.status`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Канал
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannel' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/channels/{id}/reject:
+    post:
+      tags: [admin-channels]
+      operationId: rejectChannel
+      summary: Отклонить канал (S-16)
+      description: |
+        Только из `moderation`. Канал переходит в `rejected`, текст причины виден блогеру в
+        `status_reason`. После правки блогером канал снова уходит на модерацию.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChannelRejectInput' }
+            example: { reason: В описании нет тематики канала }
+      responses:
+        '200':
+          description: Канал
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannel' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/channels/{id}/rkn-check:
+    post:
+      tags: [admin-channels]
+      operationId: setChannelRknCheck
+      summary: Результат проверки номера РКН (06 §6.3, Q-34)
+      description: |
+        Администратор вручную сверил номер с реестром. Канал в `unclaimed` или `disconnected`
+        либо без номера — `409`. `confirmed` возвращает в `active` канал, приостановленный с
+        причиной `rkn_required`; `rejected` оставляет такой канал приостановленным.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChannelRknCheckInput' }
+            example: { result: confirmed }
+      responses:
+        '200':
+          description: Канал
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannel' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
 
   # ---------------------------------------------------------------- webhooks
   /webhooks/max/{secret}:
@@ -1987,6 +2160,11 @@ components:
           type: array
           description: Только включённые форматы
           items: { $ref: '#/components/schemas/CatalogPrice' }
+        cpv:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: |
+            Цена за просмотр: цена формата `format_id` (без него — минимальная включённая) / `avg_views`,
+            в копейках с округлением вниз. Нет `avg_views` — поля нет
         in_cart: { type: boolean }
     CatalogChannelDetail:
       allOf:
@@ -2512,6 +2690,79 @@ components:
         status: { $ref: '#/components/schemas/RocketworkContractorStatus' }
         required: { type: boolean, description: Нужен ли Рокет Ворк (не нужен юрлицу) }
         onboarding_url: { type: string, format: uri }
+
+    # ------------------------------------------------ admin: channels
+    AdminOrganizationRef:
+      type: object
+      required: [id, name, inn]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        inn: { type: string, description: 'ИНН с маской: видны первые 2 и последние 4 цифры (07 §5.4)', example: '77****1234' }
+    AdminChannelListItem:
+      type: object
+      required: [id, title, status, subscribers_count, rkn_status, rkn_recheck_due, updated_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        title: { type: string }
+        link: { type: string, format: uri }
+        organization: { $ref: '#/components/schemas/AdminOrganizationRef' }
+        status: { $ref: '#/components/schemas/ChannelStatus' }
+        status_reason: { type: string }
+        category_id: { $ref: '#/components/schemas/Uuid' }
+        subscribers_count: { type: integer }
+        rkn_number: { type: string }
+        rkn_status: { $ref: '#/components/schemas/RknStatus' }
+        rkn_recheck_due: { type: boolean }
+        updated_at: { type: string, format: date-time }
+    AdminChannel:
+      allOf:
+        - $ref: '#/components/schemas/BloggerChannel'
+        - type: object
+          required: [rkn_recheck_due, metrics_history, moderation_history]
+          properties:
+            organization: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            max_description: { type: string }
+            avg_views: { type: integer }
+            engagement_bp: { type: integer }
+            posts_per_week: { type: number, format: double }
+            anomaly_flags:
+              type: array
+              items: { type: string, enum: [subscribers_spike, views_disproportion] }
+            metrics_history:
+              type: array
+              description: Последние 30 суточных снимков, старые первыми
+              items: { $ref: '#/components/schemas/ChannelMetricsPoint' }
+            rkn_checked_at: { type: string, format: date-time }
+            rkn_recheck_due: { type: boolean }
+            moderated_at: { type: string, format: date-time }
+            moderation_history:
+              type: array
+              description: Решения модерации и проверки РКН, старые первыми
+              items: { $ref: '#/components/schemas/ChannelModerationEntry' }
+    ChannelModerationEntry:
+      type: object
+      required: [action, actor_type, created_at]
+      properties:
+        action:
+          type: string
+          enum: [approved, rejected, rkn_checked]
+        actor_type: { type: string, enum: [admin, system] }
+        actor_user_id: { $ref: '#/components/schemas/Uuid' }
+        result: { type: string, enum: [confirmed, rejected], description: Для `rkn_checked` }
+        comment: { type: string, description: Причина отказа или комментарий проверки }
+        created_at: { type: string, format: date-time }
+    ChannelRejectInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    ChannelRknCheckInput:
+      type: object
+      required: [result]
+      properties:
+        result: { type: string, enum: [confirmed, rejected] }
+        comment: { type: string, maxLength: 500 }
 
     # ------------------------------------------------ webhooks, mock
     WebhookPayload:

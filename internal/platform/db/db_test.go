@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func TestMigrationsDownAndUp(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	log := logx.Discard()
-	for range 4 { // откат 00004, 00003, 00002 и 00001
+	for range 5 { // откат 00005, 00004, 00003, 00002 и 00001
 		if err := db.MigrateURL(ctx, d.OwnerURL, dbtest.AppRole, db.MigrateDown, log); err != nil {
 			t.Fatalf("down: %v", err)
 		}
@@ -174,5 +175,95 @@ func TestChannelTablesForAppRole(t *testing.T) {
 	// active без организации, категории и прав нарушает ограничение 04 §3.
 	if _, err := d.Pool.Exec(ctx, insert, ids.New(), -102, "active"); err == nil {
 		t.Fatal("active channel without requirements accepted")
+	}
+}
+
+// catalogChannel записывает канал, готовый к active: организация, категория, права.
+func catalogChannel(t *testing.T, d *dbtest.DB, chatID int64) (channelID string) {
+	t.Helper()
+	ctx := context.Background()
+	org := ids.New()
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO organization (id, legal_type, inn, name, contact_name, phone, status, created_at, updated_at)
+		VALUES ($1, 'self_employed', $2, 'Блогер', 'Блогер', '+79990000000', 'active', now(), now())`,
+		org, fmt.Sprintf("7%011d", -chatID)); err != nil {
+		t.Fatal(err)
+	}
+	id := ids.New()
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO channel (id, organization_id, max_chat_id, added_by_max_user_id, status, is_public,
+		category_id, bot_is_admin, bot_permissions, created_at, updated_at)
+		VALUES ($1, $2, $3, 7, 'moderation', true, (SELECT id FROM channel_category ORDER BY position LIMIT 1), true,
+		ARRAY['write', 'delete'], now(), now())`, id, org, chatID); err != nil {
+		t.Fatal(err)
+	}
+	return id.String()
+}
+
+func TestCatalogTablesForAppRole(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	var formats int
+	if err := d.Pool.QueryRow(ctx, `SELECT count(*) FROM placement_format WHERE is_active`).Scan(&formats); err != nil || formats != 3 {
+		t.Fatalf("placement_format seed: %d formats, err %v", formats, err)
+	}
+	ch := catalogChannel(t, d, -200)
+
+	// R-3: active без включённой цены не фиксируется — ошибка на COMMIT, а не на UPDATE.
+	_, err := d.Pool.Exec(ctx, `UPDATE channel SET status = 'active' WHERE id = $1`, ch)
+	if !db.CheckViolation(err, "channel_active_requires_price") {
+		t.Fatalf("active without price: want channel_active_requires_price, got %v", err)
+	}
+	tx, err := d.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE channel SET status = 'active' WHERE id = $1`, ch); err != nil {
+		t.Fatalf("deferred check fired before commit: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO channel_price (id, channel_id, format_id, amount, is_enabled, created_at, updated_at)
+		VALUES ($1, $2, 'f_1_24', 300000, true, now(), now())`, ids.New(), ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("active with price: %v", err)
+	}
+
+	// Выключение и удаление последней цены активного канала не фиксируются.
+	for _, stmt := range []string{
+		`UPDATE channel_price SET is_enabled = false WHERE channel_id = $1`,
+		`DELETE FROM channel_price WHERE channel_id = $1`,
+	} {
+		if _, err := d.Pool.Exec(ctx, stmt, ch); !db.CheckViolation(err, "channel_active_requires_price") {
+			t.Errorf("%s: want channel_active_requires_price, got %v", stmt, err)
+		}
+	}
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO channel_price (id, channel_id, format_id, amount, is_enabled, created_at, updated_at)
+		VALUES ($1, $2, 'f_2_48', 9999, true, now(), now())`, ids.New(), ch); err == nil {
+		t.Error("price below 100 ₽ accepted")
+	}
+
+	// Интервалы недоступности: роль пишет и удаляет, конец не раньше начала.
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO channel_unavailability (id, channel_id, starts_at, ends_at, created_at)
+		VALUES ($1, $2, now(), now() + interval '1 day', now())`, ids.New(), ch); err != nil {
+		t.Fatalf("app role cannot insert unavailability: %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO channel_unavailability (id, channel_id, starts_at, ends_at, created_at)
+		VALUES ($1, $2, now(), now(), now())`, ids.New(), ch); err == nil {
+		t.Error("empty unavailability interval accepted")
+	}
+	if _, err := d.Pool.Exec(ctx, `DELETE FROM channel_unavailability WHERE channel_id = $1`, ch); err != nil {
+		t.Fatalf("app role cannot delete unavailability: %v", err)
+	}
+
+	// Снимок метрик: один на сутки, флаги — из перечня.
+	snap := `INSERT INTO channel_metrics (id, channel_id, date, subscribers_count, anomaly_flags, created_at, updated_at)
+		VALUES ($1, $2, '2026-10-16', 100, $3, now(), now())`
+	if _, err := d.Pool.Exec(ctx, snap, ids.New(), ch, []string{"subscribers_spike"}); err != nil {
+		t.Fatalf("app role cannot insert metrics: %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, snap, ids.New(), ch, []string{}); !db.UniqueViolation(err, "channel_metrics_channel_id_date_key") {
+		t.Fatalf("second snapshot for the same date: want unique violation, got %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, strings.Replace(snap, "2026-10-16", "2026-10-17", 1), ids.New(), ch, []string{"bogus"}); err == nil {
+		t.Error("unknown anomaly flag accepted")
 	}
 }

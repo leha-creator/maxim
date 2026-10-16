@@ -29,6 +29,9 @@ type Client struct {
 	deleted []string
 	left    []int64
 	subs    []max.Subscription
+
+	messages    map[int64][]max.ChannelMessage
+	messagesErr error
 }
 
 // New создаёт пустой Client.

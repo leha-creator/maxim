@@ -12,3 +12,6 @@ VALUES (@id, @email, @admin_role, @status, @last_login_at, @created_at, @updated
 
 -- name: SetUserLastLogin :exec
 UPDATE "user" SET last_login_at = @at::timestamptz, updated_at = @at::timestamptz WHERE id = @id;
+
+-- name: SetUserAdminRole :exec
+UPDATE "user" SET admin_role = sqlc.narg(admin_role), updated_at = @at::timestamptz WHERE id = @id;

@@ -61,7 +61,7 @@ func (s *Service) ChannelPostCreated(ctx context.Context, ev EventRef, p Channel
 		if err != nil {
 			return err
 		}
-		change, err := c.LinkTo(lc.OrganizationID, now)
+		change, err := c.LinkTo(lc.OrganizationID, s.Config.RknThreshold, now)
 		switch {
 		case errors.Is(err, domain.ErrAlreadyLinked):
 			lc.Consume(now)

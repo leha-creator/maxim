@@ -40,8 +40,8 @@ func TestChannelRoundTripAndLockVersion(t *testing.T) {
 	}
 
 	got.RightsRefreshed(domain.ChatInfo{Title: "Канал", Link: "https://max.ru/c", IsPublic: true, SubscribersCount: 10},
-		domain.Membership{IsAdmin: true, Permissions: []string{"write", "delete"}}, now)
-	if _, err := got.LinkTo(org, now); err != nil {
+		domain.Membership{IsAdmin: true, Permissions: []string{"write", "delete"}}, 10000, now)
+	if _, err := got.LinkTo(org, 10000, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Channels().Save(ctx, got); err != nil {

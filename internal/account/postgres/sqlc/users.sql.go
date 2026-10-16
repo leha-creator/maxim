@@ -80,6 +80,21 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 	return err
 }
 
+const setUserAdminRole = `-- name: SetUserAdminRole :exec
+UPDATE "user" SET admin_role = $1, updated_at = $2::timestamptz WHERE id = $3
+`
+
+type SetUserAdminRoleParams struct {
+	AdminRole *string
+	At        time.Time
+	ID        uuid.UUID
+}
+
+func (q *Queries) SetUserAdminRole(ctx context.Context, arg SetUserAdminRoleParams) error {
+	_, err := q.db.Exec(ctx, setUserAdminRole, arg.AdminRole, arg.At, arg.ID)
+	return err
+}
+
 const setUserLastLogin = `-- name: SetUserLastLogin :exec
 UPDATE "user" SET last_login_at = $1::timestamptz, updated_at = $1::timestamptz WHERE id = $2
 `

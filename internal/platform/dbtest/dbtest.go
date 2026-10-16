@@ -134,7 +134,7 @@ func start() (*DB, func(), error) {
 }
 
 // referenceTables — справочники, которые заполняют миграции; очистка их не трогает.
-var referenceTables = []string{"goose_db_version", "channel_category"}
+var referenceTables = []string{"goose_db_version", "channel_category", "placement_format"}
 
 // Truncate очищает все таблицы приложения, кроме справочников из миграций.
 func (d *DB) Truncate(ctx context.Context) error {

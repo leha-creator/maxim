@@ -43,10 +43,15 @@ type fakeMAX struct {
 	left    []int64
 	sent    map[int64][]string
 	fail    error
+
+	messages     map[int64][]domain.MessageStat
+	failMessages error
+	listCalls    int
 }
 
 func newFakeMAX() *fakeMAX {
-	return &fakeMAX{chats: map[int64]domain.ChatInfo{}, members: map[int64]domain.Membership{}, sent: map[int64][]string{}}
+	return &fakeMAX{chats: map[int64]domain.ChatInfo{}, members: map[int64]domain.Membership{}, sent: map[int64][]string{},
+		messages: map[int64][]domain.MessageStat{}}
 }
 
 func (f *fakeMAX) set(chatID int64, info domain.ChatInfo, m domain.Membership) {
@@ -155,9 +160,11 @@ func newEnv(t *testing.T) *env {
 	e := &env{t: t, d: d, clk: clk, max: newFakeMAX(), alerts: &alerts{}, avail: &availability{}, store: st, logs: logs}
 	e.svc = app.New(app.Deps{
 		Channels: st.Channels(), LinkCodes: st.LinkCodes(), Categories: st.Categories(),
+		Formats: st.Formats(), Prices: st.Prices(), Unavail: st.Unavailabilities(), Metrics: st.Metrics(),
+		Catalog: st.Catalog(), Admin: st.AdminChannels(), Messages: e.max,
 		Chats: e.max, Bot: e.max, Availability: e.avail, Alerts: e.alerts,
 		Tx: txr, Jobs: queue, Audit: audit.New(d.Pool, clk, log), Clock: clk, Log: log,
-		Config: app.Config{Pepper: []byte(strings.Repeat("p", 32)), BotName: "@maxim_test_bot"},
+		Config: app.Config{Pepper: []byte(strings.Repeat("p", 32)), BotName: "@maxim_test_bot", FeeRateBP: 1500},
 	})
 	e.worker = job.NewWorker(d.Pool, clk, log)
 	dispatcher := inbound.NewDispatcher(d.Pool, clk, log)
@@ -267,3 +274,24 @@ func dialogMessage(userID int64, text string) string {
 }
 
 func contains[T comparable](s []T, v T) bool { return slices.Contains(s, v) }
+
+// messages — сообщения каналов для ListMessages; failMessages — ошибка только этого метода.
+func (f *fakeMAX) ListMessages(_ context.Context, chatID int64, from, to time.Time, count int) ([]domain.MessageStat, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listCalls++
+	if f.failMessages != nil {
+		return nil, f.failMessages
+	}
+	out := []domain.MessageStat{}
+	for _, m := range f.messages[chatID] {
+		if !m.At.Before(from) && !m.At.After(to) {
+			out = append(out, m)
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.MessageStat) int { return b.At.Compare(a.At) })
+	if len(out) > count {
+		out = out[:count]
+	}
+	return out, nil
+}

@@ -1,0 +1,23 @@
+{
+  "messages": [
+    {
+      "sender": {"user_id": 1, "name": "maxim", "is_bot": true},
+      "recipient": {"chat_id": -70000000001, "chat_type": "channel"},
+      "timestamp": 1760598000000,
+      "body": {"mid": "mid.3", "seq": 3, "text": "Реклама. ООО «Ромашка», ИНН 7700000000"},
+      "stat": {"views": 2100}
+    },
+    {
+      "recipient": {"chat_id": -70000000001, "chat_type": "channel"},
+      "timestamp": 1760511600000,
+      "body": {"mid": "mid.2", "seq": 2, "text": "Суп за 15 минут"},
+      "stat": {"views": 1800}
+    },
+    {
+      "recipient": {"chat_id": -70000000001, "chat_type": "channel"},
+      "timestamp": 1760425200000,
+      "body": {"mid": "mid.1", "seq": 1, "text": "Пирог"},
+      "stat": {"views": 0}
+    }
+  ]
+}

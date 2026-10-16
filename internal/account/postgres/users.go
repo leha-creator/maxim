@@ -61,3 +61,12 @@ func userFromRow(row sqlc.User) *domain.User {
 		Status: domain.Status(row.Status), LastLoginAt: row.LastLoginAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 }
+
+func (r *Users) SetAdminRole(ctx context.Context, id uuid.UUID, role *domain.AdminRole, at time.Time) error {
+	const op = "Account.Users.SetAdminRole"
+	r.s.debug(ctx, op, "user_id", id, "admin_role", strPtr(role))
+	if err := r.s.q(ctx).SetUserAdminRole(ctx, sqlc.SetUserAdminRoleParams{ID: id, AdminRole: strPtr(role), At: at}); err != nil {
+		return r.s.fail(ctx, op, err)
+	}
+	return nil
+}

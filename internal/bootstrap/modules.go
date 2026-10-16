@@ -21,6 +21,7 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/audit"
+	"github.com/leha-creator/maxim/internal/platform/cleanup"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/httpx"
@@ -134,7 +135,11 @@ func newModules(cfg Config, in *infra) *modules {
 		deps.Sealer = in.box
 	}
 	svc := accountapp.New(deps)
-	channelSvc := newChannelService(cfg, in, txRunner, queue, auditLog)
+	channelSvc, channelStore := newChannelService(cfg, in, txRunner, queue, auditLog)
+	platform := newPlatformJobs(cfg, in, accountStore)
+	platform.cleaner.Add(cleanup.Task{
+		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
+	})
 	return &modules{
 		cfg:         cfg,
 		in:          in,
@@ -142,7 +147,7 @@ func newModules(cfg Config, in *infra) *modules {
 		accountHTTP: accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
 		channel:     channelSvc,
 		channelHTTP: channelhttp.New(channelSvc, log),
-		platform:    newPlatformJobs(cfg, in, accountStore),
+		platform:    platform,
 		txRunner:    txRunner,
 		queue:       queue,
 	}

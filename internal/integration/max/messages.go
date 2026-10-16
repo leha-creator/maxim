@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -82,4 +83,80 @@ func (c *Client) sendMessage(ctx context.Context, op, param string, id int64, bu
 	// Текст сообщения в журнал не пишется (07 §5.4).
 	c.log.InfoContext(ctx, "max message sent", logx.KeyOp, "MAX."+op, param, id, "message_id", m.Message.Body.MID)
 	return m.Message.Body.MID, nil
+}
+
+// MaxListCount — предел сообщений за один запрос GET /messages (05 §2.3).
+const MaxListCount = 100
+
+// ChannelMessage — сообщение канала из GET /messages?chat_id=. Текст и вложения
+// не разбираются и не хранятся (07 §5.4): метрикам нужны время, отправитель и просмотры.
+type ChannelMessage struct {
+	MID string
+	// At — время публикации (timestamp, миллисекунды Unix).
+	At time.Time
+	// FromBot — сообщение отправил бот (например, рекламный пост платформы).
+	FromBot bool
+	// Views — stat.views; nil, если MAX поле не вернул (Q-08).
+	Views *int
+}
+
+type listedMessages struct {
+	Messages []struct {
+		Sender *struct {
+			UserID int64 `json:"user_id"`
+			IsBot  bool  `json:"is_bot"`
+		} `json:"sender"`
+		Timestamp int64 `json:"timestamp"`
+		Body      struct {
+			MID string `json:"mid"`
+		} `json:"body"`
+		Stat *struct {
+			Views *int `json:"views"`
+		} `json:"stat"`
+	} `json:"messages"`
+}
+
+// ListMessages читает до count сообщений канала за интервал [from, to], новые первыми
+// (GET /messages?chat_id=). В MAX параметр from — верхняя граница, to — нижняя,
+// обе в миллисекундах Unix. Бот должен быть администратором канала, иначе 403 — Permanent.
+// Приоритет ограничителя — метрики (05 §2.8), если в context не задан другой.
+func (c *Client) ListMessages(ctx context.Context, chatID int64, from, to time.Time, count int) ([]ChannelMessage, error) {
+	if count < 1 || count > MaxListCount {
+		return nil, job.Permanent(fmt.Errorf("max ListMessages: count must be 1..%d", MaxListCount))
+	}
+	if _, ok := ctx.Value(priorityKey{}).(ratelimit.Priority); !ok {
+		ctx = WithPriority(ctx, ratelimit.PriorityMetrics)
+	}
+	id := strconv.FormatInt(chatID, 10)
+	resp, err := c.do(ctx, request{
+		operation: "ListMessages", method: http.MethodGet, path: "/messages",
+		query: url.Values{
+			"chat_id": {id},
+			"from":    {strconv.FormatInt(to.UnixMilli(), 10)},
+			"to":      {strconv.FormatInt(from.UnixMilli(), 10)},
+			"count":   {strconv.Itoa(count)},
+		},
+		object: "chat_id", objectID: id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var body listedMessages
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		return nil, job.Permanent(fmt.Errorf("max ListMessages: decode response: %w", err))
+	}
+	out := make([]ChannelMessage, 0, len(body.Messages))
+	for _, m := range body.Messages {
+		cm := ChannelMessage{MID: m.Body.MID, At: time.UnixMilli(m.Timestamp).UTC()}
+		if m.Sender != nil {
+			cm.FromBot = m.Sender.IsBot
+		}
+		if m.Stat != nil {
+			cm.Views = m.Stat.Views
+		}
+		out = append(out, cm)
+	}
+	c.log.DebugContext(ctx, "max messages read", logx.KeyOp, "MAX.ListMessages", "chat_id", chatID,
+		"count", len(out), "from", from, "to", to)
+	return out, nil
 }

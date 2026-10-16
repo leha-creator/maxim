@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/leha-creator/maxim/internal/integration/max"
 )
@@ -112,4 +113,44 @@ func (c *Client) Left() []int64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return slices.Clone(c.left)
+}
+
+// SetMessages задаёт сообщения канала, которые вернёт ListMessages.
+func (c *Client) SetMessages(chatID int64, msgs []max.ChannelMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.messages == nil {
+		c.messages = map[int64][]max.ChannelMessage{}
+	}
+	c.messages[chatID] = slices.Clone(msgs)
+}
+
+// FailMessagesWith заставляет только ListMessages возвращать err; nil — снова работать.
+func (c *Client) FailMessagesWith(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.messagesErr = err
+}
+
+// ListMessages возвращает до count сообщений из SetMessages за [from, to], новые первыми.
+func (c *Client) ListMessages(_ context.Context, chatID int64, from, to time.Time, count int) ([]max.ChannelMessage, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.failErr != nil {
+		return nil, c.failErr
+	}
+	if c.messagesErr != nil {
+		return nil, c.messagesErr
+	}
+	out := []max.ChannelMessage{}
+	for _, m := range c.messages[chatID] {
+		if !m.At.Before(from) && !m.At.After(to) {
+			out = append(out, m)
+		}
+	}
+	slices.SortFunc(out, func(a, b max.ChannelMessage) int { return b.At.Compare(a.At) })
+	if len(out) > count {
+		out = out[:count]
+	}
+	return out, nil
 }

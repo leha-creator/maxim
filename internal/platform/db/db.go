@@ -68,3 +68,10 @@ func UniqueViolation(err error, constraint string) bool {
 	var pg *pgconn.PgError
 	return errors.As(err, &pg) && pg.Code == "23505" && (constraint == "" || pg.ConstraintName == constraint)
 }
+
+// CheckViolation сообщает, что err — нарушение проверки constraint (CHECK или
+// триггер-ограничение с ERRCODE check_violation).
+func CheckViolation(err error, constraint string) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == "23514" && (constraint == "" || pg.ConstraintName == constraint)
+}

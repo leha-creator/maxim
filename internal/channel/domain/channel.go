@@ -56,12 +56,19 @@ const (
 	RknRejected    RknStatus = "rejected"
 )
 
-// Коды причины состояния (channel.status_reason, 04 §3).
+// Коды причины состояния (channel.status_reason, 04 §3). Для rejected причина —
+// текст отказа модерации.
 const (
 	ReasonNotPublic        = "not_public"
 	ReasonMissingRights    = "missing_rights"
 	ReasonUnclaimedExpired = "unclaimed_expired"
+	// ReasonRknRequired — подписчиков не меньше порога, а номер РКН не подтверждён (D-11, S-32 шаг 2).
+	ReasonRknRequired = "rkn_required"
 )
+
+// resumable — причины приостановки, которые снимаются сами, когда факт исправлен:
+// права, публичность и номер РКН (R-16). Остальные снимает администратор.
+var resumable = []string{ReasonMissingRights, ReasonNotPublic, ReasonRknRequired}
 
 // Права бота из MAX (05 §2.3).
 const (
@@ -98,11 +105,15 @@ type Channel struct {
 	RknNumber               string
 	RknStatus               RknStatus
 	RknCheckedAt            *time.Time
+	RknCheckedBy            *uuid.UUID
 	Rating                  int
 	ModeratedAt             *time.Time
-	LockVersion             int
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	ModeratedBy             *uuid.UUID
+	// Prices — цены по форматам (channel_price), загружает репозиторий.
+	Prices      []Price
+	LockVersion int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // ChatInfo — сведения о канале из MAX (GET /chats/{chatId}).
@@ -188,8 +199,16 @@ func (c *Channel) problem() string {
 	return ""
 }
 
-// target — состояние, которое следует из фактов канала (R-8).
-func (c *Channel) target() (Status, string) {
+// RknRequired — подписчиков не меньше порога, а номер РКН не подтверждён: реклама
+// в канале запрещена (D-11).
+func (c *Channel) RknRequired(rknThreshold int) bool {
+	return c.SubscribersCount >= rknThreshold && c.RknStatus != RknConfirmed
+}
+
+// target — состояние, которое следует из фактов канала (R-8 этапа «Подключение
+// каналов», R-16): права и публичность, затем номер РКН. rknThreshold — порог
+// подписчиков RKN_SUBSCRIBERS_THRESHOLD.
+func (c *Channel) target(rknThreshold int) (Status, string) {
 	switch c.Status {
 	case StatusBlocked, StatusDisconnected, StatusRejected:
 		return c.Status, c.StatusReason
@@ -205,21 +224,24 @@ func (c *Channel) target() (Status, string) {
 	switch c.Status {
 	case StatusPendingRights:
 		return StatusModeration, ""
-	case StatusSuspended:
-		// Возвращаем только приостановку из-за прав или публичности: другие причины
-		// (РКН, этап «Каталог») снимает администратор.
-		if c.StatusReason == ReasonMissingRights || c.StatusReason == ReasonNotPublic {
-			return StatusActive, ""
+	case StatusActive, StatusSuspended:
+		if c.RknRequired(rknThreshold) {
+			return StatusSuspended, ReasonRknRequired
 		}
-		return StatusSuspended, c.StatusReason
+		// Возвращаем только приостановку, причина которой снята; другие причины
+		// снимает администратор.
+		if c.Status == StatusSuspended && !slices.Contains(resumable, c.StatusReason) {
+			return StatusSuspended, c.StatusReason
+		}
+		return StatusActive, ""
 	}
 	return c.Status, ""
 }
 
 // resolve приводит состояние к фактам и отмечает изменение.
-func (c *Channel) resolve(now time.Time) StatusChange {
+func (c *Channel) resolve(rknThreshold int, now time.Time) StatusChange {
 	change := StatusChange{ChannelID: c.ID, From: c.Status}
-	c.Status, c.StatusReason = c.target()
+	c.Status, c.StatusReason = c.target(rknThreshold)
 	change.To, change.Reason = c.Status, c.StatusReason
 	c.touch(now)
 	return change
@@ -274,17 +296,31 @@ func (c *Channel) BotRemoved(now time.Time) StatusChange {
 }
 
 // RightsRefreshed — прочитаны сведения о канале и права бота (05 §2.4 шаги 4–6).
-func (c *Channel) RightsRefreshed(info ChatInfo, m Membership, now time.Time) StatusChange {
-	c.Title, c.MaxDescription, c.IconURL, c.Link = info.Title, info.Description, info.IconURL, info.Link
-	c.IsPublic = info.IsPublic
-	c.SubscribersCount = max(info.SubscribersCount, 0)
+// Число подписчиков применяет правило РКН (R-16).
+func (c *Channel) RightsRefreshed(info ChatInfo, m Membership, rknThreshold int, now time.Time) StatusChange {
+	c.applyChatInfo(info, rknThreshold)
 	c.BotIsAdmin = m.IsAdmin
 	c.BotPermissions = slices.Clone(m.Permissions)
 	if c.BotPermissions == nil {
 		c.BotPermissions = []string{}
 	}
 	c.BotPermissionsCheckedAt = &now
-	return c.resolve(now)
+	return c.resolve(rknThreshold, now)
+}
+
+// MetricsRefreshed — сведения о канале из суточного задания метрик (S-32): название,
+// описание, публичность и подписчики; затем правило РКН (R-16).
+func (c *Channel) MetricsRefreshed(info ChatInfo, rknThreshold int, now time.Time) StatusChange {
+	c.applyChatInfo(info, rknThreshold)
+	return c.resolve(rknThreshold, now)
+}
+
+// applyChatInfo переносит сведения MAX в канал и пересчитывает, нужен ли номер РКН.
+func (c *Channel) applyChatInfo(info ChatInfo, rknThreshold int) {
+	c.Title, c.MaxDescription, c.IconURL, c.Link = info.Title, info.Description, info.IconURL, info.Link
+	c.IsPublic = info.IsPublic
+	c.SubscribersCount = max(info.SubscribersCount, 0)
+	c.RknStatus = nextRknStatus(c.RknStatus, false, c.SubscribersCount, rknThreshold)
 }
 
 // TitleChanged — событие chat_title_changed.
@@ -294,7 +330,7 @@ func (c *Channel) TitleChanged(title string, now time.Time) {
 }
 
 // LinkTo связывает канал с организацией кода подключения (05 §2.4 шаг 3).
-func (c *Channel) LinkTo(orgID uuid.UUID, now time.Time) (StatusChange, error) {
+func (c *Channel) LinkTo(orgID uuid.UUID, rknThreshold int, now time.Time) (StatusChange, error) {
 	if c.OrganizationID != nil {
 		if *c.OrganizationID == orgID {
 			return StatusChange{}, ErrAlreadyLinked
@@ -307,7 +343,7 @@ func (c *Channel) LinkTo(orgID uuid.UUID, now time.Time) (StatusChange, error) {
 	c.OrganizationID = &orgID
 	c.UnclaimedSince = nil
 	c.Status = StatusPendingRights
-	change := c.resolve(now)
+	change := c.resolve(rknThreshold, now)
 	change.From = StatusUnclaimed
 	return change, nil
 }
@@ -352,7 +388,7 @@ func (c *Channel) UpdateProfile(p ProfileUpdate, rknThreshold int, now time.Time
 	}
 	c.RknStatus = nextRknStatus(c.RknStatus, numberChanged, c.SubscribersCount, rknThreshold)
 	if numberChanged {
-		c.RknCheckedAt = nil
+		c.RknCheckedAt, c.RknCheckedBy = nil, nil
 	}
 	// Канал из pending_rights или rejected после правки уходит на модерацию, если права
 	// в порядке (операция updateBloggerChannel).
@@ -360,7 +396,7 @@ func (c *Channel) UpdateProfile(p ProfileUpdate, rknThreshold int, now time.Time
 	if c.Status == StatusRejected {
 		c.Status, c.StatusReason = StatusPendingRights, ""
 	}
-	change := c.resolve(now)
+	change := c.resolve(rknThreshold, now)
 	change.From = from
 	return change, nil
 }

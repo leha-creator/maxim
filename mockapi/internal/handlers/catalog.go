@@ -64,6 +64,15 @@ func priceFor(c *store.Channel, format *string) (int64, bool) {
 	return best, ok
 }
 
+// cpv — цена за просмотр в копейках с округлением вниз; нет просмотров — false.
+func cpv(c *store.Channel, format *string) (int64, bool) {
+	price, ok := priceFor(c, format)
+	if !ok || c.AvgViews <= 0 {
+		return 0, false
+	}
+	return price / int64(c.AvgViews), true
+}
+
 func (h *Handlers) ListCatalogChannels(ctx context.Context, req api.ListCatalogChannelsRequestObject) (api.ListCatalogChannelsResponseObject, error) {
 	tx, done := h.st.Begin(ctx)
 	defer done()
@@ -111,6 +120,21 @@ func (h *Handlers) ListCatalogChannels(ctx context.Context, req api.ListCatalogC
 			return b.AvgViews*10000/max(b.Subscribers, 1) - a.AvgViews*10000/max(a.Subscribers, 1)
 		case api.RatingDesc:
 			return b.Rating - a.Rating
+		case api.AvgViewsDesc:
+			return b.AvgViews - a.AvgViews
+		case api.CpvAsc:
+			// Каналы без просмотров — в конце, как в бэкенде.
+			ca, oka := cpv(a, p.FormatId)
+			cb, okb := cpv(b, p.FormatId)
+			switch {
+			case oka && okb:
+				return int(ca - cb)
+			case oka:
+				return -1
+			case okb:
+				return 1
+			}
+			return 0
 		default:
 			return b.Subscribers - a.Subscribers
 		}
@@ -120,7 +144,11 @@ func (h *Handlers) ListCatalogChannels(ctx context.Context, req api.ListCatalogC
 	pg, next := page(found, p.Limit, p.Cursor)
 	items := []api.CatalogChannel{}
 	for _, c := range pg {
-		items = append(items, catalogChannel(tx, o.ID, c))
+		it := catalogChannel(tx, o.ID, c)
+		if v, ok := cpv(c, p.FormatId); ok {
+			it.Cpv = &v
+		}
+		items = append(items, it)
 	}
 	return api.ListCatalogChannels200JSONResponse{Items: items, NextCursor: next}, nil
 }

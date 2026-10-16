@@ -43,6 +43,7 @@ func (r *Channels) Save(ctx context.Context, c *domain.Channel) error {
 		UnclaimedSince: c.UnclaimedSince, BotIsAdmin: c.BotIsAdmin, BotPermissions: perms(c.BotPermissions),
 		BotPermissionsCheckedAt: c.BotPermissionsCheckedAt, SubscribersCount: int32(c.SubscribersCount),
 		RknNumber: text(c.RknNumber), RknStatus: string(c.RknStatus), RknCheckedAt: c.RknCheckedAt,
+		RknCheckedBy: c.RknCheckedBy, ModeratedAt: c.ModeratedAt, ModeratedBy: c.ModeratedBy,
 		LockVersion: int32(c.LockVersion + 1), UpdatedAt: c.UpdatedAt, ID: c.ID, PrevLockVersion: int32(c.LockVersion),
 	})
 	if err != nil {
@@ -64,7 +65,7 @@ func (r *Channels) GetByMaxChatIDForUpdate(ctx context.Context, maxChatID int64)
 	if err != nil {
 		return nil, r.s.fail(ctx, op, err)
 	}
-	return channel(row), nil
+	return r.s.withPrices(ctx, channel(row))
 }
 
 func (r *Channels) GetForUpdate(ctx context.Context, id uuid.UUID) (*domain.Channel, error) {
@@ -74,7 +75,7 @@ func (r *Channels) GetForUpdate(ctx context.Context, id uuid.UUID) (*domain.Chan
 	if err != nil {
 		return nil, r.s.fail(ctx, op, err)
 	}
-	return channel(row), nil
+	return r.s.withPrices(ctx, channel(row))
 }
 
 func (r *Channels) GetForOrganization(ctx context.Context, orgID, id uuid.UUID) (*domain.Channel, error) {
@@ -84,7 +85,7 @@ func (r *Channels) GetForOrganization(ctx context.Context, orgID, id uuid.UUID) 
 	if err != nil {
 		return nil, r.s.fail(ctx, op, err)
 	}
-	return channel(row), nil
+	return r.s.withPrices(ctx, channel(row))
 }
 
 func (r *Channels) GetForOrganizationForUpdate(ctx context.Context, orgID, id uuid.UUID) (*domain.Channel, error) {
@@ -94,7 +95,7 @@ func (r *Channels) GetForOrganizationForUpdate(ctx context.Context, orgID, id uu
 	if err != nil {
 		return nil, r.s.fail(ctx, op, err)
 	}
-	return channel(row), nil
+	return r.s.withPrices(ctx, channel(row))
 }
 
 func (r *Channels) ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]*domain.Channel, error) {
@@ -107,6 +108,9 @@ func (r *Channels) ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]*
 	out := make([]*domain.Channel, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, channel(row))
+	}
+	if err := r.s.loadPrices(ctx, out...); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -130,7 +134,7 @@ func channel(row sqlc.Channel) *domain.Channel {
 		UnclaimedSince: row.UnclaimedSince, BotIsAdmin: row.BotIsAdmin, BotPermissions: perms(row.BotPermissions),
 		BotPermissionsCheckedAt: row.BotPermissionsCheckedAt, SubscribersCount: int(row.SubscribersCount),
 		RknNumber: str(row.RknNumber), RknStatus: domain.RknStatus(row.RknStatus), RknCheckedAt: row.RknCheckedAt,
-		Rating: int(row.Rating), ModeratedAt: row.ModeratedAt, LockVersion: int(row.LockVersion),
+		RknCheckedBy: row.RknCheckedBy, Rating: int(row.Rating), ModeratedAt: row.ModeratedAt, ModeratedBy: row.ModeratedBy, LockVersion: int(row.LockVersion),
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.StatusBeforeDisconnect != nil {
@@ -153,4 +157,14 @@ func perms(p []string) []string {
 		return []string{}
 	}
 	return p
+}
+
+func (r *Channels) ListForMetrics(ctx context.Context, after uuid.UUID, limit int) ([]uuid.UUID, error) {
+	const op = "Channel.Channels.ListForMetrics"
+	ids, err := r.s.q(ctx).ListChannelsForMetrics(ctx, sqlc.ListChannelsForMetricsParams{After: after, Lim: int32(limit)})
+	if err != nil {
+		return nil, r.s.fail(ctx, op, err)
+	}
+	r.s.debug(ctx, op, "after", after, "count", len(ids))
+	return ids, nil
 }

@@ -59,8 +59,8 @@ CREATE TABLE channel (
     created_at                 timestamptz NOT NULL,
     updated_at                 timestamptz NOT NULL,
     CONSTRAINT channel_unclaimed_without_owner CHECK (status <> 'unclaimed' OR organization_id IS NULL),
-    -- Ограничение active из 04 §3 без двух условий: включённая цена появится в этапе
-    -- «Каталог» (его миграция дополнит проверку), порог РКН — параметр конфигурации
+    -- Ограничение active из 04 §3 без двух условий: включённую цену закрепляет триггер
+    -- channel_active_requires_price из 00005, порог РКН — параметр конфигурации
     -- (07 §8), его проверяет channel/domain.
     CONSTRAINT channel_active_requirements CHECK (status <> 'active' OR (
         organization_id IS NOT NULL AND is_public AND category_id IS NOT NULL

@@ -32,6 +32,7 @@ type maxAPI interface {
 	SendUserMessage(ctx context.Context, userID int64, text string) (string, error)
 	GetChat(ctx context.Context, chatID int64) (max.Chat, error)
 	GetMembership(ctx context.Context, chatID int64) (max.Membership, error)
+	ListMessages(ctx context.Context, chatID int64, from, to time.Time, count int) ([]max.ChannelMessage, error)
 	DeleteMessage(ctx context.Context, chatID int64, messageID string) error
 	LeaveChat(ctx context.Context, chatID int64) error
 	ListSubscriptions(ctx context.Context) ([]max.Subscription, error)

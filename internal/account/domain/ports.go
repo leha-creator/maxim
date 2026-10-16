@@ -19,6 +19,8 @@ type Users interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	Create(ctx context.Context, u *User) error
 	SetLastLogin(ctx context.Context, id uuid.UUID, at time.Time) error
+	// SetAdminRole ставит или снимает (nil) роль администратора (R-2 этапа «Каталог»).
+	SetAdminRole(ctx context.Context, id uuid.UUID, role *AdminRole, at time.Time) error
 }
 
 // WindowCount — сколько записей в окне и когда появилась самая ранняя из них.

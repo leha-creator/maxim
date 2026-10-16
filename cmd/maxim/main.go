@@ -6,6 +6,7 @@
 //	maxim worker                    — обработчик заданий
 //	maxim migrate up|down|status    — миграции базы
 //	maxim legal publish|list        — оферты и правила (до API администратора, R-8)
+//	maxim admin grant|revoke        — роль администратора (до API администратора)
 //
 // Конфигурация — переменные окружения, см. .env.example.
 package main
@@ -30,6 +31,7 @@ commands:
   worker                   run job worker
   migrate up|down|status   apply, roll back one or show migrations
   legal publish|list       publish a legal document version or list current ones
+  admin grant|revoke       grant (--email, --role moderator|senior) or revoke (--email) an admin role
 `
 
 func main() {

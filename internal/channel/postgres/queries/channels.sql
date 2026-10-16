@@ -23,6 +23,7 @@ UPDATE channel SET
     bot_is_admin = @bot_is_admin, bot_permissions = @bot_permissions,
     bot_permissions_checked_at = @bot_permissions_checked_at, subscribers_count = @subscribers_count,
     rkn_number = @rkn_number, rkn_status = @rkn_status, rkn_checked_at = @rkn_checked_at,
+    rkn_checked_by = @rkn_checked_by, moderated_at = @moderated_at, moderated_by = @moderated_by,
     lock_version = @lock_version, updated_at = @updated_at
 WHERE id = @id AND lock_version = @prev_lock_version;
 
@@ -45,4 +46,11 @@ SELECT * FROM channel WHERE organization_id = @organization_id ORDER BY created_
 SELECT id FROM channel
 WHERE status = 'unclaimed' AND unclaimed_since < @before::timestamptz
 ORDER BY unclaimed_since, id
+LIMIT @lim;
+
+-- name: ListChannelsForMetrics :many
+-- R-13: каналы, которым считаются суточные метрики, порцией по id.
+SELECT id FROM channel
+WHERE status IN ('moderation', 'active', 'suspended') AND id > @after::uuid
+ORDER BY id
 LIMIT @lim;

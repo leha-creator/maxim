@@ -35,13 +35,21 @@ func Organization(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// Approve отмечает канал одобренным модерацией и активным — так, как это сделает
-// этап «Каталог» (S-16). Нужна категория и права в порядке.
+// PriceAmount — цена блогера, которую Approve ставит формату f_1_24.
+const PriceAmount = 300000
+
+// Approve отмечает канал одобренным модерацией и активным в обход сценария S-16.
+// Нужны права в порядке; категория и включённая цена f_1_24 ставятся, если их нет
+// (без цены активный канал не фиксируется, R-3).
 func Approve(t testing.TB, pool *pgxpool.Pool, channelID uuid.UUID) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(), `UPDATE channel SET status = 'active', status_reason = NULL,
-		category_id = coalesce(category_id, $2), moderated_at = now(), lock_version = lock_version + 1
-		WHERE id = $1`, channelID, CategoryFood)
+	_, err := pool.Exec(context.Background(), `WITH price AS (
+			INSERT INTO channel_price (id, channel_id, format_id, amount, is_enabled, created_at, updated_at)
+			VALUES ($3, $1, 'f_1_24', $4, true, now(), now())
+			ON CONFLICT (channel_id, format_id) DO UPDATE SET is_enabled = true)
+		UPDATE channel SET status = 'active', status_reason = NULL,
+			category_id = coalesce(category_id, $2), moderated_at = now(), lock_version = lock_version + 1
+		WHERE id = $1`, channelID, CategoryFood, ids.New(), PriceAmount)
 	if err != nil {
 		t.Fatalf("approve channel: %v", err)
 	}

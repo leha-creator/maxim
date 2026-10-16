@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	channelapp "github.com/leha-creator/maxim/internal/channel/app"
 	"github.com/leha-creator/maxim/internal/channel/domain"
@@ -30,8 +31,9 @@ const maxWebhookPattern = "POST " + BaseURL + "/webhooks/max/{secret}"
 type channelMAX struct{ api maxAPI }
 
 var (
-	_ domain.ChatReader  = channelMAX{}
-	_ domain.ChatManager = channelMAX{}
+	_ domain.ChatReader    = channelMAX{}
+	_ domain.ChatManager   = channelMAX{}
+	_ domain.MessageReader = channelMAX{}
 )
 
 func (c channelMAX) GetChat(ctx context.Context, chatID int64) (domain.ChatInfo, error) {
@@ -53,6 +55,19 @@ func (c channelMAX) GetMembership(ctx context.Context, chatID int64) (domain.Mem
 	return domain.Membership{IsAdmin: m.IsAdmin, Permissions: m.Permissions}, nil
 }
 
+// ListMessages — сообщения канала для метрик (R-14); текст адаптер не читает.
+func (c channelMAX) ListMessages(ctx context.Context, chatID int64, from, to time.Time, count int) ([]domain.MessageStat, error) {
+	list, err := c.api.ListMessages(ctx, chatID, from, to, count)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.MessageStat, 0, len(list))
+	for _, m := range list {
+		out = append(out, domain.MessageStat{ID: m.MID, At: m.At, Views: m.Views, FromBot: m.FromBot})
+	}
+	return out, nil
+}
+
 func (c channelMAX) DeleteMessage(ctx context.Context, chatID int64, messageID string) error {
 	return c.api.DeleteMessage(ctx, chatID, messageID)
 }
@@ -66,23 +81,34 @@ func (c channelMAX) SendUserMessage(ctx context.Context, userID int64, text stri
 }
 
 // newChannelService собирает модуль каналов. Порты MAX подключаются только в worker.
-func newChannelService(cfg Config, in *infra, txRunner tx.Runner, queue job.Enqueuer, auditLog audit.Recorder) *channelapp.Service {
+func newChannelService(cfg Config, in *infra, txRunner tx.Runner, queue job.Enqueuer, auditLog audit.Recorder) (*channelapp.Service, *channelpg.Store) {
 	store := channelpg.New(in.pool, in.log.With(logx.KeyModule, "channel"))
+	ch := cfg.Channel
+	day := 24 * time.Hour
 	deps := channelapp.Deps{
 		Channels: store.Channels(), LinkCodes: store.LinkCodes(), Categories: store.Categories(),
+		Formats: store.Formats(), Prices: store.Prices(), Unavail: store.Unavailabilities(), Metrics: store.Metrics(),
+		Catalog: store.Catalog(), Admin: store.AdminChannels(),
 		Alerts: in.alerter, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,
 		Config: channelapp.Config{
 			LinkCodeTTL: cfg.Channel.LinkCodeTTL, LinkCodesPerHour: cfg.Channel.LinkCodesPerHour,
 			UnclaimedTTL: cfg.Channel.UnclaimedTTL, RknThreshold: cfg.Channel.RknThreshold,
 			Pepper: []byte(cfg.AuthCodePepper), BotName: cfg.MAX.BotName,
+			FeeRateBP: ch.FeeRateBP, RknRecheckInterval: ch.RknRecheckInterval,
+			Unavailability: domain.UnavailabilityLimits{
+				MaxLength: time.Duration(ch.UnavailabilityMaxDays) * day, Horizon: time.Duration(ch.UnavailabilityHorizonDays) * day,
+				MaxCount: ch.UnavailabilityMaxCount,
+			},
+			Metrics: domain.MetricsConfig{SubscribersSpikeBP: ch.MetricsSubscribersSpikeBP, ViewsMinBP: ch.MetricsViewsMinBP},
 		},
 	}
 	if in.max != nil {
 		port := channelMAX{api: in.max}
-		deps.Chats, deps.Bot = port, port
+		deps.Chats, deps.Bot, deps.Messages = port, port, port
 	}
-	// Availability не задан: до модуля размещений работает пустая реализация (R-11).
-	return channelapp.New(deps)
+	// Availability и Placements не заданы: до модуля размещений работают пустые
+	// реализации (R-11 этапа «Подключение каналов», R-8 этапа «Каталог»).
+	return channelapp.New(deps), store
 }
 
 // newMAXWebhook — приём событий MAX (R-3, R-4) с данными клиента для журнала.

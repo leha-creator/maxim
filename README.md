@@ -8,6 +8,7 @@
 - **Каркас и аккаунты.** Вход по коду из письма, сессии, организации и реквизиты, документ о режиме налогообложения и оферты (S-01, S-10).
 - **Планировщик и интеграционный слой.** Задания с повторами, расписанием и правилами после простоя; учёт входящих событий и исходящих запросов; адаптер MAX с общим ограничителем; оповещения дежурным.
 - **Подключение каналов.** Приём Webhook MAX с проверкой подлинности, подключение канала кодом из кабинета, проверка прав бота, реакция на их отзыв и удаление бота (S-12, S-25).
+- **Каталог.** Цены по форматам с комиссией, интервалы недоступности, модерация каналов и проверка номера РКН администратором, суточные метрики и флаги аномалий, каталог рекламодателя с фильтрами, сортировками и курсором (S-02, S-13, S-16, S-32).
 
 Остальные операции [спецификации](api/openapi.yaml) отвечают `501 not_implemented`.
 
@@ -39,6 +40,8 @@ docker compose -f compose.dev.yml up --build
 | `maxim migrate up\|down\|status` | Миграции. `DATABASE_URL` — владелец схемы; права выдаются роли `DB_APP_ROLE` |
 | `maxim legal publish --kind <kind> --file <pdf> [--published-at <RFC3339>]` | Новая версия оферты или правил (до появления API администратора) |
 | `maxim legal list` | Действующие версии документов |
+| `maxim admin grant --email <почта> --role moderator\|senior` | Роль администратора (до появления API администратора). Пользователя без учётной записи создаёт; повтор ничего не меняет |
+| `maxim admin revoke --email <почта>` | Снять роль администратора |
 
 Виды документов: `advertiser_offer`, `blogger_offer`, `platform_rules`, `privacy_policy`. Публикация в локальном окружении:
 
@@ -64,6 +67,8 @@ docker compose -f compose.dev.yml run --rm --no-deps -v "$PWD/offer.pdf:/tmp/off
 | `leave_max_chat` | Сразу | Бот покидает чат, который не канал, или канал без кода |
 | `reply_bot_dialog` | Через 5 с | Ответ инструкцией на сообщение боту в личном диалоге |
 | `release_unclaimed_channels` | 05:00 МСК | Каналы без кода дольше `CHANNEL_UNCLAIMED_TTL` — `disconnected`, бот уходит |
+| `schedule_channel_metrics` | 00:05 МСК | Ставит `refresh_channel_metrics` каналам в `moderation`, `active`, `suspended`, распределяя запуски по суткам |
+| `refresh_channel_metrics` | В течение суток | Подписчики и сообщения из MAX, суточный снимок метрик, флаги аномалий; 10 000 подписчиков без подтверждённого номера РКН — `suspended` с причиной `rkn_required` |
 
 Оповещения по одной причине уходят не чаще раза в час. Причины: задание исчерпало попытки, сработал предохранитель внешней системы, внешний вызов окончательно не удался, простой, зависший объект.
 
@@ -90,9 +95,33 @@ curl -X POST "http://localhost:8080/api/v1/webhooks/max/dev-only-webhook-path-se
 
 Ограничение: поддельный адаптер не знает сведений о канале и прав бота, а через API они не задаются. Поэтому в разработке `refresh_channel_info` завершается ошибкой (после попыток — оповещение в Mailpit), канал остаётся без названия и после кода получает `pending_rights` с `missing_permissions: [write, delete]`. Путь до `moderation` и реакция на отзыв прав проверяются тестами `internal/channel/app` и `internal/bootstrap/channel_e2e_test.go` или на тестовом боте с `MAX_BOT_TOKEN`. Повторная отправка того же тела — дубликат, его не разберут: меняйте `timestamp`.
 
+## Канал до каталога в разработке
+
+Продолжение предыдущего раздела. Права бота поддельный адаптер не даёт, поэтому шаг 1 заменяет их запись в базу; остальное — через API.
+
+1. Канал с правами и публичностью — на модерацию:
+
+```bash
+docker compose -f compose.dev.yml exec postgres psql -U maxim -d maxim -c \
+  "UPDATE channel SET is_public = true, bot_is_admin = true, bot_permissions = '{write,delete}',
+   status = 'moderation', status_reason = NULL WHERE status = 'pending_rights'"
+```
+
+2. Блогер: категория — `PATCH /api/v1/blogger/channels/{id}` с `category_id` из `GET /api/v1/channel-categories`; цены — `PUT /api/v1/blogger/channels/{id}/prices` (форматы — `GET /api/v1/placement-formats`); интервал недоступности — `POST .../unavailability` (необязательно).
+3. Роль администратора, затем вход этой почтой:
+
+```bash
+docker compose -f compose.dev.yml run --rm --no-deps api admin grant --email admin@maxim.local --role moderator
+```
+
+4. Администратор: очередь — `GET /api/v1/admin/channels?status=moderation`, одобрение — `POST /api/v1/admin/channels/{id}/approve` (`409` с `details.missing` назовёт, чего не хватает).
+5. Рекламодатель (организация с кабинетом `advertiser`): `GET /api/v1/catalog/channels`, карточка — `GET /api/v1/catalog/channels/{id}`. Цена в каталоге — с комиссией `PLATFORM_FEE_RATE_BP`.
+
+Суточные метрики с поддельным адаптером не считаются (он не знает канал). Весь путь, включая метрики и правило РКН, проверяет `internal/bootstrap/catalog_e2e_test.go`.
+
 ## Конфигурация
 
-Только переменные окружения. Все они с пояснениями и безопасными для разработки значениями перечислены в [.env.example](.env.example). При ошибке в конфигурации процесс пишет в журнал `config invalid` со списком полей и не стартует. Обязательные переменные зависят от режима: `migrate` нужна только база. `worker` в продакшене требует `MAX_BOT_TOKEN`, хотя бы одного адресата оповещений, `MAX_WEBHOOK_URL` (https) и оба секрета Webhook; `api` в продакшене — `MAX_WEBHOOK_PATH_SECRET` и `MAX_WEBHOOK_SECRET` (не короче 32 символов). Подключение каналов: `MAX_BOT_NAME` (имя бота в инструкции), `CHANNEL_LINK_CODE_TTL` (60 мин), `CHANNEL_LINK_CODES_PER_HOUR` (10), `CHANNEL_UNCLAIMED_TTL` (7 суток), `RKN_SUBSCRIBERS_THRESHOLD` (10 000).
+Только переменные окружения. Все они с пояснениями и безопасными для разработки значениями перечислены в [.env.example](.env.example). При ошибке в конфигурации процесс пишет в журнал `config invalid` со списком полей и не стартует. Обязательные переменные зависят от режима: `migrate` нужна только база. `worker` в продакшене требует `MAX_BOT_TOKEN`, хотя бы одного адресата оповещений, `MAX_WEBHOOK_URL` (https) и оба секрета Webhook; `api` в продакшене — `MAX_WEBHOOK_PATH_SECRET` и `MAX_WEBHOOK_SECRET` (не короче 32 символов). Подключение каналов: `MAX_BOT_NAME` (имя бота в инструкции), `CHANNEL_LINK_CODE_TTL` (60 мин), `CHANNEL_LINK_CODES_PER_HOUR` (10), `CHANNEL_UNCLAIMED_TTL` (7 суток), `RKN_SUBSCRIBERS_THRESHOLD` (10 000). Каталог: `PLATFORM_FEE_RATE_BP` (1500 — комиссия 15 % сверху цены блогера, 0…10 000), `RKN_RECHECK_INTERVAL` (90 суток до повторной проверки номера), пороги флагов аномалий `METRICS_SUBSCRIBERS_SPIKE_BP` (2000) и `METRICS_VIEWS_MIN_BP` (100), пределы интервалов недоступности `CHANNEL_UNAVAILABILITY_MAX_DAYS` (90), `CHANNEL_UNAVAILABILITY_HORIZON_DAYS` (365), `CHANNEL_UNAVAILABILITY_MAX_COUNT` (50), хранение закончившихся интервалов `RETENTION_CHANNEL_UNAVAILABILITY` (30 суток). `maxim admin` нужна только база.
 
 ## Разработка
 
@@ -121,7 +150,7 @@ curl -X POST "http://localhost:8080/api/v1/webhooks/max/dev-only-webhook-path-se
 | `internal/bootstrap` | Конфигурация и сборка режимов |
 | `internal/platform` | Общее ядро: журнал, база, очередь заданий, входящие и исходящие обмены, ограничитель, оповещения, HTTP, хранилище, аудит |
 | `internal/account` | Модуль аккаунтов: `domain`, `app`, `postgres`, `httpapi`, `jobs` |
-| `internal/channel` | Модуль каналов: подключение кодом, права бота, приём Webhook MAX, кабинет блогера |
+| `internal/channel` | Модуль каналов: подключение кодом, права бота, приём Webhook MAX, кабинет блогера, каталог, модерация, метрики |
 | `internal/integration` | Адаптеры внешних систем и их подделки: почта, MAX |
 | `migrations`, `templates` | Миграции goose и шаблоны писем |
 | `docs`, `api` | Проектная документация и договор HTTP API |

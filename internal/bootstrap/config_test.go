@@ -235,3 +235,34 @@ func TestChannelConfig(t *testing.T) {
 		t.Fatal("log contains webhook secrets")
 	}
 }
+
+func TestCatalogConfig(t *testing.T) {
+	cfg, err := LoadConfig(validAPIEnv(), ModeAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := cfg.Channel
+	if ch.FeeRateBP != 1500 || ch.RknRecheckInterval != 2160*time.Hour || ch.MetricsSubscribersSpikeBP != 2000 ||
+		ch.MetricsViewsMinBP != 100 || ch.UnavailabilityMaxDays != 90 || ch.UnavailabilityHorizonDays != 365 ||
+		ch.UnavailabilityMaxCount != 50 || cfg.Retention.ChannelUnavailability != 720*time.Hour {
+		t.Fatalf("catalog defaults: %+v", ch)
+	}
+	for _, tc := range []struct{ key, value, field string }{
+		{"PLATFORM_FEE_RATE_BP", "10001", "PLATFORM_FEE_RATE_BP"},
+		{"PLATFORM_FEE_RATE_BP", "-1", "PLATFORM_FEE_RATE_BP"},
+		{"METRICS_SUBSCRIBERS_SPIKE_BP", "-5", "METRICS_SUBSCRIBERS_SPIKE_BP"},
+		{"METRICS_VIEWS_MIN_BP", "-1", "METRICS_VIEWS_MIN_BP"},
+		{"CHANNEL_UNAVAILABILITY_MAX_COUNT", "0", "CHANNEL_UNAVAILABILITY_*"},
+		{"RKN_RECHECK_INTERVAL", "-1h", "RKN_RECHECK_INTERVAL"},
+	} {
+		env := validAPIEnv()
+		env[tc.key] = tc.value
+		_, err := LoadConfig(env, ModeAPI)
+		if err == nil || !slices.ContainsFunc(configFields(t, err), func(f string) bool { return strings.HasPrefix(f, tc.field) }) {
+			t.Errorf("%s=%s: %v", tc.key, tc.value, err)
+		}
+	}
+	if _, err := LoadConfig(map[string]string{"DATABASE_URL": "postgres://x"}, ModeAdmin); err != nil {
+		t.Errorf("admin mode needs only the database: %v", err)
+	}
+}

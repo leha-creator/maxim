@@ -29,6 +29,8 @@ x-backend-env: &backend-env
   MAX_BOT_NAME: "@maxim_dev_bot"
   MAX_WEBHOOK_PATH_SECRET: dev-only-webhook-path-secret-0123456789
   MAX_WEBHOOK_SECRET: dev-only-webhook-header-secret-012345678
+  # Каталог: комиссия платформы 15 % (README, «Канал до каталога в разработке»).
+  PLATFORM_FEE_RATE_BP: "1500"
 
 services:
   postgres:

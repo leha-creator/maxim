@@ -37,10 +37,34 @@ func (s *Store) LinkCodes() *LinkCodes { return &LinkCodes{s} }
 // Categories возвращает справочник категорий.
 func (s *Store) Categories() *Categories { return &Categories{s} }
 
+// Formats возвращает справочник форматов.
+func (s *Store) Formats() *Formats { return &Formats{s} }
+
+// Prices возвращает репозиторий цен.
+func (s *Store) Prices() *Prices { return &Prices{s} }
+
+// Unavailabilities возвращает репозиторий интервалов недоступности.
+func (s *Store) Unavailabilities() *Unavailabilities { return &Unavailabilities{s} }
+
+// Metrics возвращает репозиторий снимков метрик.
+func (s *Store) Metrics() *Metrics { return &Metrics{s} }
+
+// Catalog возвращает выборки каталога.
+func (s *Store) Catalog() *Catalog { return &Catalog{s} }
+
+// AdminChannels возвращает выборки администратора.
+func (s *Store) AdminChannels() *AdminChannels { return &AdminChannels{s} }
+
 var (
-	_ domain.Channels   = (*Channels)(nil)
-	_ domain.LinkCodes  = (*LinkCodes)(nil)
-	_ domain.Categories = (*Categories)(nil)
+	_ domain.Channels         = (*Channels)(nil)
+	_ domain.LinkCodes        = (*LinkCodes)(nil)
+	_ domain.Categories       = (*Categories)(nil)
+	_ domain.Formats          = (*Formats)(nil)
+	_ domain.Prices           = (*Prices)(nil)
+	_ domain.Unavailabilities = (*Unavailabilities)(nil)
+	_ domain.Metrics          = (*Metrics)(nil)
+	_ domain.Catalog          = (*Catalog)(nil)
+	_ domain.AdminChannels    = (*AdminChannels)(nil)
 )
 
 func (s *Store) q(ctx context.Context) *sqlc.Queries {
