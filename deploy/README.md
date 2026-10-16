@@ -10,18 +10,18 @@
 push в master ──► GitHub Actions ──► образ в GHCR ──► SSH на сервер ──► docker compose up
                                      ghcr.io/leha-creator/maxim-mockapi:sha-xxxxxxx
 
-интернет ──► :443 Caddy (Let's Encrypt) ──► mockapi:8080 (внутренняя сеть compose)
+интернет ──► :443 edge-Caddy (/opt/edge, Let's Encrypt) ──► maxim-mockapi:8080 (общая сеть edge)
 ```
 
 | Что | Где |
 |---|---|
 | Сервер | `95.163.229.132`, Ubuntu 26.04, 1 CPU, 1 ГБ RAM + 2 ГБ swap |
 | Домен | `dev.plwedding.ru` → A-запись на сервер |
-| Файлы стенда | `/opt/maxim/`: `compose.yml`, `Caddyfile`, `.env` (владелец `deploy`) |
-| Сертификаты Caddy | том `maxim_caddy_data` (не удалять — иначе перевыпуск и риск упереться в лимиты Let's Encrypt) |
+| Файлы стенда | `/opt/maxim/`: `compose.yml`, `.env` (владелец `deploy`); сайт — `/opt/edge/sites/maxim.caddy` |
+| Прокси | общий edge-Caddy сервера в `/opt/edge`, конфиг и порядок работы — `deploy/edge/README.md` в репозитории `leha-creator/tracker`; сертификаты — том `edge_caddy_data` (не удалять — иначе перевыпуск и риск упереться в лимиты Let's Encrypt) |
 | Журнал подготовки сервера | `/var/log/maxim-bootstrap.log` |
 
-Файлы в `/opt/maxim` руками не правятся: workflow перезаписывает их из репозитория (`deploy/compose.yml`, `deploy/Caddyfile`) при каждом деплое.
+Файлы в `/opt/maxim` руками не правятся: workflow перезаписывает их из репозитория (`deploy/compose.yml`, `deploy/maxim.caddy` с подставленным доменом) при каждом деплое и делает `caddy reload` edge-прокси.
 
 Наружу открыты только порты 22, 80 и 443 (`ufw`). Порт заглушки на хост не публикуется. Вход по SSH только по ключам; вход `root` по паролю отключён, в том числе блоком хостера `99-qemu.conf` (см. `bootstrap.sh`, шаг 8).
 
@@ -35,7 +35,7 @@ push в master ──► GitHub Actions ──► образ в GHCR ──► S
 
 Проверки идут на Go 1.27 — той же версии, на которой локально запускают `go generate`. Другая минорная версия Go сжимает встроенную в `api.gen.go` спецификацию иначе, и проверка «сгенерированный код не устарел» падает. При обновлении Go менять версию в workflow, в `mockapi/Dockerfile` и локально одновременно, затем перегенерировать код.
 
-Пока в `master` нет `mockapi/go.mod`, проверки и сборка пропускаются, а деплой поднимает только Caddy, который отвечает `503 Заглушка API ещё не развёрнута`.
+Пока в `master` нет `mockapi/go.mod`, проверки и сборка пропускаются, а деплой публикует только файл сайта: edge-прокси отвечает `503 Заглушка API ещё не развёрнута`.
 
 Деплои идут по очереди (`concurrency: deploy-dev`). Если проверка после деплоя не прошла, job падает и печатает `docker compose ps` и последние строки журналов. Если не готов TLS (например, DNS только что поменяли), это предупреждение, а не ошибка: Caddy выпустит сертификат сам.
 
@@ -59,7 +59,7 @@ Settings → Secrets and variables → Actions:
 ```bash
 # Журналы заглушки и Caddy
 ssh deploy@95.163.229.132 'cd /opt/maxim && docker compose logs -f --tail=100 mockapi'
-ssh deploy@95.163.229.132 'cd /opt/maxim && docker compose logs --tail=100 caddy'
+ssh deploy@95.163.229.132 'cd /opt/edge && docker compose logs --tail=100 caddy'
 
 # Состояние и перезапуск (сбрасывает данные заглушки)
 ssh deploy@95.163.229.132 'cd /opt/maxim && docker compose ps'
@@ -96,7 +96,8 @@ gh workflow run deploy --ref master -f tag=sha-xxxxxxx
 ```bash
 docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:stable /mnt/deploy/bootstrap.sh
 docker compose -f deploy/compose.yml --env-file deploy/.env.example config --quiet
-docker run --rm -e DOMAIN=dev.plwedding.ru -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11.7 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sed "s/__DOMAIN__/dev.plwedding.ru/" deploy/maxim.caddy > /tmp/maxim.caddy
+docker run --rm -v /tmp/maxim.caddy:/etc/caddy/Caddyfile:ro caddy:2.11.7 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker run --rm -i hadolint/hadolint < mockapi/Dockerfile
 # SC2029 отключён: в ssh-командах workflow переменные намеренно раскрываются на раннере
 docker run --rm -e SHELLCHECK_OPTS="-e SC2029" -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7

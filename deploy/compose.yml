@@ -1,5 +1,7 @@
 # Тестовый стенд заглушки API (см. deploy/README.md).
-# На сервере лежит в /opt/maxim рядом с Caddyfile и .env; копируется workflow деплоя.
+# На сервере лежит в /opt/maxim рядом с .env; копируется workflow деплоя.
+# HTTPS и проксирование — общий edge-прокси сервера (/opt/edge, сеть `edge`):
+# сайт стенда описан в deploy/maxim.caddy.
 name: maxim
 
 services:
@@ -10,35 +12,19 @@ services:
       MOCKAPI_ADDR: ":8080"
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       MOCKAPI_COOKIE_SECURE: "true"
-    # Порт наружу не публикуется: доступ только через Caddy во внутренней сети.
+    # Порт наружу не публикуется: доступ только через edge-прокси.
     read_only: true
     security_opt:
       - no-new-privileges:true
     mem_limit: 256m
     networks:
-      - maxim
-
-  caddy:
-    image: caddy:2.11.7
-    restart: unless-stopped
-    # Без depends_on: Caddy поднимается и отвечает 503, даже когда заглушки нет.
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      DOMAIN: ${DOMAIN:?DOMAIN is required}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    mem_limit: 128m
-    networks:
-      - maxim
+      maxim: {}
+      # Алиас уникален в общей сети edge (там же сервисы других проектов).
+      edge:
+        aliases: [maxim-mockapi]
 
 networks:
   maxim: {}
-
-volumes:
-  caddy_data: {}
-  caddy_config: {}
+  edge:
+    external: true
+    name: edge
