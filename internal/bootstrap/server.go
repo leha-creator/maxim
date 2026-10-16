@@ -27,10 +27,12 @@ import (
 const BaseURL = "/api/v1"
 
 // Пределы тела запроса: JSON — 1 МБ, документ о режиме налогообложения — 10 МБ
-// плюс запас на разметку multipart (R-5).
+// плюс запас на разметку multipart (R-5), изображение медиатеки — 50 МБ плюс запас
+// (этап «Медиатека и пост», R-2).
 const (
 	bodyLimitDefault     = 1 << 20
 	bodyLimitTaxDocument = 11 << 20
+	bodyLimitMedia       = 51 << 20
 )
 
 // fallback опускает заглушки на уровень глубже обработчиков модулей: при
@@ -167,6 +169,9 @@ func newHandler(d serverDeps) (http.Handler, error) {
 		httpx.BodyLimit(func(r *http.Request) int64 {
 			if r.URL.Path == BaseURL+"/organizations/current/tax-document" {
 				return bodyLimitTaxDocument
+			}
+			if r.Method == http.MethodPost && r.URL.Path == BaseURL+"/media" {
+				return bodyLimitMedia
 			}
 			return bodyLimitDefault
 		}),

@@ -9,6 +9,7 @@
 - **Планировщик и интеграционный слой.** Задания с повторами, расписанием и правилами после простоя; учёт входящих событий и исходящих запросов; адаптер MAX с общим ограничителем; оповещения дежурным.
 - **Подключение каналов.** Приём Webhook MAX с проверкой подлинности, подключение канала кодом из кабинета, проверка прав бота, реакция на их отзыв и удаление бота (S-12, S-25).
 - **Каталог.** Цены по форматам с комиссией, интервалы недоступности, модерация каналов и проверка номера РКН администратором, суточные метрики и флаги аномалий, каталог рекламодателя с фильтрами, сортировками и курсором (S-02, S-13, S-16, S-32).
+- **Медиатека и пост.** Загрузка изображений с проверкой по содержимому, превью и копии с плашкой «Реклама. название, ИНН», кампании, черновик поста в форматировании MAX с распознаванием ссылок, предпросмотр с проверками, версии поста для следующих этапов (S-04, S-05).
 
 Остальные операции [спецификации](api/openapi.yaml) отвечают `501 not_implemented`.
 
@@ -24,7 +25,7 @@ docker compose -f compose.dev.yml up --build
 |---|---|
 | <http://localhost:8080/docs> | Swagger UI API (не в продакшене) |
 | <http://localhost:8025> | Mailpit: письма с кодами входа и оповещения дежурным (`oncall@maxim.local`) |
-| <http://localhost:9001> | Консоль MinIO (`minio` / `minio-secret`) |
+| <http://localhost:9001> | Консоль MinIO (`minio` / `minio-secret`). Корзины: `maxim-private` и `maxim-public` (анонимное чтение без перечисления) |
 | <http://localhost:9090/metrics>, `:9091/metrics` | Метрики `api` и `worker` |
 
 Если порт занят, его меняет переменная `DEV_*_PORT`, например `DEV_API_PORT=58080 DEV_MAILPIT_PORT=58025`. Полный список — в [compose.dev.yml](compose.dev.yml).
@@ -69,6 +70,9 @@ docker compose -f compose.dev.yml run --rm --no-deps -v "$PWD/offer.pdf:/tmp/off
 | `release_unclaimed_channels` | 05:00 МСК | Каналы без кода дольше `CHANNEL_UNCLAIMED_TTL` — `disconnected`, бот уходит |
 | `schedule_channel_metrics` | 00:05 МСК | Ставит `refresh_channel_metrics` каналам в `moderation`, `active`, `suspended`, распределяя запуски по суткам |
 | `refresh_channel_metrics` | В течение суток | Подписчики и сообщения из MAX, суточный снимок метрик, флаги аномалий; 10 000 подписчиков без подтверждённого номера РКН — `suspended` с причиной `rkn_required` |
+| `build_media_derivative` | Сразу | Превью при загрузке, копия или копия с плашкой при сохранении черновика; не больше `MEDIA_BUILD_CONCURRENCY` построений одновременно |
+| `publish_media_derivative` | Сразу | Копия производной из версии поста в публичной корзине и её постоянная ссылка |
+| `purge_media` | 04:30 МСК | Удаляет из хранилища удалённые оригиналы и производные вне версий старше `MEDIA_RETENTION_DELETED` |
 
 Оповещения по одной причине уходят не чаще раза в час. Причины: задание исчерпало попытки, сработал предохранитель внешней системы, внешний вызов окончательно не удался, простой, зависший объект.
 
@@ -119,9 +123,25 @@ docker compose -f compose.dev.yml run --rm --no-deps api admin grant --email adm
 
 Суточные метрики с поддельным адаптером не считаются (он не знает канал). Весь путь, включая метрики и правило РКН, проверяет `internal/bootstrap/catalog_e2e_test.go`.
 
+## Пост с плашкой в разработке
+
+Нужна организация с кабинетом `advertiser` (`POST /api/v1/organizations`, название и ИНН попадут на плашку). Всё — через Swagger UI или `curl` с cookie сессии и заголовком `X-CSRF-Token`.
+
+1. Изображение: `POST /api/v1/media`, `multipart/form-data` с частью `file` (JPEG, PNG или WebP; сторона от 160 до 7680, до 50 МБ):
+
+```bash
+curl -b cookies.txt -H "X-CSRF-Token: $CSRF" -F "file=@photo.jpg" http://localhost:8080/api/v1/media
+```
+
+2. Кампания: `POST /api/v1/campaigns` с `{"name": "Осень"}` — вместе с ней создаётся пустой пост.
+3. Пост: `PUT /api/v1/campaigns/{id}/post` с `content_doc` (документ редактора, пример — в Swagger UI) и `media_file_ids`. Адрес `https://…` в тексте станет ссылкой. По умолчанию пометка — на плашке, erid — под постом.
+4. Предпросмотр: `POST /api/v1/campaigns/{id}/post/preview`. Пока `worker` строит изображения, в `problems` будет `media_processing` — повторите через пару секунд. Ссылки `media_urls` открываются в браузере: это изображения с плашкой из MinIO, подписанные для `localhost:9000` (`S3_PRESIGN_ENDPOINT`).
+
+Создание версии поста, публикация производных в `maxim-public` и переходы версии — сервис для этапов заказа, модерации и маркировки; их API появится там. Весь путь проверяет `internal/bootstrap/post_e2e_test.go`.
+
 ## Конфигурация
 
-Только переменные окружения. Все они с пояснениями и безопасными для разработки значениями перечислены в [.env.example](.env.example). При ошибке в конфигурации процесс пишет в журнал `config invalid` со списком полей и не стартует. Обязательные переменные зависят от режима: `migrate` нужна только база. `worker` в продакшене требует `MAX_BOT_TOKEN`, хотя бы одного адресата оповещений, `MAX_WEBHOOK_URL` (https) и оба секрета Webhook; `api` в продакшене — `MAX_WEBHOOK_PATH_SECRET` и `MAX_WEBHOOK_SECRET` (не короче 32 символов). Подключение каналов: `MAX_BOT_NAME` (имя бота в инструкции), `CHANNEL_LINK_CODE_TTL` (60 мин), `CHANNEL_LINK_CODES_PER_HOUR` (10), `CHANNEL_UNCLAIMED_TTL` (7 суток), `RKN_SUBSCRIBERS_THRESHOLD` (10 000). Каталог: `PLATFORM_FEE_RATE_BP` (1500 — комиссия 15 % сверху цены блогера, 0…10 000), `RKN_RECHECK_INTERVAL` (90 суток до повторной проверки номера), пороги флагов аномалий `METRICS_SUBSCRIBERS_SPIKE_BP` (2000) и `METRICS_VIEWS_MIN_BP` (100), пределы интервалов недоступности `CHANNEL_UNAVAILABILITY_MAX_DAYS` (90), `CHANNEL_UNAVAILABILITY_HORIZON_DAYS` (365), `CHANNEL_UNAVAILABILITY_MAX_COUNT` (50), хранение закончившихся интервалов `RETENTION_CHANNEL_UNAVAILABILITY` (30 суток). `maxim admin` нужна только база.
+Только переменные окружения. Все они с пояснениями и безопасными для разработки значениями перечислены в [.env.example](.env.example). При ошибке в конфигурации процесс пишет в журнал `config invalid` со списком полей и не стартует. Обязательные переменные зависят от режима: `migrate` нужна только база. `worker` в продакшене требует `MAX_BOT_TOKEN`, хотя бы одного адресата оповещений, `MAX_WEBHOOK_URL` (https) и оба секрета Webhook; `api` в продакшене — `MAX_WEBHOOK_PATH_SECRET` и `MAX_WEBHOOK_SECRET` (не короче 32 символов). Подключение каналов: `MAX_BOT_NAME` (имя бота в инструкции), `CHANNEL_LINK_CODE_TTL` (60 мин), `CHANNEL_LINK_CODES_PER_HOUR` (10), `CHANNEL_UNCLAIMED_TTL` (7 суток), `RKN_SUBSCRIBERS_THRESHOLD` (10 000). Каталог: `PLATFORM_FEE_RATE_BP` (1500 — комиссия 15 % сверху цены блогера, 0…10 000), `RKN_RECHECK_INTERVAL` (90 суток до повторной проверки номера), пороги флагов аномалий `METRICS_SUBSCRIBERS_SPIKE_BP` (2000) и `METRICS_VIEWS_MIN_BP` (100), пределы интервалов недоступности `CHANNEL_UNAVAILABILITY_MAX_DAYS` (90), `CHANNEL_UNAVAILABILITY_HORIZON_DAYS` (365), `CHANNEL_UNAVAILABILITY_MAX_COUNT` (50), хранение закончившихся интервалов `RETENTION_CHANNEL_UNAVAILABILITY` (30 суток). Медиатека и пост: хранилище нужно `api` и `worker`; публичная корзина `S3_BUCKET_PUBLIC` и её адрес `S3_PUBLIC_BASE_URL` (https в продакшене), адрес в подписанных ссылках `S3_PRESIGN_ENDPOINT` (если браузер видит хранилище иначе, чем сервер), `MEDIA_MAX_BYTES` (50 МБ, не больше), `MEDIA_MIN_SIDE` (160), `MEDIA_PREVIEW_SIDE` (640), `MEDIA_UPLOADS_PER_HOUR` (60), `MEDIA_UPLOAD_CONCURRENCY` (4), `MEDIA_BUILD_CONCURRENCY` (2), `MEDIA_ALBUM_LIMIT` (10, не больше), `MEDIA_URL_TTL` (1 ч), `MEDIA_RETENTION_DELETED` (30 суток), `POST_BODY_LIMIT` (3800) и `POST_FINAL_TEXT_LIMIT` (4000). `maxim admin` нужна только база.
 
 ## Разработка
 
@@ -151,6 +171,7 @@ docker compose -f compose.dev.yml run --rm --no-deps api admin grant --email adm
 | `internal/platform` | Общее ядро: журнал, база, очередь заданий, входящие и исходящие обмены, ограничитель, оповещения, HTTP, хранилище, аудит |
 | `internal/account` | Модуль аккаунтов: `domain`, `app`, `postgres`, `httpapi`, `jobs` |
 | `internal/channel` | Модуль каналов: подключение кодом, права бота, приём Webhook MAX, кабинет блогера, каталог, модерация, метрики |
+| `internal/post` | Модуль поста: медиатека и производные (`imaging`), кампании, черновик и сериализация в MAX, предпросмотр, версии |
 | `internal/integration` | Адаптеры внешних систем и их подделки: почта, MAX |
 | `migrations`, `templates` | Миграции goose и шаблоны писем |
 | `docs`, `api` | Проектная документация и договор HTTP API |

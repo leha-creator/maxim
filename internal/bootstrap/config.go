@@ -62,6 +62,7 @@ type Config struct {
 
 	Auth    AuthConfig
 	Channel ChannelConfig
+	Media   MediaConfig
 
 	MAX       MAXConfig
 	Alert     AlertConfig
@@ -108,6 +109,37 @@ type ChannelConfig struct {
 	UnavailabilityMaxCount    int `env:"CHANNEL_UNAVAILABILITY_MAX_COUNT" envDefault:"50"`
 }
 
+// MediaConfig — медиатека и пост (этап «Медиатека и пост», 07 §4 «Файлы», A-23, A-38).
+type MediaConfig struct {
+	// MaxBytes — предел изображения; не больше предела MAX (50 МБ).
+	MaxBytes int64 `env:"MEDIA_MAX_BYTES" envDefault:"52428800"`
+	MinSide  int   `env:"MEDIA_MIN_SIDE" envDefault:"160"`
+	// PreviewSide — длинная сторона превью медиатеки.
+	PreviewSide    int `env:"MEDIA_PREVIEW_SIDE" envDefault:"640"`
+	UploadsPerHour int `env:"MEDIA_UPLOADS_PER_HOUR" envDefault:"60"`
+	// UploadConcurrency — одновременных загрузок на экземпляр api.
+	UploadConcurrency int `env:"MEDIA_UPLOAD_CONCURRENCY" envDefault:"4"`
+	// BuildConcurrency — одновременно строящихся изображений на экземпляр worker (R-20).
+	BuildConcurrency int `env:"MEDIA_BUILD_CONCURRENCY" envDefault:"2"`
+	// AlbumLimit — изображений в посте; не больше 10 до ответа на Q-05 (A-23).
+	AlbumLimit int `env:"MEDIA_ALBUM_LIMIT" envDefault:"10"`
+	// URLTTL — срок подписанных ссылок кабинета.
+	URLTTL time.Duration `env:"MEDIA_URL_TTL" envDefault:"1h"`
+	// RetentionDeleted — через сколько удалённый файл очищается из хранилища (R-19).
+	RetentionDeleted time.Duration `env:"MEDIA_RETENTION_DELETED" envDefault:"720h"`
+	// PostBodyLimit, PostFinalTextLimit — пределы текста поста (A-38).
+	PostBodyLimit      int `env:"POST_BODY_LIMIT" envDefault:"3800"`
+	PostFinalTextLimit int `env:"POST_FINAL_TEXT_LIMIT" envDefault:"4000"`
+}
+
+// Пределы MAX для изображений и текста (05 §2.6, A-38).
+const (
+	maxMediaBytes     = 50 << 20
+	maxMediaSide      = 7680
+	maxAlbumLimit     = 10
+	maxFinalTextLimit = 4000
+)
+
 // AlertConfig — адресаты оповещений администратору (07 §3, R-5).
 type AlertConfig struct {
 	Emails    []string `env:"ALERT_EMAILS" envSeparator:","`
@@ -144,9 +176,16 @@ type S3Config struct {
 	Endpoint      string `env:"S3_ENDPOINT"`
 	Region        string `env:"S3_REGION" envDefault:"ru-central1"`
 	BucketPrivate string `env:"S3_BUCKET_PRIVATE"`
-	AccessKey     string `env:"S3_ACCESS_KEY"`
-	SecretKey     string `env:"S3_SECRET_KEY"`
-	UseSSL        bool   `env:"S3_USE_SSL" envDefault:"true"`
+	// BucketPublic — публичная корзина: анонимное чтение без перечисления (R-7).
+	BucketPublic string `env:"S3_BUCKET_PUBLIC"`
+	// PublicBaseURL — адрес чтения публичной корзины; ключ объекта дописывается в конец.
+	PublicBaseURL string `env:"S3_PUBLIC_BASE_URL"`
+	// PresignEndpoint — адрес хранилища в подписанных ссылках для браузера (в разработке
+	// localhost:9000 вместо minio:9000); пусто — S3_ENDPOINT.
+	PresignEndpoint string `env:"S3_PRESIGN_ENDPOINT"`
+	AccessKey       string `env:"S3_ACCESS_KEY"`
+	SecretKey       string `env:"S3_SECRET_KEY"`
+	UseSSL          bool   `env:"S3_USE_SSL" envDefault:"true"`
 }
 
 // SMTPConfig — почтовый сервис (A-13, A-19).
@@ -262,7 +301,8 @@ func (c Config) Validate(mode string) error {
 		add("DB_MAX_CONNS", "must be positive")
 	}
 
-	needStorage := mode == ModeAPI || mode == ModeLegal
+	// worker строит производные изображений и публикует их (R-6, R-7).
+	needStorage := mode == ModeAPI || mode == ModeLegal || mode == ModeWorker
 	needSecrets := mode == ModeAPI || mode == ModeWorker
 	needMail := mode == ModeWorker
 	fakes := c.Env == EnvTest // в тестовом окружении внешние системы поддельные
@@ -272,6 +312,13 @@ func (c Config) Validate(mode string) error {
 		require("S3_BUCKET_PRIVATE", c.S3.BucketPrivate)
 		require("S3_ACCESS_KEY", c.S3.AccessKey)
 		require("S3_SECRET_KEY", c.S3.SecretKey)
+		if mode != ModeLegal {
+			require("S3_BUCKET_PUBLIC", c.S3.BucketPublic)
+			if u, err := url.Parse(c.S3.PublicBaseURL); err != nil || u.Host == "" ||
+				(u.Scheme != "https" && (c.Env == EnvProduction || u.Scheme != "http")) {
+				add("S3_PUBLIC_BASE_URL", "must be an absolute URL (https in production)")
+			}
+		}
 	}
 	if needSecrets {
 		if key, err := base64.StdEncoding.DecodeString(c.SecretsKey); err != nil || len(key) != 32 {
@@ -306,6 +353,7 @@ func (c Config) Validate(mode string) error {
 	}
 	if mode == ModeAPI || mode == ModeWorker {
 		c.validateCatalog(add)
+		c.validateMedia(add)
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -368,6 +416,35 @@ func (c Config) validateWorker(add func(field, reason string)) {
 			add("RETENTION_*", "must be positive")
 			break
 		}
+	}
+}
+
+// validateMedia — пределы медиатеки и поста: не мягче пределов MAX (05 §2.6, A-23, A-38).
+func (c Config) validateMedia(add func(field, reason string)) {
+	m := c.Media
+	if m.MaxBytes < 1 || m.MaxBytes > maxMediaBytes {
+		add("MEDIA_MAX_BYTES", fmt.Sprintf("must be between 1 and %d", maxMediaBytes))
+	}
+	if m.MinSide < 1 || m.MinSide > maxMediaSide {
+		add("MEDIA_MIN_SIDE", fmt.Sprintf("must be between 1 and %d", maxMediaSide))
+	}
+	if m.PreviewSide < 16 || m.PreviewSide > maxMediaSide {
+		add("MEDIA_PREVIEW_SIDE", fmt.Sprintf("must be between 16 and %d", maxMediaSide))
+	}
+	if m.UploadsPerHour < 1 || m.UploadConcurrency < 1 || m.BuildConcurrency < 1 {
+		add("MEDIA_UPLOADS_PER_HOUR, MEDIA_*_CONCURRENCY", "must be positive")
+	}
+	if m.AlbumLimit < 1 || m.AlbumLimit > maxAlbumLimit {
+		add("MEDIA_ALBUM_LIMIT", fmt.Sprintf("must be between 1 and %d", maxAlbumLimit))
+	}
+	if m.URLTTL <= 0 || m.RetentionDeleted <= 0 {
+		add("MEDIA_URL_TTL, MEDIA_RETENTION_DELETED", "must be positive")
+	}
+	if m.PostFinalTextLimit < 1 || m.PostFinalTextLimit > maxFinalTextLimit {
+		add("POST_FINAL_TEXT_LIMIT", fmt.Sprintf("must be between 1 and %d", maxFinalTextLimit))
+	}
+	if m.PostBodyLimit < 1 || m.PostBodyLimit >= m.PostFinalTextLimit {
+		add("POST_BODY_LIMIT", "must be positive and less than POST_FINAL_TEXT_LIMIT")
 	}
 }
 
@@ -435,6 +512,9 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("db_max_conns", int(c.DBMaxConns)),
 		slog.String("s3_endpoint", c.S3.Endpoint),
 		slog.String("s3_bucket_private", c.S3.BucketPrivate),
+		slog.String("s3_bucket_public", c.S3.BucketPublic),
+		slog.String("s3_public_base_url", c.S3.PublicBaseURL),
+		slog.String("s3_presign_endpoint", c.S3.PresignEndpoint),
 		slog.String("s3_access_key", secret(c.S3.AccessKey)),
 		slog.String("s3_secret_key", secret(c.S3.SecretKey)),
 		slog.Bool("s3_use_ssl", c.S3.UseSSL),
@@ -471,6 +551,17 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("channel_unavailability_max_days", c.Channel.UnavailabilityMaxDays),
 		slog.Int("channel_unavailability_horizon_days", c.Channel.UnavailabilityHorizonDays),
 		slog.Int("channel_unavailability_max_count", c.Channel.UnavailabilityMaxCount),
+		slog.Int64("media_max_bytes", c.Media.MaxBytes),
+		slog.Int("media_min_side", c.Media.MinSide),
+		slog.Int("media_preview_side", c.Media.PreviewSide),
+		slog.Int("media_uploads_per_hour", c.Media.UploadsPerHour),
+		slog.Int("media_upload_concurrency", c.Media.UploadConcurrency),
+		slog.Int("media_build_concurrency", c.Media.BuildConcurrency),
+		slog.Int("media_album_limit", c.Media.AlbumLimit),
+		slog.String("media_url_ttl", c.Media.URLTTL.String()),
+		slog.String("media_retention_deleted", c.Media.RetentionDeleted.String()),
+		slog.Int("post_body_limit", c.Media.PostBodyLimit),
+		slog.Int("post_final_text_limit", c.Media.PostFinalTextLimit),
 		slog.Int("alert_emails", len(c.Alert.Emails)),
 		slog.Bool("alert_max_chat", c.Alert.MAXChatID != 0),
 		slog.String("downtime_threshold", c.Scheduler.DowntimeThreshold.String()),

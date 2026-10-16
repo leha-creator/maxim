@@ -88,6 +88,12 @@ func NotFound(message string) *Error { return New(CodeNotFound, message) }
 // Conflict — действие невозможно в текущем состоянии данных.
 func Conflict(message string) *Error { return New(CodeConflict, message) }
 
+// InvalidTransition — переход недопустим из текущего состояния.
+func InvalidTransition(transition, status string) *Error {
+	return New(CodeInvalidTransition, "transition is not allowed from current status").
+		WithDetail("transition", transition).WithDetail("status", status)
+}
+
 // INNTaken — ИНН уже принадлежит другой организации.
 func INNTaken() *Error { return New(CodeINNTaken, "inn is already registered") }
 

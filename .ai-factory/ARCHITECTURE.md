@@ -32,7 +32,7 @@
 | Журнал | `log/slog`, JSON в stdout | 07 §5.1 |
 | Метрики | `prometheus/client_golang`, отдельный адрес `/metrics` | 07 §5.5 |
 | Хранилище | `minio/minio-go/v7` | Любое S3-совместимое, подписанные ссылки |
-| Изображения | `golang.org/x/image` (WebP, шрифты), `disintegration/imaging` | Плашка и превью без внешних процессов (D-04) |
+| Изображения | `golang.org/x/image` (декодер WebP, шрифт Go Bold, `opentype`), `disintegration/imaging` (декодирование с поворотом EXIF, масштабирование) | Плашка и превью без внешних процессов (D-04). Кодировщика WebP нет: производные из WebP — PNG или JPEG (06 §6.2) |
 | Тесты с базой | `testcontainers-go` (модуль postgres), пакет `platform/dbtest`: контейнер на тестовый пакет, миграции от владельца, тесты под ролью приложения | 07 §9: настоящая PostgreSQL; права роли проверяются тестами |
 | Почта | `wneessen/go-mail` (SMTP), шаблоны `templates/email/*.tmpl` | 07 §6: тексты в репозитории; в разработке — Mailpit |
 | Секреты в базе | `platform/secretbox`: AES-256-GCM, ключ `APP_SECRETS_KEY` | 07 §4: секрет в базе — только зашифрованным (R-1) |
@@ -80,7 +80,7 @@ maxim/
 │   │   ├── secretbox/               #   шифрование секретов в полезной нагрузке заданий (R-1)
 │   │   ├── dbtest/                  #   PostgreSQL в testcontainers для тестов
 │   │   ├── httpx/                   #   middleware: request_id, сессия, CSRF, лимиты, ошибки → JSON
-│   │   └── storage/                 #   порт ObjectStorage + реализация на minio-go; storagefake/
+│   │   └── storage/                 #   порт ObjectStorage на minio-go: закрытая и публичная корзины, подписанные ссылки; storagefake/
 │   │
 │   ├── integration/                 # ── АДАПТЕРЫ ВНЕШНИХ СИСТЕМ ──
 │   │   ├── max/                     #   клиент MAX Bot API через outbound и ratelimit (25 rps, 1/с на чат), разбор Webhook
@@ -110,6 +110,13 @@ maxim/
 │   │   ├── jobs/                    #   разбор событий MAX (max.ParseUpdate) и регистрация заданий
 │   │   └── channeltest/             #   тестовые данные: организация-владелец, одобрение канала
 │   ├── post/                        # медиатека, кампании, пост, версии, сериализация в MAX (04 §4)
+│   │   ├── domain/                  #   документ редактора, распознавание ссылок, сериализатор, итоговый текст, плашка, кампания, черновик, проблемы, версии, порты
+│   │   ├── app/                     #   медиатека и производные, кампании, черновик, предпросмотр, CreateVersion и переходы версии, публикация, очистка
+│   │   ├── imaging/                 #   адаптер порта Renderer: превью, копия, плашка (x/image, imaging, шрифт Go Bold); imagingtest/
+│   │   ├── postgres/                #   media_file, media_derivative, campaign, post, post_version(_media)
+│   │   ├── httpapi/                 #   операции кабинета рекламодателя: медиатека, кампании, пост, предпросмотр
+│   │   ├── jobs/                    #   build_media_derivative, publish_media_derivative, purge_media
+│   │   └── posttest/                #   тестовые данные: организация рекламодателя
 │   ├── placement/                   # корзина, заказ, размещения, публикации, нарушения, споры (04 §5)
 │   ├── marking/                     # объекты ОРД, erid, отчётность (04 §6)
 │   ├── ledger/                      # счета учёта, проводки, удержания — ЕДИНСТВЕННЫЙ вход в ledger_* (06 §2)
@@ -164,6 +171,8 @@ integration/* ──────────────────────
 - **Модуль → внешняя система.** Порт объявлен в `domain` модуля, например `placement/domain.ChannelPublisher`. Реализация — `integration/max`. Вызывает его только обработчик задания из `<module>/jobs` через `app`. Каждый вызов проходит через `platform/outbound`, который пишет `outbound_request`, повторяет запрос и маскирует секреты.
 - **Входящие события.** `httpapi` проверяет подлинность Webhook, записывает `inbound_event` и ставит задание `process_inbound_event`. Затем отвечает `200`. Разбор и действия выполняются в `jobs` (07 §7: ответ за 200 мс). Приём Webhook — обычный `http.Handler` модуля, который `bootstrap` монтирует перед strict server (`serverDeps.Routes`): ключ события — SHA-256 сырого тела, секрет — в заголовке. Обработчик события, решивший, что действий не нужно, возвращает `inbound.ErrIgnore` — событие получает `ignored`. `jobs` модуля может импортировать `integration/*` только ради чистого разбора тела события (`max.ParseUpdate`).
 - **Доступ по организации.** Методы репозиториев для данных организации принимают `organizationID` явным параметром. Выборки без него для кабинетных сценариев не пишутся (07 §4). Администраторские выборки — отдельные методы с суффиксом `ForAdmin`, вызываются только после проверки роли: `httpx.RequireAdmin(ctx, log, op, roles...)` в `httpapi` (`401` без сессии, `403` с `admin_required` без роли, WARN `admin access denied`). Выборка администратора может читать название и ИНН владельца из `organization` только для показа (ИНН в ответе маскируется).
+- **Реквизиты рекламодателя для поста.** `post/domain.AdvertiserRequisites` — название и ИНН текущей организации для плашки и снимка версии (этап «Медиатека и пост», R-14). Реализация — переходник `postRequisites` в `bootstrap` поверх `account/postgres` (чтение без блокировки).
+- **Версия поста для следующих этапов.** `post/app.CreateVersion(ctx, orgID, campaignID, userID, orderNumber)` работает в транзакции вызывающего: оформление заказа создаёт версию вместе с заказом. Переходы `ApproveVersion`, `RejectVersion`, `MarkVersionReady` — сервисные методы `post/app`; роль администратора и получение erid проверяют вызывающие этапы. Неизменяемость версии в `ready` закреплена триггером базы.
 - **Порты к будущим модулям.** Модуль, которого ещё нет, представлен портом с пустой реализацией: `channel/domain.AvailabilityListener` (`NopAvailability`) и `channel/domain.PlacementSchedule` (`NopPlacements`, занятые размещениями интервалы в карточке каталога). Модуль размещений подставит свои реализации в `bootstrap`.
 
 ## Key Principles

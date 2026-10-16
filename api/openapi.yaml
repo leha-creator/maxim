@@ -568,7 +568,17 @@ paths:
       tags: [campaigns]
       operationId: createCampaign
       summary: Новая кампания
-      description: Создаёт кампанию в `draft` и пустой пост к ней (D-16).
+      description: |
+        Создаёт кампанию в `draft` и пустой пост к ней (D-16). Обязательно только `name`.
+
+        Проверки формы (A-39; полнота кампании проверяется при оплате). Отказ — `422`,
+        причина в `details.reason`, поле — в `details.field`:
+        - `required` — нет `name` или оно пустое после обрезки пробелов;
+        - `period_order` — `date_from` позже `date_to`;
+        - `period_too_long` — период длиннее 14 суток;
+        - `period_in_past` — `date_from` раньше сегодняшнего дня по Москве;
+        - `time_pair` — задано только одно из `time_from`, `time_to`;
+        - `time_window` — `time_from` не раньше `time_to` или окно короче 1 часа.
       requestBody:
         required: true
         content:
@@ -610,7 +620,13 @@ paths:
       tags: [campaigns]
       operationId: updateCampaign
       summary: Изменить кампанию
-      description: Наименование меняется всегда; период дат и времени — только в `draft`.
+      description: |
+        Меняет только переданные поля; отсутствующее поле не меняется. Очистить поле нельзя:
+        `null` и пустая строка не принимаются.
+
+        Наименование меняется всегда; период дат и времени и `extra_requirements` — только в `draft`,
+        иначе `409` с `details.reason = not_draft`. Новое значение проверяется вместе с сохранёнными
+        полями по тем же правилам, что и в `createCampaign` (`422`, причины там же).
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -654,6 +670,29 @@ paths:
         Сохраняет документ редактора, порядок изображений альбома и место токена.
         Черновик можно править и после оформления заказа; в заказ правка попадает только
         через новую версию (`POST /orders/{id}/post-versions`, S-29).
+
+        Перед сохранением документ нормализуется: CRLF и CR заменяются на LF, табуляция — на пробел,
+        прочие управляющие символы удаляются; повторы меток в узле убираются; пустые узлы удаляются,
+        соседние узлы с одинаковыми метками сливаются; пустой абзац сохраняется. Затем адреса `https://`
+        в тексте без ссылки становятся ссылками (D-22): адрес заканчивается пробелом или концом строки,
+        в него не входят завершающие `.,;:!?»"'` и `)` без парной `(`. Ответ содержит документ
+        после нормализации и распознавания ссылок.
+
+        Если поля места токена не переданы: `token_carrier = media` при наличии изображений, иначе `text`;
+        `token_position = below`. Недоступное сочетание не отклоняется, а показывается проблемой предпросмотра.
+        Текст длиннее 3800 знаков сохраняется — предпросмотр покажет `body_too_long`.
+
+        Отказ — `422`, причина в `details.reason`:
+        - `invalid_doc` — нарушено ограничение документа, путь узла в `details.path` (например,
+          `content.2.content.0`), уточнение в `details.rule`: `too_many_blocks` (больше 300),
+          `too_many_nodes` (больше 3000 текстовых узлов), `doc_too_large` (JSON больше 128 КБ),
+          `href_required`, `href_unexpected`, `href_invalid` (не `https://`, нет хоста, есть
+          `userinfo` или пробел, длиннее 2048);
+        - `too_long` — сериализованный текст длиннее 8000 знаков;
+        - `media_not_found` — файла нет, он удалён или чужой, идентификатор в `details.media_file_id`;
+        - `duplicate_media` — файл повторяется в альбоме.
+
+        Длина считается в кодовых единицах UTF-16 сериализованного текста вместе с разметкой.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -695,6 +734,11 @@ paths:
       description: |
         Сериализует сохранённый черновик в формат MAX и собирает пример итогового текста
         со строкой маркировки; erid в примере условный. Возвращает нарушения автоматических проверок.
+
+        UTM-метки (A-21) в предпросмотре содержат заглушку номера заказа `order_0000000000`
+        фиксированной ширины, поэтому длина не занижается. `media_urls` — подписанные ссылки
+        со сроком действия; пока изображения с плашкой или их копии строятся, ссылок на них нет
+        и в `problems` есть `media_processing` — предпросмотр нужно запросить ещё раз.
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
@@ -761,7 +805,16 @@ paths:
       operationId: uploadMedia
       summary: Загрузить изображение
       description: |
-        JPEG, PNG или WebP до 50 МБ и 7680×7680; тип определяется по содержимому.
+        JPEG, PNG или WebP до 50 МБ; каждая сторона — от 160 до 7680 пикселей с учётом поворота EXIF.
+        Тип определяется по содержимому, расширение имени не учитывается. Анимированные PNG и WebP
+        не принимаются. Оригинал хранится без изменений и наружу не публикуется.
+        Повторная загрузка того же файла (совпадает SHA-256) в организации возвращает существующую запись.
+
+        Отказ — `422` с `details.field = file` и причиной в `details.reason`:
+        `required` (нет части `file`), `empty`, `too_large`, `unsupported_type`, `animated`,
+        `too_small`, `too_big_dimensions`, `malformed`. Тело больше предела тоже даёт `too_large`.
+        Больше 60 загрузок в час на пользователя или больше 4 одновременных загрузок на сервер — `429`.
+
         Тестовый сервер проверяет только тип и размер, файл не хранит, размеры берёт условные.
       requestBody:
         required: true
@@ -783,12 +836,15 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /media/{id}:
     delete:
       tags: [media]
       operationId: deleteMedia
       summary: Удалить файл
-      description: Мягкое удаление. Файл, использованный в версии поста, остаётся в ней.
+      description: |
+        Мягкое удаление. Файл убирается из черновиков постов всех кампаний организации.
+        Файл, использованный в версии поста, остаётся в ней.
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
@@ -2314,7 +2370,9 @@ components:
         final_text_sample: { type: string, description: Итоговый текст с условным erid }
         media_urls:
           type: array
-          description: Изображения в том виде, в каком уйдут в канал (с плашкой при `token_carrier=media`)
+          description: |
+            Изображения в том виде, в каком уйдут в канал (с плашкой при `token_carrier=media`).
+            Подписанные ссылки со сроком действия; изображения, которые ещё строятся, не входят.
           items: { type: string, format: uri }
         problems:
           type: array
@@ -2324,7 +2382,26 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [empty_text, body_too_long, too_many_media, link_not_https, media_required_for_token] }
+        code:
+          type: string
+          description: |
+            - `empty_text` — в посте нет текста;
+            - `body_too_long` — текст с разметкой и UTM-метками длиннее 3800 знаков;
+            - `too_many_media` — изображений больше предела альбома;
+            - `link_not_https` — ссылка не `https://`;
+            - `media_required_for_token` — `token_carrier = media`, а изображений нет;
+            - `link_required_for_token` — `token_position = link`, а ссылок нет;
+            - `media_processing` — изображения с плашкой или их копии ещё строятся;
+            - `requisites_missing` — у организации нет названия или ИНН.
+          enum:
+            - empty_text
+            - body_too_long
+            - too_many_media
+            - link_not_https
+            - media_required_for_token
+            - link_required_for_token
+            - media_processing
+            - requisites_missing
         message: { type: string }
     PostVersion:
       type: object
@@ -2355,7 +2432,12 @@ components:
         size_bytes: { type: integer, format: int64 }
         width: { type: integer }
         height: { type: integer }
-        preview_url: { type: string, format: uri }
+        preview_url:
+          type: string
+          format: uri
+          description: |
+            Подписанная ссылка со сроком действия на уменьшенную копию. Пока копия строится,
+            ссылка ведёт на оригинал.
         created_at: { type: string, format: date-time }
 
     # ------------------------------------------------ orders and placements

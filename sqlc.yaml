@@ -93,3 +93,9 @@ sql:
       go:
         <<: *gen
         out: internal/channel/postgres/sqlc
+  - <<: *entry
+    queries: internal/post/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/post/postgres/sqlc

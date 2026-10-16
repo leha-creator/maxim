@@ -120,6 +120,23 @@ func (q *Queries) GetOrganizationForUpdate(ctx context.Context, id uuid.UUID) (G
 	return i, err
 }
 
+const getOrganizationRequisites = `-- name: GetOrganizationRequisites :one
+SELECT name, inn FROM organization WHERE id = $1
+`
+
+type GetOrganizationRequisitesRow struct {
+	Name string
+	Inn  string
+}
+
+// Название и ИНН для маркировки поста (модуль post, R-14); без блокировки.
+func (q *Queries) GetOrganizationRequisites(ctx context.Context, id uuid.UUID) (GetOrganizationRequisitesRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationRequisites, id)
+	var i GetOrganizationRequisitesRow
+	err := row.Scan(&i.Name, &i.Inn)
+	return i, err
+}
+
 const iNNExists = `-- name: INNExists :one
 SELECT EXISTS (SELECT 1 FROM organization WHERE inn = $1)::boolean
 `

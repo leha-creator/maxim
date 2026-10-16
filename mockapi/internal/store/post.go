@@ -102,6 +102,7 @@ func CheckDraft(d PostDraft) (body string, problems []Problem) {
 	if len(d.MediaIDs) > AlbumLimit {
 		problems = append(problems, Problem{"too_many_media", fmt.Sprintf("album has %d images, limit is %d", len(d.MediaIDs), AlbumLimit)})
 	}
+	hasLinks := false
 	for _, b := range d.Doc.Content {
 		if b.Content == nil {
 			continue
@@ -111,7 +112,11 @@ func CheckDraft(d PostDraft) (body string, problems []Problem) {
 				continue
 			}
 			for _, m := range *t.Marks {
-				if m.Type == "link" && (m.Href == nil || !strings.HasPrefix(*m.Href, "https://")) {
+				if m.Type != "link" {
+					continue
+				}
+				hasLinks = true
+				if m.Href == nil || !strings.HasPrefix(*m.Href, "https://") {
 					problems = append(problems, Problem{"link_not_https", "links must use https://"})
 				}
 			}
@@ -119,6 +124,9 @@ func CheckDraft(d PostDraft) (body string, problems []Problem) {
 	}
 	if d.TokenCarrier == "media" && len(d.MediaIDs) == 0 {
 		problems = append(problems, Problem{"media_required_for_token", "token_carrier=media requires at least one image"})
+	}
+	if d.TokenPosition == "link" && !hasLinks {
+		problems = append(problems, Problem{"link_required_for_token", "token_position=link requires at least one link"})
 	}
 	return body, problems
 }

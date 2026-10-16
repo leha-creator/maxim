@@ -15,14 +15,16 @@ import (
 
 func validAPIEnv() map[string]string {
 	return map[string]string{
-		"APP_ENV":           "development",
-		"DATABASE_URL":      "postgres://maxim_app:secret-pass@localhost:5432/maxim",
-		"S3_ENDPOINT":       "localhost:9000",
-		"S3_BUCKET_PRIVATE": "maxim-private",
-		"S3_ACCESS_KEY":     "minio",
-		"S3_SECRET_KEY":     "minio-secret",
-		"APP_SECRETS_KEY":   base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)),
-		"AUTH_CODE_PEPPER":  strings.Repeat("p", 32),
+		"APP_ENV":            "development",
+		"DATABASE_URL":       "postgres://maxim_app:secret-pass@localhost:5432/maxim",
+		"S3_ENDPOINT":        "localhost:9000",
+		"S3_BUCKET_PRIVATE":  "maxim-private",
+		"S3_BUCKET_PUBLIC":   "maxim-public",
+		"S3_PUBLIC_BASE_URL": "http://localhost:9000/maxim-public",
+		"S3_ACCESS_KEY":      "minio",
+		"S3_SECRET_KEY":      "minio-secret",
+		"APP_SECRETS_KEY":    base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)),
+		"AUTH_CODE_PEPPER":   strings.Repeat("p", 32),
 	}
 }
 
@@ -264,5 +266,56 @@ func TestCatalogConfig(t *testing.T) {
 	}
 	if _, err := LoadConfig(map[string]string{"DATABASE_URL": "postgres://x"}, ModeAdmin); err != nil {
 		t.Errorf("admin mode needs only the database: %v", err)
+	}
+}
+
+func TestMediaConfig(t *testing.T) {
+	cfg, err := LoadConfig(validWorkerEnv(), ModeWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := cfg.Media
+	if m.MaxBytes != 50<<20 || m.MinSide != 160 || m.PreviewSide != 640 || m.UploadsPerHour != 60 || m.UploadConcurrency != 4 ||
+		m.BuildConcurrency != 2 || m.AlbumLimit != 10 || m.URLTTL != time.Hour || m.RetentionDeleted != 30*24*time.Hour ||
+		m.PostBodyLimit != 3800 || m.PostFinalTextLimit != 4000 {
+		t.Fatalf("defaults differ from R-2, R-6, R-19, A-23, A-38: %+v", m)
+	}
+	for _, tt := range []struct {
+		mode, key, value, field string
+	}{
+		{ModeAPI, "MEDIA_MAX_BYTES", "52428801", "MEDIA_MAX_BYTES"},
+		{ModeAPI, "MEDIA_ALBUM_LIMIT", "11", "MEDIA_ALBUM_LIMIT"},
+		{ModeAPI, "POST_BODY_LIMIT", "4000", "POST_BODY_LIMIT"},
+		{ModeAPI, "POST_FINAL_TEXT_LIMIT", "4001", "POST_FINAL_TEXT_LIMIT"},
+		{ModeWorker, "MEDIA_BUILD_CONCURRENCY", "0", "MEDIA_UPLOADS_PER_HOUR, MEDIA_*_CONCURRENCY"},
+		{ModeAPI, "S3_BUCKET_PUBLIC", "", "S3_BUCKET_PUBLIC"},
+		{ModeWorker, "S3_BUCKET_PUBLIC", "", "S3_BUCKET_PUBLIC"},
+		{ModeWorker, "S3_ENDPOINT", "", "S3_ENDPOINT"},
+		{ModeAPI, "S3_PUBLIC_BASE_URL", "not a url", "S3_PUBLIC_BASE_URL"},
+	} {
+		env := validWorkerEnv()
+		env[tt.key] = tt.value
+		_, err := LoadConfig(env, tt.mode)
+		if err == nil || !slices.ContainsFunc(configFields(t, err), func(f string) bool { return strings.HasPrefix(f, tt.field+":") }) {
+			t.Errorf("%s=%q (%s): want error on %s, got %v", tt.key, tt.value, tt.mode, tt.field, err)
+		}
+	}
+	// legal публичная корзина не нужна; в тестовом окружении хранилище поддельное.
+	env := validAPIEnv()
+	delete(env, "S3_BUCKET_PUBLIC")
+	if _, err := LoadConfig(env, ModeLegal); err != nil {
+		t.Fatalf("legal without public bucket: %v", err)
+	}
+	env = map[string]string{"APP_ENV": "test", "DATABASE_URL": "postgres://x@localhost/x",
+		"APP_SECRETS_KEY": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))}
+	if _, err := LoadConfig(env, ModeWorker); err != nil {
+		t.Fatalf("test worker without S3: %v", err)
+	}
+	// В продакшене публичный адрес — только https.
+	prod := validWorkerEnv()
+	prod["APP_ENV"] = "production"
+	_, err = LoadConfig(prod, ModeAPI)
+	if err == nil || !slices.ContainsFunc(configFields(t, err), func(f string) bool { return strings.HasPrefix(f, "S3_PUBLIC_BASE_URL:") }) {
+		t.Fatalf("http public url in production: %v", err)
 	}
 }

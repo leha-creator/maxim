@@ -32,6 +32,9 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/storage"
 	"github.com/leha-creator/maxim/internal/platform/storage/storagefake"
 	"github.com/leha-creator/maxim/internal/platform/tx"
+	postapp "github.com/leha-creator/maxim/internal/post/app"
+	posthttp "github.com/leha-creator/maxim/internal/post/httpapi"
+	postjobs "github.com/leha-creator/maxim/internal/post/jobs"
 )
 
 // infra — общие ресурсы процесса: база, часы, журнал и адаптеры внешних систем.
@@ -54,14 +57,20 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 	in := &infra{pool: pool, clock: clock.System{}, log: log, reg: reg}
 	in.alerter = newAlerter(cfg, in)
 	fakes := cfg.Env == EnvTest
-	if mode == ModeAPI || mode == ModeLegal {
+	// worker строит и публикует производные изображений (R-6, R-7): ему тоже нужно хранилище.
+	if mode == ModeAPI || mode == ModeLegal || mode == ModeWorker {
 		if fakes {
 			in.storage = storagefake.New()
 		} else {
-			s, err := storage.NewS3(ctx, storage.S3Options{
+			opts := storage.S3Options{
 				Endpoint: cfg.S3.Endpoint, Region: cfg.S3.Region, Bucket: cfg.S3.BucketPrivate,
 				AccessKey: cfg.S3.AccessKey, SecretKey: cfg.S3.SecretKey, UseSSL: cfg.S3.UseSSL,
-			}, in.clock, log.With(logx.KeyModule, "storage"))
+				PresignEndpoint: cfg.S3.PresignEndpoint,
+			}
+			if mode != ModeLegal {
+				opts.PublicBucket, opts.PublicBaseURL = cfg.S3.BucketPublic, cfg.S3.PublicBaseURL
+			}
+			s, err := storage.NewS3(ctx, opts, in.clock, log.With(logx.KeyModule, "storage"))
 			if err != nil {
 				return nil, err
 			}
@@ -103,6 +112,8 @@ type modules struct {
 	accountHTTP *accounthttp.Handlers
 	channel     *channelapp.Service
 	channelHTTP *channelhttp.Handlers
+	post        *postapp.Service
+	postHTTP    *posthttp.Handlers
 	platform    *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
@@ -136,6 +147,7 @@ func newModules(cfg Config, in *infra) *modules {
 	}
 	svc := accountapp.New(deps)
 	channelSvc, channelStore := newChannelService(cfg, in, txRunner, queue, auditLog)
+	postSvc := newPostService(cfg, in, txRunner, queue, auditLog, accountStore)
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
@@ -147,6 +159,8 @@ func newModules(cfg Config, in *infra) *modules {
 		accountHTTP: accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
 		channel:     channelSvc,
 		channelHTTP: channelhttp.New(channelSvc, log),
+		post:        postSvc,
+		postHTTP:    newPostHandlers(cfg, postSvc, in),
 		platform:    platform,
 		txRunner:    txRunner,
 		queue:       queue,
@@ -158,6 +172,7 @@ func (m *modules) registerJobs(w *job.Worker) {
 	m.platform.register(w, m.cfg, m.in)
 	accountjobs.Register(w, m.account)
 	channeljobs.Register(w, m.platform.dispatcher, m.channel)
+	postjobs.Register(w, m.post)
 }
 
 // apiImpl — реализация всех операций: обработчики модулей поверх заглушек 501.
@@ -165,6 +180,7 @@ type apiImpl struct {
 	fallback
 	*accounthttp.Handlers
 	*channelHandlers
+	*postHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -178,7 +194,7 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Log:     in.log,
 		Clock:   in.clock,
 		Metrics: reg,
-		Impl:    apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP},
+		Impl:    apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern: newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),

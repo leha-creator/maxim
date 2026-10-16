@@ -379,7 +379,7 @@ func TestTaxDocument(t *testing.T) {
 	if err != nil || o.TaxDocument == nil || !strings.HasSuffix(o.TaxDocument.StorageKey, ".pdf") {
 		t.Fatalf("upload: %+v %v", o, err)
 	}
-	if obj, ok := e.files.Get(o.TaxDocument.StorageKey); !ok || obj.ContentType != "application/pdf" {
+	if obj, ok := e.files.Object(o.TaxDocument.StorageKey); !ok || obj.ContentType != "application/pdf" {
 		t.Fatalf("stored object: %+v %v", obj, ok)
 	}
 }

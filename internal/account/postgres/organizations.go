@@ -218,3 +218,14 @@ func (r *LegalDocuments) Create(ctx context.Context, d *domain.LegalDocument) er
 	}
 	return nil
 }
+
+// Requisites — название и ИНН организации для маркировки поста (модуль post, R-14).
+// Читает без блокировки строки; нет организации — domain.ErrNotFound.
+func (r *Organizations) Requisites(ctx context.Context, organizationID uuid.UUID) (name, inn string, err error) {
+	const op = "Account.Organizations.Requisites"
+	row, err := r.s.q(ctx).GetOrganizationRequisites(ctx, organizationID)
+	if err != nil {
+		return "", "", r.s.fail(ctx, op, err)
+	}
+	return row.Name, row.Inn, nil
+}

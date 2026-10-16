@@ -62,3 +62,7 @@ FOR UPDATE OF o;
 
 -- name: INNExists :one
 SELECT EXISTS (SELECT 1 FROM organization WHERE inn = @inn)::boolean;
+
+-- name: GetOrganizationRequisites :one
+-- Название и ИНН для маркировки поста (модуль post, R-14); без блокировки.
+SELECT name, inn FROM organization WHERE id = @id;

@@ -66,6 +66,21 @@ type BloggerProfile struct {
 	UpdatedAt      time.Time
 }
 
+type Campaign struct {
+	ID                uuid.UUID
+	OrganizationID    uuid.UUID
+	Name              string
+	Status            string
+	DateFrom          pgtype.Date
+	DateTo            pgtype.Date
+	TimeFrom          pgtype.Time
+	TimeTo            pgtype.Time
+	ExtraRequirements *string
+	CreatedBy         uuid.UUID
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type Channel struct {
 	ID                      uuid.UUID
 	OrganizationID          *uuid.UUID
@@ -189,6 +204,40 @@ type LegalDocument struct {
 	CreatedAt   time.Time
 }
 
+type MediaDerivative struct {
+	ID               uuid.UUID
+	MediaFileID      uuid.UUID
+	Kind             string
+	ParamsHash       string
+	Status           string
+	StorageKey       *string
+	Mime             *string
+	Width            *int32
+	Height           *int32
+	SizeBytes        *int64
+	PublicStorageKey *string
+	PublicUrl        *string
+	PublishedAt      *time.Time
+	CreatedAt        time.Time
+	PurgedAt         *time.Time
+}
+
+type MediaFile struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	StorageKey     string
+	Mime           string
+	SizeBytes      int64
+	Width          int32
+	Height         int32
+	Sha256         string
+	OriginalName   string
+	CreatedBy      uuid.UUID
+	CreatedAt      time.Time
+	DeletedAt      *time.Time
+	PurgedAt       *time.Time
+}
+
 type Organization struct {
 	ID                    uuid.UUID
 	LegalType             string
@@ -257,6 +306,46 @@ type PlacementFormat struct {
 	Position      int32
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type Post struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	CampaignID     uuid.UUID
+	Status         string
+	Draft          []byte
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type PostVersion struct {
+	ID              uuid.UUID
+	PostID          uuid.UUID
+	Number          int32
+	Status          string
+	ContentDoc      []byte
+	Body            string
+	FinalText       *string
+	Erid            *string
+	TokenCarrier    string
+	TokenPosition   string
+	AdvertiserName  string
+	AdvertiserInn   string
+	ModeratedBy     *uuid.UUID
+	ModeratedAt     *time.Time
+	RejectionReason *string
+	LockVersion     int32
+	CreatedBy       uuid.UUID
+	CreatedAt       time.Time
+}
+
+type PostVersionMedium struct {
+	ID                uuid.UUID
+	PostVersionID     uuid.UUID
+	Position          int32
+	MediaFileID       uuid.UUID
+	MediaDerivativeID uuid.UUID
+	CreatedAt         time.Time
 }
 
 type RateLimitBucket struct {
