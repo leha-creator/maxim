@@ -12,6 +12,27 @@ import (
 	"github.com/google/uuid"
 )
 
+const cancelJob = `-- name: CancelJob :execrows
+UPDATE job
+SET status = 'cancelled', finished_at = $1::timestamptz, updated_at = $1::timestamptz
+WHERE dedupe_key = $2 AND status = 'pending'
+`
+
+type CancelJobParams struct {
+	Now       time.Time
+	DedupeKey *string
+}
+
+// Отменяет ожидающее задание по dedupe_key. Задание в running не трогается:
+// его обработчик идемпотентен (03 §11).
+func (q *Queries) CancelJob(ctx context.Context, arg CancelJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelJob, arg.Now, arg.DedupeKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimJobs = `-- name: ClaimJobs :many
 UPDATE job
 SET status = 'running', locked_by = $1, locked_at = $2::timestamptz, updated_at = $2::timestamptz
@@ -94,6 +115,39 @@ func (q *Queries) CompleteJob(ctx context.Context, arg CompleteJobParams) (int64
 		arg.ID,
 		arg.LockedBy,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteFinishedJobsBefore = `-- name: DeleteFinishedJobsBefore :execrows
+DELETE FROM job
+WHERE id IN (SELECT j.id FROM job j
+             WHERE j.status = ANY ($1::text[]) AND j.finished_at < $2::timestamptz LIMIT $3)
+`
+
+type DeleteFinishedJobsBeforeParams struct {
+	Statuses []string
+	Before   time.Time
+	Batch    int32
+}
+
+// Очистка (R-10): завершённые задания указанных статусов старше срока, пачками.
+func (q *Queries) DeleteFinishedJobsBefore(ctx context.Context, arg DeleteFinishedJobsBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFinishedJobsBefore, arg.Statuses, arg.Before, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteHeartbeatsBefore = `-- name: DeleteHeartbeatsBefore :execrows
+DELETE FROM worker_heartbeat WHERE seen_at < $1::timestamptz
+`
+
+func (q *Queries) DeleteHeartbeatsBefore(ctx context.Context, before time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteHeartbeatsBefore, before)
 	if err != nil {
 		return 0, err
 	}
@@ -226,6 +280,51 @@ func (q *Queries) JobCounts(ctx context.Context) ([]JobCountsRow, error) {
 	return items, nil
 }
 
+const lastHeartbeat = `-- name: LastHeartbeat :one
+SELECT seen_at FROM worker_heartbeat ORDER BY seen_at DESC LIMIT 1
+`
+
+// Последняя отметка любого экземпляра worker (R-6).
+func (q *Queries) LastHeartbeat(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRow(ctx, lastHeartbeat)
+	var seen_at time.Time
+	err := row.Scan(&seen_at)
+	return seen_at, err
+}
+
+const oldestReadyJobs = `-- name: OldestReadyJobs :many
+SELECT kind, min(run_at)::timestamptz AS oldest_run_at
+FROM job
+WHERE status = 'pending' AND run_at <= $1::timestamptz
+GROUP BY kind
+`
+
+type OldestReadyJobsRow struct {
+	Kind        string
+	OldestRunAt time.Time
+}
+
+// Самое раннее время запуска готовых, но не взятых заданий по видам: задержка очереди.
+func (q *Queries) OldestReadyJobs(ctx context.Context, now time.Time) ([]OldestReadyJobsRow, error) {
+	rows, err := q.db.Query(ctx, oldestReadyJobs, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OldestReadyJobsRow{}
+	for rows.Next() {
+		var i OldestReadyJobsRow
+		if err := rows.Scan(&i.Kind, &i.OldestRunAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const overdueJobCounts = `-- name: OverdueJobCounts :many
 SELECT kind, count(*)::bigint AS count
 FROM job
@@ -248,6 +347,52 @@ func (q *Queries) OverdueJobCounts(ctx context.Context, runBefore time.Time) ([]
 	for rows.Next() {
 		var i OverdueJobCountsRow
 		if err := rows.Scan(&i.Kind, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const overdueJobs = `-- name: OverdueJobs :many
+SELECT id, kind, payload, run_at
+FROM job
+WHERE status = 'pending' AND run_at < $1::timestamptz AND kind = ANY ($2::text[])
+ORDER BY run_at
+LIMIT 1000
+`
+
+type OverdueJobsParams struct {
+	RunBefore time.Time
+	Kinds     []string
+}
+
+type OverdueJobsRow struct {
+	ID      uuid.UUID
+	Kind    string
+	Payload []byte
+	RunAt   time.Time
+}
+
+// Просроченные ожидающие задания указанных видов: список затронутых объектов после простоя.
+func (q *Queries) OverdueJobs(ctx context.Context, arg OverdueJobsParams) ([]OverdueJobsRow, error) {
+	rows, err := q.db.Query(ctx, overdueJobs, arg.RunBefore, arg.Kinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OverdueJobsRow{}
+	for rows.Next() {
+		var i OverdueJobsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Payload,
+			&i.RunAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -317,6 +462,26 @@ func (q *Queries) ReleaseJobs(ctx context.Context, arg ReleaseJobsParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const rescheduleJob = `-- name: RescheduleJob :execrows
+UPDATE job
+SET run_at = $1, updated_at = $2::timestamptz
+WHERE dedupe_key = $3 AND status = 'pending'
+`
+
+type RescheduleJobParams struct {
+	RunAt     time.Time
+	Now       time.Time
+	DedupeKey *string
+}
+
+func (q *Queries) RescheduleJob(ctx context.Context, arg RescheduleJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rescheduleJob, arg.RunAt, arg.Now, arg.DedupeKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const retryJob = `-- name: RetryJob :execrows
 UPDATE job
 SET status = 'pending', attempts = $1, run_at = $2, last_error = $3,
@@ -346,4 +511,20 @@ func (q *Queries) RetryJob(ctx context.Context, arg RetryJobParams) (int64, erro
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertHeartbeat = `-- name: UpsertHeartbeat :exec
+INSERT INTO worker_heartbeat (instance, started_at, seen_at)
+VALUES ($1, $2::timestamptz, $2::timestamptz)
+ON CONFLICT (instance) DO UPDATE SET seen_at = EXCLUDED.seen_at
+`
+
+type UpsertHeartbeatParams struct {
+	Instance string
+	Now      time.Time
+}
+
+func (q *Queries) UpsertHeartbeat(ctx context.Context, arg UpsertHeartbeatParams) error {
+	_, err := q.db.Exec(ctx, upsertHeartbeat, arg.Instance, arg.Now)
+	return err
 }

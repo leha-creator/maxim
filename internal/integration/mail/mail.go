@@ -14,6 +14,7 @@ import (
 
 	gomail "github.com/wneessen/go-mail"
 
+	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/templates"
@@ -42,6 +43,7 @@ type Sender struct {
 	clock clock.Clock
 	log   *slog.Logger
 	tpl   *rendered
+	alert *rendered
 }
 
 // New создаёт Sender и проверяет, что шаблоны разбираются.
@@ -50,7 +52,25 @@ func New(opts Options, clk clock.Clock, log *slog.Logger) (*Sender, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Sender{opts: opts, clock: clk, log: log, tpl: tpl}, nil
+	alertTpl, err := loadTemplates("alert")
+	if err != nil {
+		return nil, err
+	}
+	return &Sender{opts: opts, clock: clk, log: log, tpl: tpl, alert: alertTpl}, nil
+}
+
+// RenderAlert возвращает тему, текст и HTML письма с оповещением.
+func (s *Sender) RenderAlert(n alert.Notice) (subject, text, html string, err error) {
+	return s.alert.render(n)
+}
+
+// SendAlert отправляет оповещение администратору (реализует alert.Mailer, 07 §3).
+func (s *Sender) SendAlert(ctx context.Context, to string, n alert.Notice) error {
+	subject, text, html, err := s.RenderAlert(n)
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, "Mail.SendAlert", "alert", to, subject, text, html)
 }
 
 // LoginCodeData — данные шаблона письма с кодом.

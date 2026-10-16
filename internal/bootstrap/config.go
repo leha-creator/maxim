@@ -1,12 +1,16 @@
 package bootstrap
 
 import (
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/mail"
 	"net/netip"
+	"net/url"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -55,6 +59,51 @@ type Config struct {
 	AuthCodePepper string `env:"AUTH_CODE_PEPPER"` // секрет HMAC кода входа (R-3)
 
 	Auth AuthConfig
+
+	MAX       MAXConfig
+	Alert     AlertConfig
+	Scheduler SchedulerConfig
+	Retention RetentionConfig
+}
+
+// MAXConfig — MAX Bot API (05 §2.1, 05 §2.8).
+type MAXConfig struct {
+	APIURL string `env:"MAX_API_URL" envDefault:"https://platform-api2.max.ru"`
+	// BotToken — токен бота; пусто в разработке — поддельный адаптер.
+	BotToken string `env:"MAX_BOT_TOKEN"`
+	// CACertFile — корневой сертификат Минцифры (PEM), добавляется к системным.
+	CACertFile  string  `env:"MAX_CA_CERT_FILE"`
+	RateGlobal  float64 `env:"MAX_RATE_GLOBAL" envDefault:"25"`
+	RatePerChat float64 `env:"MAX_RATE_PER_CHAT" envDefault:"1"`
+}
+
+// AlertConfig — адресаты оповещений администратору (07 §3, R-5).
+type AlertConfig struct {
+	Emails    []string `env:"ALERT_EMAILS" envSeparator:","`
+	MAXChatID int64    `env:"ALERT_MAX_CHAT_ID"`
+}
+
+// SchedulerConfig — пороги планировщика и контроля (07 §2, §3).
+type SchedulerConfig struct {
+	DowntimeThreshold    time.Duration `env:"DOWNTIME_THRESHOLD" envDefault:"30m"`
+	StuckInboundEventAge time.Duration `env:"STUCK_INBOUND_EVENT_AGE" envDefault:"10m"`
+}
+
+// RetentionConfig — сроки хранения для задания cleanup (04 §8, R-10).
+type RetentionConfig struct {
+	OutboundRequest time.Duration `env:"RETENTION_OUTBOUND_REQUEST" envDefault:"4320h"` // 180 суток
+	JobFinished     time.Duration `env:"RETENTION_JOB_FINISHED" envDefault:"720h"`      // 30 суток
+	JobFailed       time.Duration `env:"RETENTION_JOB_FAILED" envDefault:"4320h"`
+	InboundEvent    time.Duration `env:"RETENTION_INBOUND_EVENT" envDefault:"4320h"`
+	AuthCode        time.Duration `env:"RETENTION_AUTH_CODE" envDefault:"168h"` // 7 суток после истечения
+	Session         time.Duration `env:"RETENTION_SESSION" envDefault:"168h"`
+	Alert           time.Duration `env:"RETENTION_ALERT" envDefault:"2160h"` // 90 суток после закрытия
+}
+
+// MAXFake сообщает, что вместо MAX работает поддельный адаптер: в тестовом
+// окружении всегда, в разработке — без токена бота.
+func (c Config) MAXFake() bool {
+	return c.Env == EnvTest || (c.Env == EnvDevelopment && c.MAX.BotToken == "")
 }
 
 // S3Config — объектное хранилище (07 §1).
@@ -214,6 +263,9 @@ func (c Config) Validate(mode string) error {
 			add("AUTH_* limits", "must be positive")
 		}
 	}
+	if mode == ModeWorker {
+		c.validateWorker(add)
+	}
 	if needMail && !fakes {
 		require("SMTP_HOST", c.SMTP.Host)
 		require("MAIL_FROM", c.MailFrom)
@@ -228,6 +280,47 @@ func (c Config) Validate(mode string) error {
 		}
 	}
 	return finish(bad)
+}
+
+// validateWorker — MAX, оповещения, пороги и сроки хранения режима worker.
+func (c Config) validateWorker(add func(field, reason string)) {
+	if c.Env == EnvProduction {
+		if strings.TrimSpace(c.MAX.BotToken) == "" {
+			add("MAX_BOT_TOKEN", "required in production")
+		}
+		if len(c.Alert.Emails) == 0 && c.Alert.MAXChatID == 0 {
+			add("ALERT_EMAILS", "at least one alert recipient (ALERT_EMAILS or ALERT_MAX_CHAT_ID) is required in production")
+		}
+	}
+	if u, err := url.Parse(c.MAX.APIURL); err != nil || u.Scheme == "" || u.Host == "" {
+		add("MAX_API_URL", "must be an absolute URL")
+	}
+	if c.MAX.CACertFile != "" {
+		if pem, err := os.ReadFile(c.MAX.CACertFile); err != nil {
+			add("MAX_CA_CERT_FILE", "cannot be read")
+		} else if !x509.NewCertPool().AppendCertsFromPEM(pem) {
+			add("MAX_CA_CERT_FILE", "no PEM certificates found")
+		}
+	}
+	if c.MAX.RateGlobal <= 0 || c.MAX.RatePerChat <= 0 {
+		add("MAX_RATE_*", "must be positive")
+	}
+	for _, e := range c.Alert.Emails {
+		if _, err := mail.ParseAddress(strings.TrimSpace(e)); err != nil {
+			add("ALERT_EMAILS", "invalid address")
+			break
+		}
+	}
+	if c.Scheduler.DowntimeThreshold <= 0 || c.Scheduler.StuckInboundEventAge <= 0 {
+		add("DOWNTIME_THRESHOLD, STUCK_*", "must be positive")
+	}
+	r := c.Retention
+	for _, d := range []time.Duration{r.OutboundRequest, r.JobFinished, r.JobFailed, r.InboundEvent, r.AuthCode, r.Session, r.Alert} {
+		if d <= 0 {
+			add("RETENTION_*", "must be positive")
+			break
+		}
+	}
 }
 
 func finish(bad []string) error {
@@ -291,6 +384,15 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("auth_codes_per_ip_hour", c.Auth.CodesPerIPHour),
 		slog.String("auth_session_ttl", c.Auth.SessionTTL.String()),
 		slog.String("auth_admin_session_ttl", c.Auth.AdminSessionTTL.String()),
+		slog.String("max_api_url", c.MAX.APIURL),
+		slog.String("max_bot_token", secret(c.MAX.BotToken)),
+		slog.String("max_ca_cert_file", c.MAX.CACertFile),
+		slog.Float64("max_rate_global", c.MAX.RateGlobal),
+		slog.Float64("max_rate_per_chat", c.MAX.RatePerChat),
+		slog.Int("alert_emails", len(c.Alert.Emails)),
+		slog.Bool("alert_max_chat", c.Alert.MAXChatID != 0),
+		slog.String("downtime_threshold", c.Scheduler.DowntimeThreshold.String()),
+		slog.String("stuck_inbound_event_age", c.Scheduler.StuckInboundEventAge.String()),
 	)
 }
 

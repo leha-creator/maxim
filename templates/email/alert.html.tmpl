@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ru">
+<body style="font-family: Arial, sans-serif; color: #222;">
+  <p style="font-weight: bold;">{{.Subject}}{{if .ObjectKey}} ({{.ObjectKey}}){{end}}</p>
+  <p>{{.Summary}}</p>
+  {{if .FieldLines}}<pre style="background: #f5f5f5; padding: 8px;">{{range .FieldLines}}{{.}}
+{{end}}</pre>{{end}}
+  <p style="color: #777;">Срабатываний: {{.RaisedCount}}. Первое: {{.FirstRaisedAtMSK}} МСК, последнее: {{.LastRaisedAtMSK}} МСК.<br>
+  Повторное оповещение по той же причине — не чаще раза в час.</p>
+</body>
+</html>

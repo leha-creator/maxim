@@ -5,6 +5,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/leha-creator/maxim/internal/platform/alert"
 )
 
 // LoginCodeMessage — отправленное письмо с кодом входа.
@@ -18,6 +20,7 @@ type LoginCodeMessage struct {
 type Sender struct {
 	mu      sync.Mutex
 	sent    []LoginCodeMessage
+	alerts  []AlertMessage
 	failErr error
 }
 
@@ -59,4 +62,28 @@ func (s *Sender) Count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.sent)
+}
+
+// AlertMessage — отправленное письмо с оповещением.
+type AlertMessage struct {
+	To     string
+	Notice alert.Notice
+}
+
+// SendAlert запоминает оповещение или возвращает ошибку, заданную FailWith.
+func (s *Sender) SendAlert(_ context.Context, to string, n alert.Notice) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failErr != nil {
+		return s.failErr
+	}
+	s.alerts = append(s.alerts, AlertMessage{To: to, Notice: n})
+	return nil
+}
+
+// Alerts возвращает копию отправленных оповещений.
+func (s *Sender) Alerts() []AlertMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]AlertMessage(nil), s.alerts...)
 }

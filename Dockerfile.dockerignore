@@ -8,3 +8,4 @@
 !migrations/
 !templates/
 **/*_test.go
+!deploy/certs/

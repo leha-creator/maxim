@@ -23,6 +23,8 @@ x-backend-env: &backend-env
   APP_SECRETS_KEY: ZGV2LW9ubHktc2VjcmV0cy1rZXktMzItYnl0ZXMhISE=
   AUTH_CODE_PEPPER: dev-only-pepper-at-least-32-characters
   COOKIE_SECURE: "false"
+  # MAX без токена бота — поддельный адаптер; оповещения дежурным уходят в Mailpit.
+  ALERT_EMAILS: oncall@maxim.local
 
 services:
   postgres:

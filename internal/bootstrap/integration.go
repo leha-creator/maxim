@@ -1,0 +1,115 @@
+package bootstrap
+
+import (
+	"context"
+	"time"
+
+	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
+	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	"github.com/leha-creator/maxim/internal/integration/max"
+	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
+	"github.com/leha-creator/maxim/internal/platform/alert"
+	"github.com/leha-creator/maxim/internal/platform/cleanup"
+	"github.com/leha-creator/maxim/internal/platform/inbound"
+	"github.com/leha-creator/maxim/internal/platform/job"
+	"github.com/leha-creator/maxim/internal/platform/logx"
+	"github.com/leha-creator/maxim/internal/platform/outbound"
+	"github.com/leha-creator/maxim/internal/platform/ratelimit"
+	"github.com/leha-creator/maxim/internal/platform/stuck"
+	"github.com/leha-creator/maxim/internal/platform/tx"
+)
+
+// mailer — почта: письма с кодом входа и оповещения (integration/mail, mailfake).
+type mailer interface {
+	accountdomain.LoginCodeSender
+	alert.Mailer
+}
+
+// maxAPI — методы адаптера MAX, которые использует сборка (integration/max, maxfake).
+type maxAPI interface {
+	GetMe(ctx context.Context) (max.Bot, error)
+	SendChatMessage(ctx context.Context, chatID int64, text string) (string, error)
+	SendUserMessage(ctx context.Context, userID int64, text string) (string, error)
+}
+
+// newAlerter — оповещения администратору (07 §3, R-4, R-5).
+func newAlerter(cfg Config, in *infra) *alert.Alerter {
+	log := in.log.With(logx.KeyModule, "alert")
+	return alert.New(in.pool, tx.NewRunner(in.pool, log), job.NewQueue(in.pool, in.clock, log), in.clock, log,
+		alert.Options{Emails: cfg.Alert.Emails, ChatID: cfg.Alert.MAXChatID})
+}
+
+// connectMAX подключает адаптер MAX: поддельный в тестах и в разработке без
+// токена, иначе настоящий через outbound и общий ограничитель (05 §2.8).
+func (in *infra) connectMAX(cfg Config) error {
+	if cfg.MAXFake() {
+		in.max = maxfake.New()
+		return nil
+	}
+	log := in.log.With(logx.KeyModule, "max")
+	httpClient, err := max.NewHTTPClient(cfg.MAX.CACertFile)
+	if err != nil {
+		return err
+	}
+	var outMetrics *outbound.Metrics
+	var limitMetrics *ratelimit.Metrics
+	if in.reg != nil {
+		outMetrics, limitMetrics = outbound.NewMetrics(in.reg), ratelimit.NewMetrics(in.reg)
+	}
+	out := outbound.New(in.pool, in.clock, log, outbound.Options{
+		System: outbound.SystemMAX, HTTP: httpClient, Alerter: in.alerter, Metrics: outMetrics,
+	})
+	limiter := ratelimit.New(in.pool, in.clock, log, ratelimit.Options{Metrics: limitMetrics})
+	in.max = max.New(out, limiter, max.Options{
+		BaseURL: cfg.MAX.APIURL, Token: cfg.MAX.BotToken, GlobalRate: cfg.MAX.RateGlobal, ChatRate: cfg.MAX.RatePerChat,
+	}, log)
+	return nil
+}
+
+// platformJobs — служебные виды заданий этапа «Планировщик заданий и
+// интеграционный слой»: разбор входящих событий, оповещения, зависшие объекты, очистка.
+type platformJobs struct {
+	dispatcher *inbound.Dispatcher
+	alerts     *alert.Sender
+	stuck      *stuck.Checker
+	cleaner    *cleanup.Cleaner
+}
+
+func newPlatformJobs(cfg Config, in *infra, accounts *accountpg.Store) *platformJobs {
+	log := in.log
+	p := &platformJobs{
+		dispatcher: inbound.NewDispatcher(in.pool, in.clock, log.With(logx.KeyModule, "inbound")),
+		stuck:      stuck.New(in.alerter, in.clock, log.With(logx.KeyModule, "stuck")),
+		cleaner:    cleanup.New(in.clock, log.With(logx.KeyModule, "cleanup")),
+	}
+	// В режиме api почты и MAX нет: интерфейсы остаются nil, задание send_alert там не регистрируется.
+	p.alerts = in.alerter.NewSender(in.mail, in.max)
+
+	p.stuck.Add(stuck.InboundEvents(in.pool, cfg.Scheduler.StuckInboundEventAge))
+	p.stuck.Add(stuck.FailedJobs(in.pool))
+
+	r := cfg.Retention
+	for _, t := range []cleanup.Task{
+		{Name: "outbound_request", Retention: r.OutboundRequest, Delete: outbound.DeleteRequests(in.pool)},
+		{Name: "job_finished", Retention: r.JobFinished, Delete: job.DeleteFinished(in.pool, "succeeded", "cancelled")},
+		{Name: "job_failed", Retention: r.JobFailed, Delete: job.DeleteFinished(in.pool, "failed")},
+		{Name: "inbound_event", Retention: r.InboundEvent, Delete: inbound.DeleteEvents(in.pool)},
+		{Name: "alert", Retention: r.Alert, Delete: alert.DeleteResolved(in.pool)},
+		{Name: "worker_heartbeat", Retention: 24 * time.Hour, Delete: job.DeleteHeartbeats(in.pool)},
+		{Name: "auth_code", Retention: r.AuthCode, Delete: accounts.DeleteExpiredAuthCodes},
+		{Name: "session", Retention: r.Session, Delete: accounts.DeleteExpiredSessions},
+	} {
+		p.cleaner.Add(t)
+	}
+	return p
+}
+
+// register регистрирует служебные виды заданий и подключает оповещения к обработчику.
+func (p *platformJobs) register(w *job.Worker, cfg Config, in *infra) {
+	w.SetAlerter(in.alerter)
+	w.SetDowntimeThreshold(cfg.Scheduler.DowntimeThreshold)
+	p.dispatcher.Register(w)
+	p.alerts.Register(w)
+	p.stuck.Register(w)
+	p.cleaner.Register(w)
+}
