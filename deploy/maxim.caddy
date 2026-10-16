@@ -1,13 +1,7 @@
-# Прокси тестового стенда: HTTPS для {$DOMAIN} и проксирование в заглушку API.
-{
-	log default {
-		output stdout
-		format json
-		level INFO
-	}
-}
-
-{$DOMAIN} {
+# Сайт тестового стенда для общего edge-прокси сервера (/opt/edge).
+# Деплой подставляет домен вместо __DOMAIN__, копирует файл в /opt/edge/sites/maxim.caddy
+# и делает `caddy reload`.
+__DOMAIN__ {
 	encode zstd gzip
 	header X-Robots-Tag "noindex, nofollow"
 
@@ -18,7 +12,7 @@
 
 	redir / /docs 302
 
-	reverse_proxy mockapi:8080
+	reverse_proxy maxim-mockapi:8080
 
 	# Заглушка не запущена или ещё не развёрнута: контейнер не отвечает или его нет.
 	handle_errors 502 503 504 {

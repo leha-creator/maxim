@@ -121,6 +121,7 @@ jobs:
       DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
       SMOKE_PATH: ${{ vars.SMOKE_PATH || '/openapi.json' }}
       APP_DIR: /opt/maxim
+      EDGE_DIR: /opt/edge
     steps:
       - uses: actions/checkout@v5
 
@@ -159,8 +160,10 @@ jobs:
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          echo "::group::copy compose.yml and Caddyfile to ${APP_DIR}"
-          scp deploy/compose.yml deploy/Caddyfile "target:${APP_DIR}/"
+          echo "::group::copy compose.yml to ${APP_DIR} and site file to ${EDGE_DIR}/sites"
+          scp deploy/compose.yml "target:${APP_DIR}/"
+          # Edge-прокси не видит переменных окружения стенда — домен подставляется в файл сайта.
+          sed "s/__DOMAIN__/${DOMAIN}/" deploy/maxim.caddy | ssh target "cat > ${EDGE_DIR}/sites/maxim.caddy"
           printf 'DOMAIN=%s\nMOCKAPI_TAG=%s\nLOG_LEVEL=debug\n' "${DOMAIN}" "${TAG:-master}" | ssh target "cat > ${APP_DIR}/.env"
           ssh target "cat ${APP_DIR}/.env"
           echo "::endgroup::"
@@ -173,8 +176,7 @@ jobs:
         run: |
           set +x
           if [ "${MODE}" = "proxy-only" ]; then
-            echo "::group::mockapi is not in the repository yet: start caddy only"
-            ssh target "cd ${APP_DIR} && docker compose up -d --remove-orphans caddy"
+            echo "::group::mockapi is not in the repository yet: only the site file is published"
           else
             echo "::group::pull ${IMAGE} and start all services"
             printf '%s' "${GHCR_TOKEN}" | ssh target "docker login ghcr.io -u '${GHCR_USER}' --password-stdin"
@@ -183,7 +185,10 @@ jobs:
             ssh target "docker logout ghcr.io" || true
             [ "${status}" -eq 0 ] || exit "${status}"
           fi
-          ssh target "cd ${APP_DIR} && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile"
+          # Edge-прокси (/opt/edge) общий для проектов сервера: validate до reload, чтобы
+          # ошибка в файле сайта не задела остальные сайты (при ошибке reload и так откатывается).
+          ssh target "cd ${EDGE_DIR} && docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"
+          ssh target "cd ${EDGE_DIR} && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile"
           ssh target "cd ${APP_DIR} && docker compose ps"
           echo "::endgroup::"
 
@@ -216,6 +221,7 @@ jobs:
         run: |
           # shellcheck disable=SC2029
           ssh target "cd ${APP_DIR} && docker compose ps && docker compose logs --tail=100" || true
+          ssh target "cd ${EDGE_DIR} && docker compose ps && docker compose logs --tail=50 caddy" || true
 
       - name: Prune old images
         if: success()
