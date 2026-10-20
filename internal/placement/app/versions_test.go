@@ -218,3 +218,22 @@ func TestNewVersionCancelsShortWindow(t *testing.T) {
 	_, err = e.svc.CreateOrderPostVersion(e.ctx(), e.adv, e.advUser, o.Order.ID, "")
 	wantReason(t, err, apperr.CodeConflict, "nothing_to_update")
 }
+
+// R-7: P-02 без активного удержания не выполняется — размещение остаётся в created, ERROR.
+func TestVersionReadyWithoutHold(t *testing.T) {
+	e := newEnv(t)
+	_, _, ch := e.blogger("Канал", 1_000_000)
+	o := e.order(ch)
+	e.approve(o)
+	pid := e.getOrder(o.Order.ID).Placements[0].Placement.ID
+	e.holds.Drop(pid)
+	if _, err := e.post.MarkVersionReady(context.Background(), o.Version.ID, "E1"); err != nil {
+		t.Fatal(err)
+	}
+	if p := e.getOrder(o.Order.ID).Placements[0].Placement; p.Status != domain.StatusCreated || p.SentToBloggerAt != nil {
+		t.Fatalf("placement without hold %+v", p)
+	}
+	if len(e.logged("placement without active hold")) != 1 || e.notices.Count(domain.NoticeRequest) != 0 {
+		t.Fatal("missing hold is not reported")
+	}
+}

@@ -36,6 +36,7 @@ var (
 	OrderPast       = ID(702)
 	InvoicePaid     = ID(901)
 	InvoiceIssued   = ID(902)
+	ClosingActPast  = ID(951)
 	CartItemFirst   = ID(301)
 	MediaFirst      = ID(401)
 	LegalAdvOffer   = ID(501)
@@ -241,14 +242,18 @@ func Load(d *store.Data, now time.Time) {
 
 	// ------------------------------------------------ баланс
 	d.Invoices = []*store.Invoice{
-		{ID: InvoicePaid, Number: "СЧ-2026-000101", OrgID: OrgAdvertiser, Amount: 100_000_000, Status: "paid",
+		{ID: InvoicePaid, Number: "MX-000101", OrgID: OrgAdvertiser, Amount: 100_000_000, Status: "paid",
 			ExpiresAt: day(-6), PaidAt: ptr(day(-19)), PaidAmount: ptr(int64(100_000_000)), CreatedAt: day(-20)},
-		{ID: InvoiceIssued, Number: "СЧ-2026-000102", OrgID: OrgAdvertiser, Amount: 5_000_000, Status: "issued",
+		{ID: InvoiceIssued, Number: "MX-000102", OrgID: OrgAdvertiser, Amount: 5_000_000, Status: "issued",
 			ExpiresAt: in(24 * 13), CreatedAt: ago(24)},
 	}
 	d.NextInvoiceNo = 103
+	d.ClosingActs = []*store.ClosingAct{
+		{ID: ClosingActPast, OrgID: OrgAdvertiser, Period: day(-35).Format("2006-01"), Number: "А-000001",
+			PlacementsAmount: 1_500_000, FeeAmount: 225_000, CreatedAt: day(-25)},
+	}
 	d.Ledger = append(d.Ledger, &store.LedgerEntry{ID: ID(1101), OrgID: OrgAdvertiser, Kind: "deposit", Amount: 100_000_000,
-		Description: "Оплата счёта СЧ-2026-000101", InvoiceID: ptr(InvoicePaid), CreatedAt: day(-19)})
+		Description: "Пополнение по счёту MX-000101", InvoiceID: ptr(InvoicePaid), CreatedAt: day(-19)})
 
 	// ------------------------------------------------ заказы и размещения
 	order := func(id uuid.UUID, number int64, camp *store.Campaign, versionID uuid.UUID, erid string, created time.Time) *store.Order {

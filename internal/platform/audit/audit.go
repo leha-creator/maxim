@@ -166,3 +166,14 @@ func (l *Log) CountByUserSince(ctx context.Context, action string, userID uuid.U
 	}
 	return int(n), nil
 }
+
+// CountByIPSince — сколько раз действие выполнено с адреса ip начиная с since (07 §4).
+func (l *Log) CountByIPSince(ctx context.Context, action string, ip netip.Addr, since time.Time) (int, error) {
+	n, err := sqlc.New(db.Conn(ctx, l.pool)).CountAuditByIPSince(ctx, sqlc.CountAuditByIPSinceParams{
+		Action: action, Ip: &ip, Since: since,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count %s by ip: %w", action, err)
+	}
+	return int(n), nil
+}

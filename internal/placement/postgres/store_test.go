@@ -138,7 +138,7 @@ func TestPlacementUpdateIfStatus(t *testing.T) {
 	if err != nil || got.TimeFrom != 9*60 || got.TimeTo != 21*60 || got.TotalAmount != 1_150_000 {
 		t.Fatalf("round trip: %v %+v", err, got)
 	}
-	change, err := got.SendToBlogger(true, domain.VersionReady, t0.Add(time.Hour), domain.DefaultTiming)
+	change, err := got.SendToBlogger(true, true, domain.VersionReady, t0.Add(time.Hour), domain.DefaultTiming)
 	if err != nil {
 		t.Fatal(err)
 	}

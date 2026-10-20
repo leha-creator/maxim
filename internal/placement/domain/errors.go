@@ -62,6 +62,9 @@ var (
 // ErrVersionNotReady — P-02 без версии поста в ready (I-01 в части этапа).
 var ErrVersionNotReady = errors.New("placement: post version is not ready")
 
+// ErrNoActiveHold — P-02 без активного удержания (R-7, I-03): ошибка в коде, а не сценарий.
+var ErrNoActiveHold = errors.New("placement: no active hold")
+
 // IncompleteError — кампания не готова к оплате (R-6): 409 campaign_incomplete.
 type IncompleteError struct {
 	MissingFields []string

@@ -306,3 +306,16 @@ func (tx *Tx) Notify(orgID uuid.UUID, template, title, text, objectType string, 
 
 // Log возвращает журнал транзакции.
 func (tx *Tx) Log() *slog.Logger { return tx.log }
+
+// ClosingAct возвращает закрывающие документы организации.
+func (tx *Tx) ClosingAct(orgID, id uuid.UUID) (*ClosingAct, error) {
+	for _, a := range tx.D.ClosingActs {
+		if a.ID == id {
+			if a.OrgID != orgID {
+				return nil, tx.denied("closing_act", id, orgID)
+			}
+			return a, nil
+		}
+	}
+	return nil, tx.notFound("closing_act", id)
+}

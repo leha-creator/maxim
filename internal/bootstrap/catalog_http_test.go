@@ -13,8 +13,16 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/max"
 )
 
-// advertiserClient — пользователь с организацией-рекламодателем.
+// advertiserClient — пользователь с организацией-рекламодателем и балансом testFunding.
 func (a *testApp) advertiserClient(email string) *client {
+	a.t.Helper()
+	c := a.newAdvertiser(email)
+	a.fund(email, testFunding)
+	return c
+}
+
+// newAdvertiser — рекламодатель с нулевым балансом.
+func (a *testApp) newAdvertiser(email string) *client {
 	a.t.Helper()
 	c := a.client()
 	c.login(email)

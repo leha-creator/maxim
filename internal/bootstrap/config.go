@@ -66,6 +66,7 @@ type Config struct {
 	Channel   ChannelConfig
 	Media     MediaConfig
 	Placement PlacementConfig
+	Billing   BillingConfig
 
 	ORD       ORDConfig
 	MAX       MAXConfig
@@ -412,6 +413,7 @@ func (c Config) Validate(mode string) error {
 		c.validateMedia(add)
 		c.validatePlacement(add)
 		c.validateORD(add)
+		c.validateBilling(add)
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -644,6 +646,13 @@ func (c Config) LogValue() slog.Value {
 		slog.String("ord_platform_type", c.ORD.PlatformType),
 		slog.String("ord_status_timeout", c.ORD.StatusTimeout.String()),
 		slog.String("ord_erid_wait", c.ORD.EridWait.String()),
+		slog.String("platform_bank_account", logx.MaskAccount(c.BillingSupplier().BankAccount)),
+		slog.String("invoice_ttl", c.Billing.InvoiceTTL.String()),
+		slog.Int("invoice_rate_per_user", c.Billing.InvoiceRatePerUser),
+		slog.Int("invoice_rate_per_ip", c.Billing.InvoiceRatePerIP),
+		slog.String("ledger_check_interval", c.Billing.LedgerCheckInterval.String()),
+		slog.Int64("ledger_manual_second_approval_threshold", c.Billing.ManualSecondApproval),
+		slog.String("closing_acts_at", fmt.Sprintf("%d %s", c.Billing.ClosingActsDay, c.Billing.ClosingActsTime)),
 	)
 }
 

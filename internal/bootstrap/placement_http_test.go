@@ -241,13 +241,11 @@ func TestPlacementOperationsHTTP(t *testing.T) {
 
 func TestCheckoutInsufficientBalanceHTTP(t *testing.T) {
 	a := newTestApp(t)
-	adv := a.advertiserClient("adv-balance@example.ru")
+	adv := a.newAdvertiser("adv-balance@example.ru")
+	a.fund("adv-balance@example.ru", 150_000)
 	blg := a.bloggerClient("blg-balance@example.ru")
 	ch := a.activeChannel(blg, "Канал", 1_000_000)
 	campaign := a.campaignWithPost(adv, "Кампания")
-	holds := placementtest.NewHolds()
-	holds.SetBalance(adv.orgID(t), 150_000)
-	a.mods.placement.Holds = holds
 	if r := adv.do(http.MethodPost, "/cart/items", map[string]any{"channel_id": ch, "format_id": "f_1_24"}); r.status != http.StatusCreated {
 		t.Fatalf("add to cart: %d", r.status)
 	}
@@ -267,6 +265,22 @@ func TestCheckoutInsufficientBalanceHTTP(t *testing.T) {
 	adv.do(http.MethodGet, "/orders", nil).json(t, &orders)
 	if len(cart.Items) != 1 || len(orders.Items) != 0 {
 		t.Fatalf("cart %d orders %d", len(cart.Items), len(orders.Items))
+	}
+	if a.count(`SELECT count(*) FROM hold`) != 0 || a.count(`SELECT count(*) FROM ledger_transaction WHERE kind = 'hold'`) != 0 {
+		t.Fatal("rejected checkout wrote holds")
+	}
+
+	// Пополнили на нехватку: оформление удерживает всю сумму заказа (R-6).
+	org := a.fund("adv-balance@example.ru", 1_000_000)
+	if r := adv.do(http.MethodPost, "/campaigns/"+campaign+"/checkout", nil); r.status != http.StatusCreated {
+		t.Fatalf("checkout: %d %s", r.status, r.body)
+	}
+	available, held, err := a.mods.ledger.Balance(context.Background(), org)
+	if err != nil || available != 0 || held != 1_150_000 {
+		t.Fatalf("balance %d held %d: %v", available, held, err)
+	}
+	if a.count(`SELECT count(*) FROM hold WHERE status = 'active'`) != 1 {
+		t.Fatal("hold is missing")
 	}
 }
 

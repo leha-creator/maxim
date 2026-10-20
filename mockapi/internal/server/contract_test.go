@@ -134,6 +134,8 @@ var cases = map[string]opCase{
 	"listInvoices":            {user: adv},
 	"createInvoice":           {user: adv},
 	"getInvoicePdf":           {user: adv, params: id(seed.InvoicePaid)},
+	"listClosingActs":         {user: adv},
+	"getClosingActPdf":        {user: adv, params: map[string]string{"id": seed.ClosingActPast.String(), "document": "report"}},
 
 	// блогер
 	"listBloggerChannels":     {user: blg},

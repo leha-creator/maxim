@@ -36,8 +36,12 @@ commands:
   admin grant|revoke       grant (--email, --role moderator|senior) or revoke (--email) an admin role
   admin ord errors         list ORD objects in error [--limit N]
   admin ord retry          --object <type>:<id> --reason <text> --email <admin>: retry an ORD object
+  admin money              statement import | bank-tx list|match|ignore | invoice cancel | ledger manual|list |
+                           balance-return | reconcile | closing-acts: money operations (senior admin, --email)
   dev post-version         --order <number> approve|ready|reject [--erid X] [--reason Y] (development and test only;
                            ready only with ORD_ENABLED=false)
+  dev balance deposit      --email <user> --amount <rub.kop>: invoice and paying statement (development and test only)
+  dev statement            --invoice MX-… [--amount <rub.kop>] [--out <path>]: statement file paying an invoice
 `
 
 func main() {

@@ -56,6 +56,13 @@ x-backend-env: &backend-env
   ORD_ENABLED: "true"
   ORD_OAUTH_TOKEN: ""
   ORD_PLATFORM_TYPE: site
+  # Деньги: реквизиты платформы пусто — значения разработки; пополнение баланса —
+  # «maxim dev balance deposit --email … --amount …» (README, «Деньги в разработке»).
+  INVOICE_TTL: 336h
+  INVOICE_EXPIRE_INTERVAL: 1h
+  LEDGER_CHECK_INTERVAL: 1h
+  CLOSING_ACTS_DAY: "1"
+  CLOSING_ACTS_TIME: "03:00"
 
 services:
   postgres:

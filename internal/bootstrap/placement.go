@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	channelapp "github.com/leha-creator/maxim/internal/channel/app"
+	ledgerapp "github.com/leha-creator/maxim/internal/ledger/app"
 	placementapp "github.com/leha-creator/maxim/internal/placement/app"
 	"github.com/leha-creator/maxim/internal/placement/domain"
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
@@ -26,15 +27,15 @@ const stuckScheduledPlacement = "placement_scheduled_overdue"
 const stuckRemovalOverdue = "publication_removal_overdue"
 
 // newPlacementService собирает модуль размещений. Порты других модулей — переходники
-// пакета bridge; порты будущих модулей — пустые реализации с метками этапов (R-2 … R-4):
+// пакета bridge (удержания — журнал проводок); порты будущих модулей — пустые реализации с
+// метками этапов (R-3, R-4):
 //
-//	Holds          — UnlimitedHolds, этап «Приём оплаты и учёт денег»
 //	ContractorGate — AllowAllContractors, этап «Выплаты блогерам через Рокет Ворк»
 //	Notifier       — NopNotifier, этап «Уведомления и отчёт по кампании»
 //
 // Реализации модуля размещений подставляются в модули каналов и post (R-5, S-25, R-8).
 func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Scheduler, auditLog audit.Recorder,
-	channels *channelapp.Service, posts *postapp.Service) (*placementapp.Service, *placementpg.Store) {
+	channels *channelapp.Service, posts *postapp.Service, ledger *ledgerapp.Service) (*placementapp.Service, *placementpg.Store) {
 	log := in.log.With(logx.KeyModule, "placement")
 	store := placementpg.New(in.pool, log)
 	p := cfg.Placement
@@ -44,7 +45,7 @@ func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sc
 		Content:  bridge.PlacementContent{Svc: posts},
 		Channels: bridge.PlacementChannels{Svc: channels}, Campaigns: bridge.PlacementCampaigns{Svc: posts},
 		Versions:    bridge.PlacementVersions{Svc: posts},
-		Holds:       bridge.UnlimitedHolds{Log: log},
+		Holds:       bridge.LedgerHolds{Svc: ledger},
 		Contractors: bridge.AllowAllContractors{Log: log},
 		Notifier:    bridge.NopNotifier{Log: log},
 		Tx:          txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,

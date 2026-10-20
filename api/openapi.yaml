@@ -1082,6 +1082,7 @@ paths:
                         items: { $ref: '#/components/schemas/BalanceTransaction' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /invoices:
     get:
       tags: [balance]
@@ -1106,11 +1107,15 @@ paths:
                         items: { $ref: '#/components/schemas/Invoice' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
     post:
       tags: [balance]
       operationId: createInvoice
       summary: Выставить счёт на пополнение
-      description: Счёт действует 14 суток. В тестовом сервере его можно «оплатить» через `POST /_mock/invoices/{id}/pay`.
+      description: |
+        Счёт действует 14 суток. Номер — `MX-` и шесть цифр; его нужно указать в назначении платежа.
+        Не больше 10 счетов в час на пользователя и 30 на адрес. В тестовом сервере счёт можно
+        «оплатить» через `POST /_mock/invoices/{id}/pay`.
       requestBody:
         required: true
         content:
@@ -1126,6 +1131,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /invoices/{id}/pdf:
     get:
       tags: [balance]
@@ -1144,6 +1150,57 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /closing-acts:
+    get:
+      tags: [balance]
+      operationId: listClosingActs
+      summary: Закрывающие документы
+      description: |
+        Отчёт агента и акт на вознаграждение за месяц. Формируются 1-го числа за прошедший месяц
+        для организаций, у которых в нём были распределены удержания.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Документы, новые сверху
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/ClosingAct' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /closing-acts/{id}/{document}:
+    get:
+      tags: [balance]
+      operationId: getClosingActPdf
+      summary: Отчёт агента или акт в PDF
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: document
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ClosingDocument' }
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
 
   # ---------------------------------------------------------------- blogger channels
   /blogger/channels:
@@ -2665,7 +2722,7 @@ components:
       required: [id, kind, amount, created_at, description]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
-        kind: { type: string, enum: [deposit, hold, hold_release, refund], description: Вид операции с точки зрения рекламодателя }
+        kind: { type: string, enum: [deposit, hold, hold_release, refund, balance_return, manual], description: Вид операции с точки зрения рекламодателя }
         amount: { $ref: '#/components/schemas/SignedMoney' }
         description: { type: string }
         order_id: { $ref: '#/components/schemas/Uuid' }
@@ -2687,13 +2744,33 @@ components:
       required: [id, number, amount, status, expires_at, created_at, pdf_url]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
-        number: { type: string, example: СЧ-2026-000101 }
+        number: { type: string, example: MX-000101 }
         amount: { $ref: '#/components/schemas/Money' }
         status: { $ref: '#/components/schemas/InvoiceStatus' }
         expires_at: { type: string, format: date-time }
         paid_at: { type: string, format: date-time }
         paid_amount: { $ref: '#/components/schemas/Money' }
         pdf_url: { type: string, description: Относительный адрес PDF }
+        created_at: { type: string, format: date-time }
+    ClosingDocument:
+      type: string
+      enum: [report, act]
+      description: report — отчёт агента, act — акт на вознаграждение
+    ClosingAct:
+      type: object
+      required: [id, number, period, placements_amount, fee_amount, report_url, act_url, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        number: { type: string, example: А-000001 }
+        period: { type: string, pattern: '^\d{4}-\d{2}$', example: 2026-10, description: Месяц по Москве }
+        placements_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Выплачено блогерам по размещениям месяца
+        fee_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Вознаграждение платформы
+        report_url: { type: string, description: Относительный адрес PDF отчёта агента }
+        act_url: { type: string, description: Относительный адрес PDF акта }
         created_at: { type: string, format: date-time }
 
     # ------------------------------------------------ blogger

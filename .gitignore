@@ -24,3 +24,6 @@ Thumbs.db
 # Тестовый сервер API
 mockapi/mockapi
 mockapi/mockapi.exe
+
+# Файлы ручных прогонов (выписки dev statement --out)
+/tmp/

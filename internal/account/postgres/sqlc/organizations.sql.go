@@ -39,6 +39,79 @@ func (q *Queries) FirstOfferAcceptance(ctx context.Context, arg FirstOfferAccept
 	return i, err
 }
 
+const getOrganizationByID = `-- name: GetOrganizationByID :one
+SELECT id, legal_type, inn, name, contact_name, phone, kpp, address, tax_regime, vat_rate, tax_document_storage_key, tax_document_sha256, signer_position, signer_name, signer_basis_name, signer_basis_number, bank_account, bank_name, bank_corr_account, bank_bik, is_platform, status, created_at, updated_at FROM organization WHERE id = $1
+`
+
+// Реквизиты для счёта и закрывающих документов (модуль billing); без блокировки.
+func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error) {
+	row := q.db.QueryRow(ctx, getOrganizationByID, id)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.LegalType,
+		&i.Inn,
+		&i.Name,
+		&i.ContactName,
+		&i.Phone,
+		&i.Kpp,
+		&i.Address,
+		&i.TaxRegime,
+		&i.VatRate,
+		&i.TaxDocumentStorageKey,
+		&i.TaxDocumentSha256,
+		&i.SignerPosition,
+		&i.SignerName,
+		&i.SignerBasisName,
+		&i.SignerBasisNumber,
+		&i.BankAccount,
+		&i.BankName,
+		&i.BankCorrAccount,
+		&i.BankBik,
+		&i.IsPlatform,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getOrganizationByINN = `-- name: GetOrganizationByINN :one
+SELECT id, legal_type, inn, name, contact_name, phone, kpp, address, tax_regime, vat_rate, tax_document_storage_key, tax_document_sha256, signer_position, signer_name, signer_basis_name, signer_basis_number, bank_account, bank_name, bank_corr_account, bank_bik, is_platform, status, created_at, updated_at FROM organization WHERE inn = $1
+`
+
+func (q *Queries) GetOrganizationByINN(ctx context.Context, inn string) (Organization, error) {
+	row := q.db.QueryRow(ctx, getOrganizationByINN, inn)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.LegalType,
+		&i.Inn,
+		&i.Name,
+		&i.ContactName,
+		&i.Phone,
+		&i.Kpp,
+		&i.Address,
+		&i.TaxRegime,
+		&i.VatRate,
+		&i.TaxDocumentStorageKey,
+		&i.TaxDocumentSha256,
+		&i.SignerPosition,
+		&i.SignerName,
+		&i.SignerBasisName,
+		&i.SignerBasisNumber,
+		&i.BankAccount,
+		&i.BankName,
+		&i.BankCorrAccount,
+		&i.BankBik,
+		&i.IsPlatform,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getOrganizationByUser = `-- name: GetOrganizationByUser :one
 SELECT o.id, o.legal_type, o.inn, o.name, o.contact_name, o.phone, o.kpp, o.address, o.tax_regime, o.vat_rate, o.tax_document_storage_key, o.tax_document_sha256, o.signer_position, o.signer_name, o.signer_basis_name, o.signer_basis_number, o.bank_account, o.bank_name, o.bank_corr_account, o.bank_bik, o.is_platform, o.status, o.created_at, o.updated_at,
        (ap.organization_id IS NOT NULL)::boolean AS is_advertiser,

@@ -1,14 +1,18 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/leha-creator/maxim/internal/account/accounttest"
 	"github.com/leha-creator/maxim/internal/account/domain"
+	"github.com/leha-creator/maxim/internal/apigen"
 	"github.com/leha-creator/maxim/internal/platform/httpx"
+	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
 func advertiserBody() map[string]any {
@@ -177,12 +181,14 @@ func TestOrganizationHandlers(t *testing.T) {
 	}
 }
 
+// Все операции спецификации реализованы (этап «Приём оплаты и учёт денег» — последние, тег
+// balance); заглушка новых операций по-прежнему отвечает 501 not_implemented с именем операции.
 func TestUnimplementedOperationWithSession(t *testing.T) {
-	a := newTestApp(t)
-	c := a.client()
-	c.login("stub@example.ru")
-	r := c.do(http.MethodGet, "/balance", nil)
-	if code, details := r.errorCode(t); r.status != http.StatusNotImplemented || code != "not_implemented" || details["operation"] != "getBalance" {
-		t.Fatalf("balance: %d %s", r.status, r.body)
+	wr := httptest.NewRecorder()
+	_, err := unimplemented{}.GetBalance(context.Background(), apigen.GetBalanceRequestObject{})
+	httpx.WriteError(wr, httptest.NewRequest(http.MethodGet, "/api/v1/balance", nil), logx.Discard(), err)
+	if wr.Code != http.StatusNotImplemented || !strings.Contains(wr.Body.String(), `"operation":"getBalance"`) ||
+		!strings.Contains(wr.Body.String(), `"code":"not_implemented"`) {
+		t.Fatalf("stub: %d %s", wr.Code, wr.Body)
 	}
 }

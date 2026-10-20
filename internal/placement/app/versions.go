@@ -46,6 +46,12 @@ func (s *Service) VersionChanged(ctx context.Context, versionID uuid.UUID, to do
 		if err != nil {
 			return err
 		}
+		var held map[uuid.UUID]bool
+		if to == domain.VersionReady {
+			if held, err = s.activeHolds(ctx, ps, versionID); err != nil {
+				return err
+			}
+		}
 		now := s.Clock.Now()
 		sent, cancelled, released := 0, 0, 0
 		for _, p := range ps {
@@ -55,7 +61,13 @@ func (s *Service) VersionChanged(ctx context.Context, versionID uuid.UUID, to do
 			switch to {
 			case domain.VersionReady:
 				offer, ok := offers[p.ChannelID]
-				change, err := p.SendToBlogger(ok && offer.Active, to, now, s.Config.Timing)
+				change, err := p.SendToBlogger(ok && offer.Active, held[p.ID], to, now, s.Config.Timing)
+				if errors.Is(err, domain.ErrNoActiveHold) {
+					// R-7: нарушение I-03 — ошибка в коде; размещение остаётся в created.
+					s.log.ErrorContext(ctx, "placement without active hold", logx.KeyOp, op, KeyPlacementID, p.ID,
+						KeyOrderID, o.ID, "transition", domain.P02SendToBlogger)
+					continue
+				}
 				if err != nil {
 					return s.rejected(ctx, op, p, domain.P02SendToBlogger, err)
 				}
@@ -90,6 +102,20 @@ func (s *Service) VersionChanged(ctx context.Context, versionID uuid.UUID, to do
 			"to", to, "placements_sent", sent, "placements_cancelled", cancelled)
 		return nil
 	})
+}
+
+// activeHolds — признак активного удержания для размещений в created с этой версией (R-7).
+func (s *Service) activeHolds(ctx context.Context, ps []domain.Placement, versionID uuid.UUID) (map[uuid.UUID]bool, error) {
+	ids := []uuid.UUID{}
+	for _, p := range ps {
+		if p.Status == domain.StatusCreated && p.PostVersionID == versionID {
+			ids = append(ids, p.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return map[uuid.UUID]bool{}, nil
+	}
+	return s.Holds.HasActive(ctx, ids)
 }
 
 // lockOrderChannels блокирует каналы размещений заказа в created с этой версией в порядке

@@ -138,3 +138,34 @@ func TestMarkingDisabled(t *testing.T) {
 		t.Fatalf("card with ORD disabled: %d %s", r.status, r.body)
 	}
 }
+
+// Этап «Приём оплаты и учёт денег»: задания денег зарегистрированы, журнал в placement,
+// операции тега balance отвечают не 501.
+func TestBillingWiring(t *testing.T) {
+	a := newTestApp(t)
+	for _, kind := range []string{"expire_invoices", "check_ledger_balance", "generate_closing_acts"} {
+		if !slices.Contains(a.worker.Kinds(), kind) {
+			t.Errorf("worker kinds %v have no %s", a.worker.Kinds(), kind)
+		}
+	}
+	if _, ok := a.mods.placement.Holds.(bridge.LedgerHolds); !ok {
+		t.Errorf("placement holds %T, want bridge.LedgerHolds", a.mods.placement.Holds)
+	}
+	if _, ok := a.mods.billing.Placements.(bridge.BillingPlacements); !ok {
+		t.Errorf("billing placements %T", a.mods.billing.Placements)
+	}
+	adv := a.newAdvertiser("adv-wiring@example.ru")
+	id := "0190a000-0000-7000-8000-000000000999"
+	for _, op := range []struct{ method, path string }{
+		{http.MethodGet, "/balance"},
+		{http.MethodGet, "/balance/transactions"},
+		{http.MethodGet, "/invoices"},
+		{http.MethodGet, "/invoices/" + id + "/pdf"},
+		{http.MethodGet, "/closing-acts"},
+		{http.MethodGet, "/closing-acts/" + id + "/act"},
+	} {
+		if r := adv.do(op.method, op.path, nil); r.status == http.StatusNotImplemented || r.status >= 500 {
+			t.Errorf("%s %s: %d", op.method, op.path, r.status)
+		}
+	}
+}

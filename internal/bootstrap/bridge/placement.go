@@ -226,25 +226,7 @@ func (b ChannelPlacements) InCart(ctx context.Context, orgID uuid.UUID, ids []uu
 	return b.Svc.InCart(ctx, orgID, ids)
 }
 
-// ---------------------------------------------------------------- будущие модули (R-2 … R-4)
-
-// UnlimitedHolds — удержания без журнала проводок до этапа «Приём оплаты и учёт денег» (R-2,
-// Q-17): баланс не ограничен, ничего не пишется.
-type UnlimitedHolds struct{ Log *slog.Logger }
-
-var _ domain.Holds = UnlimitedHolds{}
-
-func (h UnlimitedHolds) HoldAll(ctx context.Context, orgID uuid.UUID, reqs []domain.HoldRequest) error {
-	h.Log.DebugContext(ctx, "holds skipped, no ledger yet", logx.KeyOp, "Placement.Holds", logx.KeyOrganizationID, orgID,
-		"placements", len(reqs))
-	return nil
-}
-
-func (h UnlimitedHolds) Release(ctx context.Context, placementID uuid.UUID, reason string) error {
-	h.Log.DebugContext(ctx, "hold release skipped, no ledger yet", logx.KeyOp, "Placement.Holds",
-		placementapp.KeyPlacementID, placementID, "reason", reason)
-	return nil
-}
+// ---------------------------------------------------------------- будущие модули (R-3, R-4)
 
 // AllowAllContractors — проверка исполнителя Рокет Ворк до этапа «Выплаты блогерам» (R-3, A-36).
 type AllowAllContractors struct{ Log *slog.Logger }

@@ -45,7 +45,7 @@ func (tx *Tx) addEntry(orgID uuid.UUID, kind string, amount int64, desc string, 
 // Deposit зачисляет оплату счёта на баланс.
 func (tx *Tx) Deposit(inv *Invoice) {
 	id := inv.ID
-	tx.addEntry(inv.OrgID, "deposit", inv.Amount, fmt.Sprintf("Оплата счёта %s", inv.Number), nil, nil, &id)
+	tx.addEntry(inv.OrgID, "deposit", inv.Amount, fmt.Sprintf("Пополнение по счёту %s", inv.Number), nil, nil, &id)
 }
 
 // hold удерживает итог размещения с баланса рекламодателя.

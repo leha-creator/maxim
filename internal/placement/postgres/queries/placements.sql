@@ -107,3 +107,13 @@ SELECT p.id, p.publish_at FROM placement p
 WHERE p.status = 'scheduled' AND p.publish_at < @before
   AND NOT EXISTS (SELECT 1 FROM publication pub WHERE pub.placement_id = p.id)
 ORDER BY p.publish_at LIMIT 1000;
+
+-- name: ListPlacementRefs :many
+-- Заказ, канал и публикация размещений для операций баланса и отчёта агента (модули ledger, billing).
+SELECT p.id, p.order_id, o.number AS order_number, coalesce(c.title, '')::text AS channel_title,
+    pub.published_at, pub.removed_at
+FROM placement p
+JOIN "order" o ON o.id = p.order_id
+JOIN channel c ON c.id = p.channel_id
+LEFT JOIN publication pub ON pub.placement_id = p.id
+WHERE p.id = ANY(@ids::uuid[]);

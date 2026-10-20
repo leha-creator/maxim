@@ -404,7 +404,7 @@ erDiagram
 | `published_at`, `removed_at` | `timestamptz` | нет | Факт |
 | `claim_deadline_at` | `timestamptz` | нет | T-05 |
 | `performance_share` | `integer` | нет | От 0 до 10000 (03 §7) |
-| `payout_amount`, `fee_charged`, `refund_amount` | `bigint` | нет | Заполняются при распределении удержания (I-12) |
+| `payout_amount`, `fee_charged`, `refund_amount` | `bigint` | нет | Заполняются при распределении удержания (I-12). Проверка `placement_distribution_sum`: в `accepted`, `paid`, `refunded` все три заполнены и в сумме дают `total_amount` |
 | `final_views` | `integer` | нет | Просмотры на момент снятия |
 | `lock_version` | `integer` | да | |
 
@@ -542,29 +542,41 @@ erDiagram
 
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
-| `number` | `text` | да | Уникально. Указывается в назначении платежа |
+| `number` | `text` | да | `MX-` и не меньше 6 цифр из `invoice_number_seq` (R-1). Уникально. Указывается в назначении платежа |
 | `organization_id` | `uuid` | да | |
 | `amount` | `bigint` | да | |
 | `status` | `text` | да | `issued`, `paid`, `expired`, `cancelled` |
 | `expires_at` | `timestamptz` | да | 14 суток от выставления |
-| `paid_at`, `paid_amount` | | нет | Фактическая сумма может отличаться |
-| `pdf_storage_key` | `text` | да | |
+| `paid_at`, `paid_amount` | | нет | Фактическая сумма может отличаться. Заполнены вместе и только в `paid` |
+| `payer_name`, `payer_inn` | `text` | да | Снимок плательщика на момент выставления |
+| `payer_bank_account`, `payer_bank_name`, `payer_bank_bik`, `payer_bank_corr_account` | `text` | нет | Снимок `organization.bank_*` |
+| `created_by` | `uuid` | нет | Пользователь, выставивший счёт |
+| `cancel_reason` | `text` | нет | Обязательна в `cancelled` |
+| `pdf_storage_key` | `text` | да | PDF формируется при выставлении |
 
-В PDF счёта как реквизиты плательщика печатаются наименование, ИНН и банковские реквизиты организации на момент выставления (`organization.bank_*`, D-26). Если банковские реквизиты не сохранены, в счёте только наименование и ИНН.
+В PDF счёта как реквизиты плательщика печатаются наименование, ИНН и банковские реквизиты организации на момент выставления (`payer_*` — снимок `organization.bank_*`, D-26). Если банковские реквизиты не сохранены, в счёте только наименование и ИНН. Позднее изменение реквизитов организации на выставленный счёт не влияет.
 
 ### bank_statement, bank_transaction
 
 | Таблица | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|---|
 | `bank_statement` | `uploaded_by`, `storage_key` | | да | Загруженный файл выписки (A-35) |
+| | `file_sha256` | `text` | да | SHA-256 файла. Уникально — тот же файл повторно не загружается (R-12) |
+| | `account_number` | `text` | да | Расчётный счёт выписки; равен `PLATFORM_BANK_ACCOUNT` |
+| | `date_from`, `date_to` | `date` | нет | Период выписки |
+| | `opening_balance`, `closing_balance` | `bigint` | нет | Остатки из раздела счёта; `closing_balance` последней выписки сверяется со счётом `bank` (06 §2.4) |
+| | `incoming_count`, `matched_count`, `unmatched_count`, `duplicate_count` | `integer` | да | Итоги загрузки |
 | `bank_transaction` | `bank_statement_id` | `uuid` | да | |
-| | `external_id` | `text` | да | Идентификатор операции из выписки. Уникально — защита от повторного зачисления |
+| | `external_id` | `text` | да | SHA-256 от `ДатаПоступило\|Номер\|Сумма\|ПлательщикИНН\|ПлательщикСчет` (05 §5). Уникально — защита от повторного зачисления |
 | | `operation_date` | `date` | да | |
 | | `amount` | `bigint` | да | |
-| | `payer_inn`, `payer_name`, `purpose` | `text` | нет | |
+| | `payer_inn`, `payer_name`, `payer_account`, `purpose` | `text` | нет | |
 | | `match_status` | `text` | да | `matched`, `unmatched`, `ignored` |
 | | `invoice_id`, `organization_id` | `uuid` | нет | Результат сопоставления |
 | | `matched_by` | `uuid` | нет | Пусто — сопоставлено автоматически |
+| | `ignored_reason` | `text` | нет | Обязательна в `ignored` |
+
+В `matched` всегда заполнена `organization_id`. Из `unmatched` и `ignored` администратор переводит операцию в `matched` вручную (R-13).
 
 ### ledger_account
 
@@ -573,7 +585,7 @@ erDiagram
 | `kind` | `text` | да | 06 §2.1 |
 | `organization_id` | `uuid` | нет | Для `advertiser_balance`, `blogger_payable` |
 | `placement_id` | `uuid` | нет | Для `placement_hold` |
-| `balance` | `bigint` | да | Кеш суммы проводок; может быть отрицательным только у счетов-активов по правилам 06 §2.2. Обновляется в транзакции с проводкой |
+| `balance` | `bigint` | да | Кеш суммы проводок. Обновляется в транзакции с проводкой. Проверка `ledger_account_liability_balance`: у обязательств (все виды, кроме `bank`, `rocketwork_deposit`, `payout_fees`) не меньше нуля |
 
 Уникальность: `(kind, organization_id, placement_id)` с учётом пустых значений.
 
@@ -587,9 +599,11 @@ erDiagram
 | | `placement_id`, `invoice_id`, `payout_id`, `bank_transaction_id` | `uuid` | нет | Основание; заполняется подходящее |
 | | `actor_type`, `actor_user_id` | | да / нет | `system`, `admin`, `advertiser` |
 | | `reason` | `text` | нет | Обязателен для `manual` и `balance_return` |
-| | `idempotency_key` | `text` | да | Уникально |
+| | `idempotency_key` | `text` | да | Уникально. Формат по виду операции — 06 §2.2 (R-3) |
+| | `entries_hash` | `text` | да | SHA-256 канонического списка проводок. Повтор с тем же ключом и другим списком — ошибка (R-2) |
 | `ledger_entry` | `ledger_transaction_id` | `uuid` | да | |
 | | `debit_account_id`, `credit_account_id` | `uuid` | да | Разные счета |
+| | `position` | `smallint` | да | Порядок внутри транзакции; уникален в паре с `ledger_transaction_id` |
 | | `amount` | `bigint` | да | Строго больше нуля |
 
 ### hold
@@ -597,9 +611,11 @@ erDiagram
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
 | `placement_id` | `uuid` | да | Частичный уникальный индекс при `status = 'active'` (I-03) |
+| `post_version_id` | `uuid` | да | Версия поста, под которую удержаны деньги |
+| `organization_id` | `uuid` | да | Рекламодатель |
 | `amount` | `bigint` | да | Равно `placement.total_amount` |
 | `status` | `text` | да | `active`, `released` — снято целиком; `distributed` — распределено при приёмке или решении спора |
-| `closed_at` | `timestamptz` | нет | |
+| `closed_at` | `timestamptz` | нет | Пусто ровно в `active` |
 
 ### rocketwork_contractor
 
@@ -635,7 +651,7 @@ erDiagram
 
 ### closing_act
 
-`organization_id uuid`, `period date`, `number text unique`, `placements_amount bigint` (услуги блогеров), `fee_amount bigint` (вознаграждение платформы), `pdf_storage_key text`. Уникальная пара `(organization_id, period)` (A-20).
+`organization_id uuid`, `period date` (первое число месяца), `number text unique` (`А-` и 6 цифр из `closing_act_number_seq`), `placements_amount bigint` (услуги блогеров), `fee_amount bigint` (вознаграждение платформы), `report_pdf_storage_key text` (отчёт агента, `closing/{org}/{YYYY-MM}-report.pdf`), `act_pdf_storage_key text` (акт, `closing/{org}/{YYYY-MM}-act.pdf`). Уникальная пара `(organization_id, period)` (A-20, R-16).
 
 ## 8. Служебные
 
@@ -785,6 +801,9 @@ erDiagram
 | `sync_status` | `pending`, `sent`, `synced`, `error` |
 | `creative.erir_status` | `pending`, `success`, `error` |
 | `invoice.status` | `issued`, `paid`, `expired`, `cancelled` |
+| `bank_transaction.match_status` | `matched`, `unmatched`, `ignored` |
+| `ledger_account.kind` | `bank`, `rocketwork_deposit`, `payout_fees` — активы; `advertiser_balance`, `placement_hold`, `blogger_payable`, `platform_revenue` — обязательства |
+| `ledger_transaction.kind` | `deposit`, `hold`, `hold_release`, `settlement`, `payout`, `deposit_topup`, `balance_return`, `manual` |
 | `hold.status` | `active`, `released`, `distributed` |
 | `payout.status` | `created`, `sent`, `succeeded`, `failed` |
 | `rocketwork_contractor.status` | `invited`, `pending`, `active`, `blocked` |
@@ -806,7 +825,8 @@ erDiagram
 | Телефон | `organization.phone` | Связь |
 | Адрес регистрации ИП | `organization.address` | Договор, закрывающие документы |
 | Документ о режиме налогообложения | `organization.tax_document_storage_key` | Подтверждение режима и ставки НДС |
-| Банковские реквизиты рекламодателя | `organization.bank_account`, `bank_name`, `bank_corr_account`, `bank_bik` | Реквизиты плательщика в счёте, возврат остатка через поддержку (D-26) |
+| Банковские реквизиты рекламодателя | `organization.bank_account`, `bank_name`, `bank_corr_account`, `bank_bik`; снимок в `invoice.payer_*` | Реквизиты плательщика в счёте, возврат остатка через поддержку (D-26) |
+| Плательщик из выписки | `bank_transaction.payer_name`, `payer_inn`, `payer_account` | Сопоставление платежа с организацией (R-12) |
 | IP-адрес | `session.ip`, `auth_code.requested_ip`, `legal_acceptance.ip`, `audit_log.ip` | Безопасность, лимиты частоты, доказательство принятия документов |
 
 Не хранится: паспортные данные, фотографии документов, удостоверяющих личность, банковские карты и счета блогеров — всё это находится в Рокет Ворк (A-24). В `outbound_request` и журнале приложения персональные данные маскируются (07 §5).

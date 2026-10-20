@@ -90,3 +90,10 @@ JOIN legal_document ld ON ld.id = la.legal_document_id
 WHERE la.organization_id = @organization_id AND ld.kind = @kind
 ORDER BY la.accepted_at, ld.version
 LIMIT 1;
+
+-- name: GetOrganizationByID :one
+-- Реквизиты для счёта и закрывающих документов (модуль billing); без блокировки.
+SELECT * FROM organization WHERE id = @id;
+
+-- name: GetOrganizationByINN :one
+SELECT * FROM organization WHERE inn = @inn;

@@ -23,6 +23,7 @@ var errDevReadyWithORD = errors.New("post-version ready is allowed only with ORD
 // runDev — команды разработчика до API администратора и интеграции с ОРД (R-23):
 //
 //	maxim dev post-version --order <номер> approve|ready|reject [--erid X] [--reason Y]
+//	maxim dev balance deposit … и maxim dev statement … — деньги, см. runDevMoney
 //
 // Двигает текущую версию поста заказа так, как это сделает модерация (S-17): через post/app,
 // поэтому размещения отвечают так же (R-5). При ORD_ENABLED=true после approve маркировка в worker
@@ -34,6 +35,9 @@ func runDev(ctx context.Context, cfg Config, log *slog.Logger, args []string, ou
 	if cfg.Env != EnvDevelopment && cfg.Env != EnvTest {
 		log.ErrorContext(ctx, "dev command refused", logx.KeyOp, op, "env", cfg.Env)
 		return errDevForbidden
+	}
+	if len(args) > 0 && (args[0] == "balance" || args[0] == "statement") {
+		return runDevMoney(ctx, cfg, log, args, out)
 	}
 	if len(args) == 0 || args[0] != "post-version" {
 		return errUsage

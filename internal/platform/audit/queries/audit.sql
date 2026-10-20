@@ -10,3 +10,7 @@ SELECT * FROM audit_log WHERE object_type = @object_type AND object_id = @object
 -- name: CountAuditByActorSince :one
 SELECT count(*)::int FROM audit_log
 WHERE action = @action AND actor_user_id = @actor_user_id AND created_at > @since;
+
+-- name: CountAuditByIPSince :one
+SELECT count(*)::int FROM audit_log
+WHERE action = @action AND ip = @ip AND created_at > @since;

@@ -23,6 +23,9 @@ func MaskINN(inn string) string { return maskMiddle(inn, 2, 4) }
 // MaskPhone: `+79991234567` → `+7******4567`.
 func MaskPhone(phone string) string { return maskMiddle(phone, 2, 4) }
 
+// MaskAccount: последние 4 цифры счёта, `40802810000000000001` → `****************0001`.
+func MaskAccount(account string) string { return maskMiddle(account, 0, 4) }
+
 // MaskName: первая буква каждого слова, `Иванов Иван` → `И*** И***`.
 func MaskName(name string) string {
 	words := strings.Fields(name)

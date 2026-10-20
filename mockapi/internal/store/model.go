@@ -336,6 +336,7 @@ type Data struct {
 	Placements    []*Placement
 	Invoices      []*Invoice
 	Ledger        []*LedgerEntry
+	ClosingActs   []*ClosingAct
 	Payouts       []*Payout
 	Rocketwork    map[uuid.UUID]*RocketworkContractor
 	NextOrderNo   int64
@@ -354,4 +355,15 @@ func NewData() *Data {
 		NextInvoiceNo: 101,
 		NextMaxChatID: -70000000100,
 	}
+}
+
+// ClosingAct — отчёт агента и акт за месяц (R-16): два PDF у одной записи.
+type ClosingAct struct {
+	ID               uuid.UUID
+	OrgID            uuid.UUID
+	Period           string // YYYY-MM
+	Number           string
+	PlacementsAmount int64
+	FeeAmount        int64
+	CreatedAt        time.Time
 }

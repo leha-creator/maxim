@@ -28,6 +28,7 @@ type Holds struct {
 	active   map[uuid.UUID]money.Kopecks
 	owner    map[uuid.UUID]uuid.UUID
 	released []uuid.UUID
+	settled  []uuid.UUID
 	// OutsideTx — вызовы вне транзакции; должно быть 0.
 	OutsideTx int
 }
@@ -88,6 +89,47 @@ func (h *Holds) Release(ctx context.Context, placementID uuid.UUID, _ string) er
 		h.released = append(h.released, placementID)
 	}
 	return nil
+}
+
+func (h *Holds) HasActive(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.checkTx(ctx)
+	out := make(map[uuid.UUID]bool, len(placementIDs))
+	for _, id := range placementIDs {
+		_, out[id] = h.active[id]
+	}
+	return out, nil
+}
+
+func (h *Holds) Settle(ctx context.Context, placementID, _ uuid.UUID, d domain.Distribution) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.checkTx(ctx)
+	amount, ok := h.active[placementID]
+	if !ok {
+		return fmt.Errorf("settle %s: no active hold", placementID)
+	}
+	if d.PayoutAmount+d.FeeCharged+d.RefundAmount != amount {
+		return fmt.Errorf("settle %s: distribution does not match hold %d", placementID, amount)
+	}
+	delete(h.active, placementID)
+	h.settled = append(h.settled, placementID)
+	return nil
+}
+
+// Drop убирает активное удержание без снятия: нарушение I-03 для проверки R-7.
+func (h *Holds) Drop(placementID uuid.UUID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.active, placementID)
+}
+
+// Settled — размещения с распределённым удержанием.
+func (h *Holds) Settled() []uuid.UUID {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]uuid.UUID(nil), h.settled...)
 }
 
 // Active — у размещения есть активное удержание.

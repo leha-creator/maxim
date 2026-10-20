@@ -178,6 +178,14 @@ func (unimplemented) ListChannelCategories(context.Context, apigen.ListChannelCa
 	return nil, apperr.NotImplemented("listChannelCategories")
 }
 
+func (unimplemented) ListClosingActs(context.Context, apigen.ListClosingActsRequestObject) (apigen.ListClosingActsResponseObject, error) {
+	return nil, apperr.NotImplemented("listClosingActs")
+}
+
+func (unimplemented) GetClosingActPdf(context.Context, apigen.GetClosingActPdfRequestObject) (apigen.GetClosingActPdfResponseObject, error) {
+	return nil, apperr.NotImplemented("getClosingActPdf")
+}
+
 func (unimplemented) ListInvoices(context.Context, apigen.ListInvoicesRequestObject) (apigen.ListInvoicesResponseObject, error) {
 	return nil, apperr.NotImplemented("listInvoices")
 }

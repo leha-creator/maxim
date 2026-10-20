@@ -597,6 +597,53 @@ func (q *Queries) ListBloggerPlacements(ctx context.Context, arg ListBloggerPlac
 	return items, nil
 }
 
+const listPlacementRefs = `-- name: ListPlacementRefs :many
+SELECT p.id, p.order_id, o.number AS order_number, coalesce(c.title, '')::text AS channel_title,
+    pub.published_at, pub.removed_at
+FROM placement p
+JOIN "order" o ON o.id = p.order_id
+JOIN channel c ON c.id = p.channel_id
+LEFT JOIN publication pub ON pub.placement_id = p.id
+WHERE p.id = ANY($1::uuid[])
+`
+
+type ListPlacementRefsRow struct {
+	ID           uuid.UUID
+	OrderID      uuid.UUID
+	OrderNumber  int64
+	ChannelTitle string
+	PublishedAt  *time.Time
+	RemovedAt    *time.Time
+}
+
+// Заказ, канал и публикация размещений для операций баланса и отчёта агента (модули ledger, billing).
+func (q *Queries) ListPlacementRefs(ctx context.Context, ids []uuid.UUID) ([]ListPlacementRefsRow, error) {
+	rows, err := q.db.Query(ctx, listPlacementRefs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlacementRefsRow{}
+	for rows.Next() {
+		var i ListPlacementRefsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.OrderNumber,
+			&i.ChannelTitle,
+			&i.PublishedAt,
+			&i.RemovedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlacementsByChannel = `-- name: ListPlacementsByChannel :many
 SELECT id, order_id, channel_id, blogger_organization_id, format_id, top_hours, duration_hours, window_start, window_end, time_from, time_to, post_version_id, status, status_changed_at, status_reason, sent_to_blogger_at, fee_rate_bp, blogger_amount, fee_amount, total_amount, accept_deadline_at, schedule_deadline_at, publish_at, remove_at, published_at, removed_at, claim_deadline_at, performance_share, payout_amount, fee_charged, refund_amount, final_views, lock_version, created_at, updated_at FROM placement WHERE channel_id = $1 AND status = ANY($2::text[]) ORDER BY id
 `

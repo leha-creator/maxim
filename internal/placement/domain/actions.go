@@ -22,8 +22,9 @@ func (p *Placement) notifyBoth(template string) []NoticeTo {
 
 // SendToBlogger — версия поста стала ready (P-02). Канал не active — P-06
 // channel_unavailable; до конца окна не больше WindowGuard — P-06 window_elapsed (R-10).
-// Без версии в ready — ErrVersionNotReady (I-01 в части этапа).
-func (p *Placement) SendToBlogger(channelActive bool, version VersionStatus, now time.Time, t Timing) (StateChange, error) {
+// Без версии в ready — ErrVersionNotReady (I-01 в части этапа); без активного удержания —
+// ErrNoActiveHold (R-7, I-03).
+func (p *Placement) SendToBlogger(channelActive, holdActive bool, version VersionStatus, now time.Time, t Timing) (StateChange, error) {
 	if version != VersionReady {
 		return StateChange{}, ErrVersionNotReady
 	}
@@ -34,6 +35,9 @@ func (p *Placement) SendToBlogger(channelActive bool, version VersionStatus, now
 		case p.WindowEnd.Sub(now) <= t.WindowGuard:
 			return p.Cancel(ActorSystem, ReasonWindowElapsed, now)
 		}
+	}
+	if !holdActive {
+		return StateChange{}, ErrNoActiveHold
 	}
 	change, err := p.Apply(P02SendToBlogger, ActorSystem, "", now)
 	if err != nil {

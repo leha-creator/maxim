@@ -31,6 +31,24 @@ func (q *Queries) CountAuditByActorSince(ctx context.Context, arg CountAuditByAc
 	return column_1, err
 }
 
+const countAuditByIPSince = `-- name: CountAuditByIPSince :one
+SELECT count(*)::int FROM audit_log
+WHERE action = $1 AND ip = $2 AND created_at > $3
+`
+
+type CountAuditByIPSinceParams struct {
+	Action string
+	Ip     *netip.Addr
+	Since  time.Time
+}
+
+func (q *Queries) CountAuditByIPSince(ctx context.Context, arg CountAuditByIPSinceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countAuditByIPSince, arg.Action, arg.Ip, arg.Since)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const insertAuditLog = `-- name: InsertAuditLog :exec
 
 INSERT INTO audit_log (id, actor_type, actor_user_id, organization_id, action, object_type, object_id, reason, data, ip, created_at)

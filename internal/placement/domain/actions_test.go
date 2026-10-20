@@ -22,10 +22,14 @@ func jobKeys(js []Job) []string {
 func TestSendToBlogger(t *testing.T) {
 	now := mskTime(2026, 10, 20, 10, 0)
 	p := testPlacement(StatusCreated)
-	if _, err := p.SendToBlogger(true, VersionApproved, now, DefaultTiming); !errors.Is(err, ErrVersionNotReady) {
+	if _, err := p.SendToBlogger(true, true, VersionApproved, now, DefaultTiming); !errors.Is(err, ErrVersionNotReady) {
 		t.Fatalf("version not ready: %v", err)
 	}
-	c, err := p.SendToBlogger(true, VersionReady, now, DefaultTiming)
+	// R-7: без активного удержания P-02 не выполняется, размещение остаётся в created.
+	if _, err := p.SendToBlogger(true, false, VersionReady, now, DefaultTiming); !errors.Is(err, ErrNoActiveHold) || p.Status != StatusCreated {
+		t.Fatalf("no active hold: %v, status %s", err, p.Status)
+	}
+	c, err := p.SendToBlogger(true, true, VersionReady, now, DefaultTiming)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,12 +45,12 @@ func TestSendToBlogger(t *testing.T) {
 
 	// R-10: до конца окна 40 минут — P-06 window_elapsed; канал не active — channel_unavailable.
 	late := testPlacement(StatusCreated)
-	c, err = late.SendToBlogger(true, VersionReady, late.WindowEnd.Add(-40*time.Minute), DefaultTiming)
+	c, err = late.SendToBlogger(true, true, VersionReady, late.WindowEnd.Add(-40*time.Minute), DefaultTiming)
 	if err != nil || late.Status != StatusCancelled || c.Reason != ReasonWindowElapsed || !c.ReleaseHold || c.Actor != ActorSystem {
 		t.Fatalf("window elapsed: %v %+v", err, c)
 	}
 	off := testPlacement(StatusCreated)
-	c, err = off.SendToBlogger(false, VersionReady, now, DefaultTiming)
+	c, err = off.SendToBlogger(false, true, VersionReady, now, DefaultTiming)
 	if err != nil || off.Status != StatusCancelled || c.Reason != ReasonChannelUnavailable {
 		t.Fatalf("channel unavailable: %v %+v", err, c)
 	}

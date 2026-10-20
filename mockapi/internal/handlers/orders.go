@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -347,7 +346,7 @@ func (h *Handlers) CreateInvoice(ctx context.Context, req api.CreateInvoiceReque
 	if err != nil {
 		return nil, err
 	}
-	i := &store.Invoice{ID: store.NewID(), Number: fmt.Sprintf("СЧ-%d-%06d", tx.Now.Year(), tx.D.NextInvoiceNo),
+	i := &store.Invoice{ID: store.NewID(), Number: fmt.Sprintf("MX-%06d", tx.D.NextInvoiceNo),
 		OrgID: o.ID, Amount: req.Body.Amount, Status: "issued", ExpiresAt: tx.Now.Add(14 * 24 * time.Hour), CreatedAt: tx.Now}
 	tx.D.NextInvoiceNo++
 	tx.D.Invoices = append(tx.D.Invoices, i)
@@ -368,7 +367,7 @@ func (h *Handlers) GetInvoicePdf(ctx context.Context, req api.GetInvoicePdfReque
 	}
 	// В PDF только латиница: шрифт Helvetica без кириллицы.
 	pdf := invoicePDF(fmt.Sprintf("TEST INVOICE %s. Amount: %d.%02d RUB. Not a real document.",
-		strings.TrimPrefix(i.Number, "СЧ-"), i.Amount/100, i.Amount%100))
+		i.Number, i.Amount/100, i.Amount%100))
 	return api.GetInvoicePdf200ApplicationpdfResponse{Body: bytes.NewReader(pdf), ContentLength: int64(len(pdf))}, nil
 }
 

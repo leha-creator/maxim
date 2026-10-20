@@ -172,13 +172,18 @@ type HoldRequest struct {
 }
 
 // Holds — удержания на балансе рекламодателя (R-2, I-03). Вызывается в транзакции перехода
-// (I-10). Реализация — модуль ledger; до него bootstrap подставляет UnlimitedHolds.
+// (I-10). Реализация — модуль ledger (bootstrap/bridge.LedgerHolds).
 type Holds interface {
 	// HoldAll удерживает суммы атомарно; размещения с активным удержанием пропускаются.
-	// Не хватает баланса — *InsufficientBalanceError, ничего не удержано.
+	// Не хватает баланса — *InsufficientBalanceError с общей нехваткой, ничего не удержано.
 	HoldAll(ctx context.Context, orgID uuid.UUID, reqs []HoldRequest) error
-	// Release снимает активное удержание размещения; без него ничего не делает.
+	// Release снимает остаток активного удержания размещения; без него ничего не делает.
 	Release(ctx context.Context, placementID uuid.UUID, reason string) error
+	// HasActive — у каких размещений есть активное удержание (R-7, проверка P-02).
+	HasActive(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]bool, error)
+	// Settle распределяет удержание по Distribute (R-8): блогеру, комиссия, возврат.
+	// Вызывается из P-12, P-13, P-15 на этапе приёмки.
+	Settle(ctx context.Context, placementID, bloggerOrgID uuid.UUID, d Distribution) error
 }
 
 // ContractorGate — блогер может принять запрос (A-36, R-3): исполнитель Рокет Ворк active

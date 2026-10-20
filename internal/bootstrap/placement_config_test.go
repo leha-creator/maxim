@@ -84,7 +84,7 @@ func TestPlacementWiring(t *testing.T) {
 	if _, ok := a.mods.channel.Cart.(bridge.ChannelPlacements); !ok {
 		t.Fatalf("channel cart lookup %T", a.mods.channel.Cart)
 	}
-	if _, ok := a.mods.placement.Holds.(bridge.UnlimitedHolds); !ok {
+	if _, ok := a.mods.placement.Holds.(bridge.LedgerHolds); !ok {
 		t.Fatalf("holds %T", a.mods.placement.Holds)
 	}
 

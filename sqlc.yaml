@@ -111,3 +111,15 @@ sql:
       go:
         <<: *gen
         out: internal/marking/postgres/sqlc
+  - <<: *entry
+    queries: internal/ledger/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/ledger/postgres/sqlc
+  - <<: *entry
+    queries: internal/billing/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/billing/postgres/sqlc

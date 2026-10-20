@@ -59,6 +59,43 @@ type AuthCode struct {
 	UpdatedAt      time.Time
 }
 
+type BankStatement struct {
+	ID             uuid.UUID
+	UploadedBy     uuid.UUID
+	StorageKey     string
+	FileSha256     string
+	AccountNumber  string
+	DateFrom       pgtype.Date
+	DateTo         pgtype.Date
+	OpeningBalance *int64
+	ClosingBalance *int64
+	IncomingCount  int32
+	MatchedCount   int32
+	UnmatchedCount int32
+	DuplicateCount int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type BankTransaction struct {
+	ID              uuid.UUID
+	BankStatementID uuid.UUID
+	ExternalID      string
+	OperationDate   pgtype.Date
+	Amount          int64
+	PayerInn        *string
+	PayerName       *string
+	PayerAccount    *string
+	Purpose         *string
+	MatchStatus     string
+	InvoiceID       *uuid.UUID
+	OrganizationID  *uuid.UUID
+	MatchedBy       *uuid.UUID
+	IgnoredReason   *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type BloggerProfile struct {
 	OrganizationID uuid.UUID
 	FullName       *string
@@ -167,6 +204,18 @@ type ChannelUnavailability struct {
 	CreatedAt time.Time
 }
 
+type ClosingAct struct {
+	ID                  uuid.UUID
+	OrganizationID      uuid.UUID
+	Period              pgtype.Date
+	Number              string
+	PlacementsAmount    int64
+	FeeAmount           int64
+	ReportPdfStorageKey string
+	ActPdfStorageKey    string
+	CreatedAt           time.Time
+}
+
 type Creative struct {
 	ID             uuid.UUID
 	PostVersionID  uuid.UUID
@@ -206,6 +255,18 @@ type Dispute struct {
 	UpdatedAt         time.Time
 }
 
+type Hold struct {
+	ID             uuid.UUID
+	PlacementID    uuid.UUID
+	PostVersionID  uuid.UUID
+	OrganizationID uuid.UUID
+	Amount         int64
+	Status         string
+	ClosedAt       *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type InboundEvent struct {
 	ID          uuid.UUID
 	Source      string
@@ -217,6 +278,28 @@ type InboundEvent struct {
 	Error       *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type Invoice struct {
+	ID                   uuid.UUID
+	Number               string
+	OrganizationID       uuid.UUID
+	Amount               int64
+	Status               string
+	ExpiresAt            time.Time
+	PaidAt               *time.Time
+	PaidAmount           *int64
+	PayerName            string
+	PayerInn             string
+	PayerBankAccount     *string
+	PayerBankName        *string
+	PayerBankBik         *string
+	PayerBankCorrAccount *string
+	PdfStorageKey        string
+	CreatedBy            *uuid.UUID
+	CancelReason         *string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type Job struct {
@@ -234,6 +317,41 @@ type Job struct {
 	FinishedAt  *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type LedgerAccount struct {
+	ID             uuid.UUID
+	Kind           string
+	OrganizationID *uuid.UUID
+	PlacementID    *uuid.UUID
+	Balance        int64
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type LedgerEntry struct {
+	ID                  uuid.UUID
+	LedgerTransactionID uuid.UUID
+	Position            int16
+	DebitAccountID      uuid.UUID
+	CreditAccountID     uuid.UUID
+	Amount              int64
+	CreatedAt           time.Time
+}
+
+type LedgerTransaction struct {
+	ID                uuid.UUID
+	Kind              string
+	PlacementID       *uuid.UUID
+	InvoiceID         *uuid.UUID
+	BankTransactionID *uuid.UUID
+	PayoutID          *uuid.UUID
+	ActorType         string
+	ActorUserID       *uuid.UUID
+	Reason            *string
+	IdempotencyKey    string
+	EntriesHash       string
+	CreatedAt         time.Time
 }
 
 type LegalAcceptance struct {
