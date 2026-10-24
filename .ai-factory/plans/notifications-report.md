@@ -210,8 +210,9 @@ Rationale: план реализует этап целиком: задание `
 
 ### Phase 4: Отчёт
 
-- [ ] **Task 10: Отчёт по заказу и CSV (R-14, R-15, E-4, E-5)** (depends on 7: обе задачи правят `api/openapi.yaml` и генерацию)
+- [x] **Task 10: Отчёт по заказу и CSV (R-14, R-15, E-4, E-5)** (depends on 7: обе задачи правят `api/openapi.yaml` и генерацию)
   - `placement/domain/report.go`: `ReportRow`, `ReportTotals`, `BuildReport(order, placements, publications, holds)` — суммы по R-14, CPV (D-28) с округлением вниз; CSV — `WriteReportCSV`.
+  - Уточнение при реализации: ссылки и постоянные UTM-метки идут через `VersionInfo` (`Links`, `UTMSource`, `UTMMedium`, заполняет `bridge.PlacementVersions` из `post/domain.BodyLinkURLs` и констант `post/domain.UTMSource/UTMMedium`), а не через `Content`: отчёту не нужно содержание публикации. В итог добавлен `held_amount`; CPV итога — потрачено, делённое на суммарные просмотры (D-28).
   - `placement/app.OrderReport(ctx, orgID, orderID)` — заказ своей организации, размещения, публикации, каналы, активные удержания (`Holds.HasActive`), ссылки текущей версии. В `placement/domain.Content` ссылок нет: добавить `Links []string` и заполнить в `bridge.PlacementContent` из `post/app` (адреса с UTM уже собирает `post/app/creative.go` для креатива ОРД — переиспользовать, не дублировать разбор).
   - `api/openapi.yaml`: `OrderReportRow.cpv_amount`, `OrderReportTotals.cpv_amount`, `OrderReport.links`, `OrderReport.utm` (`source`, `medium`, `campaign`), операция `getOrderReportCsv`; генерация; `mockapi` — те же поля и CSV.
   - `placement/httpapi`: `GetOrderReport`, `GetOrderReportCsv` (`Content-Disposition: attachment; filename="order-{номер}-report.csv"`).

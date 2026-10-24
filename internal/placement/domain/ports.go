@@ -148,6 +148,10 @@ type VersionInfo struct {
 	TokenPosition   string
 	RejectionReason string
 	CreatedAt       time.Time
+	// Links — адреса ссылок поста по порядку, с UTM-метками заказа (как ушли в канал).
+	Links []string
+	// UTMSource, UTMMedium — постоянные UTM-метки ссылок (A-21); utm_campaign — order_{номер}.
+	UTMSource, UTMMedium string
 }
 
 // PostNotReadyError — черновик поста не готов к версии: коды проблем (R-6).

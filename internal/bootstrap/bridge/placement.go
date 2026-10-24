@@ -172,6 +172,7 @@ func versionInfo(v postapp.VersionView) domain.VersionInfo {
 		FinalText: v.Version.FinalText, AdvertiserName: v.Version.AdvertiserName, Erid: v.Version.Erid, MediaURLs: urls,
 		TokenCarrier: string(v.Version.TokenCarrier), TokenPosition: string(v.Version.TokenPosition),
 		RejectionReason: v.Version.RejectionReason, CreatedAt: v.Version.CreatedAt,
+		Links: postdomain.BodyLinkURLs(v.Version.Body), UTMSource: postdomain.UTMSource, UTMMedium: postdomain.UTMMedium,
 	}
 }
 
