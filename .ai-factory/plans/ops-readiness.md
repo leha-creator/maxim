@@ -107,13 +107,14 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
 
 ### Фаза 2. Конфигурация окружений
 
-- [ ] **Task 3: Шаблоны окружений и место для новых переменных** (depends on 2).
+- [x] **Task 3: Шаблоны окружений и место для новых переменных** (depends on 2).
   - `deploy/app/env/staging.env.example` и `deploy/app/env/production.env.example`: группы как в `.env.example` (стек и образ, база, хранилище, почта, секреты, MAX, ОРД, деньги, оповещения, выпуск); заданы только переменные, обязательные для окружения или отличные от значений по умолчанию в коде. Переменные стека: `COMPOSE_PROJECT_NAME`, `MAXIM_IMAGE`, `DOMAIN`, `EDGE_ALIAS_PREFIX`, `POSTGRES_PASSWORD`, `POSTGRES_APP_PASSWORD`, `POSTGRES_BACKUP_PASSWORD`, `MIGRATE_DATABASE_URL`, `BACKUP_*`. Для каждой внешней системы в тестовом окружении — комментарий: «пусто — подделка, заполнено — тестовый контур» (MAX: тестовый бот; ОРД: `ORD_OAUTH_TOKEN` кабинета `ord-prestable`; банк: `maxim dev statement` + `maxim admin money statement import`; почта: Mailpit или SMTP). Секреты — `CHANGE_ME`, реальные значения только из хранилища секретов; придуманные значения с меткой `ПРЕДПОЛОЖЕНИЕ`.
   - В конце `.env.example` и обоих шаблонов — блок `# === Модули в разработке ===` с подзаголовками «Выплаты блогерам (Рокет Ворк): ROCKETWORK_*, PAYOUT_*», «Уведомления», «Приёмка, споры и возвраты», «API администратора и отчётность ОРД» и указанием: переменные добавляет ветка модуля, здесь их не заводить.
   - `deploy/scripts/check-env.sh`: каждая переменная из `deploy/app/env/*.env.example` есть в `.env.example` или в списке переменных стека; нет повторов ключей; нет пустых обязательных переменных стека; вывод — JSON-строки, код 1 при ошибке. Ключ `--print-missing` выводит переменные `.env.example`, которых нет в шаблоне (для ручной сверки после слияния модулей).
   - `.gitattributes`: `*.caddy`, `*.env.example`, `crontab`, `Dockerfile` — `text eol=lf` (репозиторий ведётся на Windows; с CRLF скрипты, `crontab` и env-файлы в контейнере ломаются).
   - Логирование: скрипт пишет `{"level":"info","event":"env_check","file":…,"keys":N}` по каждому файлу и `level=error` с ключом и файлом на каждое нарушение.
   - Файлы: `deploy/app/env/staging.env.example`, `deploy/app/env/production.env.example`, `.env.example`, `.gitattributes`, `deploy/scripts/check-env.sh`, `deploy/scripts/lib.sh` (общая функция журнала для скриптов).
+  - Как сделано: на каждое окружение два файла — `deploy/app/env/<env>/app.env.example` (переменные бэкенда, `env_file` контейнеров `api`, `worker`, `migrate`, `backup`) и `stack.env.example` (подстановка в compose, `postgres`, `backup`: пароль суперпользователя, роли, корзина копий). Так пароль владельца схемы и ключ корзины копий не попадают в контейнеры приложения. `check-env.sh` проверяет и это: переменная стека в `app.env.example` — ошибка. В `.gitattributes` добавлены также `*.golden` и `**/testdata/*.txt`: в этом worktree при `core.autocrlf=true` эталоны тестов получили CRLF, и `go test` падал в `clientbank` и `post/domain`.
 
 ### Фаза 3. Стек и выпуск без простоя
 
