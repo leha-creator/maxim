@@ -93,8 +93,8 @@ maxim/
 │   │   ├── ord/                     #   Яндекс ОРД, API v8: контрагент, договор, площадки, креатив, статус; корзина ord:global
 │   │   │   └── ordfake/             #   ОРД в памяти: статусы по шагам, токен fake-erid-N, отказы по запросу
 │   │   ├── bank/clientbank/         #   разбор выписки «1С:Предприятие» (UTF-8, cp866, windows-1251): поступления, external_id; адаптер billing/domain.StatementParser
-│   │   ├── rocketwork/
-│   │   │   └── rocketworkfake/
+│   │   ├── rocketwork/              #   клиент live по ПРЕДПОЛАГАЕМОМУ контракту (Q-10…Q-12), приведение статусов, подпись вебхука, disabled
+│   │   │   └── rocketworkfake/      #   Рокет Ворк в памяти или в файле (общий для api, worker и maxim dev): исполнители, депозит, выплаты, вебхуки
 │   │   └── mail/
 │   │       └── mailfake/
 │   │
@@ -151,6 +151,11 @@ maxim/
 │   │   ├── httpapi/                 #   счета, их PDF, закрывающие документы и их PDF (тег balance)
 │   │   └── jobs/                    #   expire_invoices, generate_closing_acts
 │   ├── payout/                      # исполнители Рокет Ворк, выплаты, контроль депозита (04 §7)
+│   │   ├── domain/                  #   исполнитель, выплата и попытки, коды отказов, расписание опроса, лимит НПД, депозит; порты Provider, Store, Placements, Ledger, Organizations, Notifier
+│   │   ├── app/                     #   Invite/EnsureContractor/опрос, Create (в транзакции P-12/P-13/P-15), Send, PollPayout, вебхук, CheckDeposit, зависшие, Retry, MarkLegalPaid
+│   │   ├── postgres/                #   rocketwork_contractor, payout; метрики maxim_payouts_*, maxim_rocketwork_*
+│   │   ├── httpapi/                 #   операции blogger-payouts; приём вебхука Рокет Ворк
+│   │   └── jobs/                    #   ensure_contractor, poll_contractor, send_payout, poll_payout, check_rocketwork_deposit, события Рокет Ворк
 │   └── notification/                # уведомления, шаблоны, отправка (04 §8, 07 §6)
 │
 ├── migrations/                      # goose, одна схема на всё приложение: 00001_init.sql …
@@ -208,6 +213,7 @@ integration/* ──────────────────────
 - **Порядок блокировок.** Сценарии модуля размещений блокируют строки в одном порядке: каналы (по `channel_id`) → заказ → размещения. Так I-06 и I-08 проверяются под блокировкой канала, а одновременные действия блогера, события версии и потеря канала не блокируют друг друга навстречу.
 - **Маркировка.** Яндекс ОРД — порт `marking/domain.OrdAPI` (переходник `bridge.MarkingOrd` над `integration/ord` или `ordfake`: поля запросов переносятся один в один, поэтому хеш нагрузки совпадает с отправленным телом). Вызывают его только обработчики `sync_ord_object` и `poll_ord_status` в три шага (I-13): транзакция — вызов вне неё — транзакция. Связи с другими модулями — в транзакции их сценариев: `post/domain.VersionListener` — `bridge.VersionListeners` вызывает по порядку модуль размещений и маркировку (`bridge.MarkingVersionListener`), одобренная версия получает креатив; `channel/domain.ChannelApprovalListener` (`bridge.ChannelApprovals`, `SetMarkingPorts`) — одобренный канал получает площадку, а видимым в каталоге его делает `channel/app.SetOrdPlatformReady` (порт `marking/domain.ChannelPlatformReady`); `account/domain.OrganizationListener` (`SetOrganizationListener`) — правка наименования или КПП ставит контрагента на повторную отправку; `marking/domain.CreativeListener` — `placement/app.CreativeRejected` (P-11 `erir_rejected`). Реквизиты организаций и дату принятия оферты маркировка читает через `bridge.MarkingOrganizations` над `account/postgres`, содержание версии и переход в `ready` — через `bridge.MarkingPosts` над `post/app`. Строку организации-платформы обеспечивает `account/app.EnsurePlatformOrganization` при запуске `api`, `worker` и команд. При `ORD_ENABLED=false` (только разработка) слушатели маркировки не подключаются, а одобрение канала сразу делает его видимым.
 - **Деньги.** `ledger/app` работает только внутри транзакции вызывающего (`Post` без открытой транзакции — ошибка) и не открывает своих, кроме административных операций (`Manual`, `BalanceReturn`). Модуль размещений удерживает и распределяет через порт `placement/domain.Holds` (`bridge.LedgerHolds`) в транзакции перехода. `billing/app` зачисляет поступления через `bridge.BillingLedger`, читает реквизиты организаций через `bridge.BillingOrganizations` (над `account/postgres`), сведения о размещениях для отчёта агента — через `bridge.BillingPlacements` (над `placement/postgres`). Ссылки проводок на организации и размещения ledger проверяет через `bridge.LedgerReferences`. Файлы выписок и PDF лежат в хранилище (`statements/`, `invoices/`, `closing/`).
+- **Выплаты.** Рокет Ворк — порт `payout/domain.Provider` (переходник `bridge.PayoutProvider` над `bridge.RocketWorkAPI`: `integration/rocketwork`, `rocketworkfake` или `disabled` по `ROCKETWORK_MODE`). Вызывают его только обработчики заданий `payout/jobs` в три шага (I-13); вебхук в `httpapi` только проверяет подпись через `ParseWebhook` и записывает событие. Модуль размещений создаёт выплату через порт `placement/domain.Payouts` (`bridge.PlacementPayouts`; подключается `SetPayoutPorts` после сборки, чтобы не было цикла) в транзакции перехода; P-16 модуль выплат выполняет через `payout/domain.Placements` (`bridge.PayoutPlacements` над `placement/app.MarkPaid`). Проводки `payout` и остаток депозита в журнале — `bridge.PayoutLedger`; ФИО, ИНН и телефон получателя — `bridge.PayoutOrganizations` над `account/postgres`.
 
 ## Key Principles
 

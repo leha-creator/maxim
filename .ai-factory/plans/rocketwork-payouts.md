@@ -114,6 +114,22 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 11. **Q-10, лимит запросов.** 5 запросов в секунду на заказчика (`ROCKETWORK_RATE`, корзина `rocketwork:global`).
 12. **Данные `rocketworkfake`.** Комиссия — 3% суммы, не меньше 1 ₽; начальный депозит 0 (задаётся `maxim dev rocketwork deposit`); ссылка онбординга `https://rocketwork.example.test/onboarding/<id>`; чек `https://rocketwork.example.test/receipts/<payment_id>`.
 
+## Решения при реализации (aif-implement, 2026-10-24)
+
+Приняты без вопросов пользователю (рекомендуемый вариант), отражены в коде и документах.
+
+| # | Решение | Где |
+|---|---|---|
+| D-1 | Порядок коммитов сдвинут: задачи 11 и часть 12 (конфигурация, подключение) вошли в коммит задач 8–10; отдельно — исправление `.gitattributes` для данных тестов выписок (на Windows с `core.autocrlf=true` тест `clientbank` падал на CRLF, к этапу не относится) | история ветки |
+| D-2 | `admin payout list` показывает идентификатор организации, а не маскированный ИНН: ИНН читается из другого модуля, а для поиска выплаты администратору достаточно `--org` | `bootstrap/admin_payout.go` |
+| D-3 | В режиме `fake` вне `production` секрет вебхука по умолчанию — константа разработки, чтобы `compose.dev.yml` работал без настройки; для `live` секрет обязателен (не короче 16 символов) | `bootstrap/config_rocketwork.go` |
+| D-4 | `deploy/.env.example` в репозитории нет — переменные добавлены только в `.env.example` | — |
+| D-5 | P-12 ещё не реализован: для сквозного пути добавлены `placement/app.DevAccept` и порт `Placements.SetDistribution` (распределение пишется, только пока доля не задана); вызывается только `maxim dev placement accept`. Этап «Приёмка, споры и возвраты» заменит его настоящим P-12, вызывающим тот же `Payouts.Create` | `placement/app/devaccept.go` |
+| D-6 | Метрики `outbound` и ограничителя создаются один раз на процесс (`integrationMetrics`): с двумя настоящими адаптерами (MAX и ОРД) повторная регистрация паниковала | `bootstrap/integration.go` |
+| D-7 | Новый код ошибки API `service_unavailable` (`503`) с `details.reason = rocketwork_unavailable`; ограничение частоты `invite` и `refresh` — 10 запросов пользователя в час по `audit_log` (как у счетов), ответ `429` | `platform/apperr`, `payout/app/cabinet.go` |
+| D-8 | Команды `maxim admin` и `maxim dev` в тестах получают часы собранного приложения через `withCommandClock` (только внутри пакета `bootstrap`): иначе задания, поставленные командой, получали бы реальное время | `bootstrap/modules.go` |
+| D-9 | Подделка в тестовом приложении использует файл состояния, если задан `ROCKETWORK_FAKE_STATE_PATH`: так сквозной тест проверяет команды `maxim dev rocketwork` на общем состоянии | `bootstrap/harness_test.go` |
+
 ## Commit Plan
 - **Commit 1** (после задач 1–3a): `feat(payout): payout schema, domain rules and rocket work adapter contract`
 - **Commit 2** (после задач 4–7): `feat(payout): contractors, payouts, send and poll jobs, P-16`
@@ -266,7 +282,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Проверка журнала сборщиком записей: события 06 §11 присутствуют; ИНН только маскированным; ФИО, телефон, ссылки онбординга и чека, секрет вебхука не встречаются.
   - Файлы: `internal/bootstrap/payout_e2e_test.go`, при необходимости `internal/bootstrap/harness_test.go`.
 
-- [ ] **Task 14: Синхронизация документов с решениями этапа** (depends on 13)
+- [x] **Task 14: Синхронизация документов с решениями этапа** (depends on 13)
   - После подтверждения R-1 … R-18 внести их в документы:
     - 02 S-11 — задание `ensure_contractor`, «Проверить статус» (R-10); S-15 — проверки перед отправкой, коды, юрлицо командой (R-3, R-7, R-8); S-19 — `admin payout retry`, `mark-paid`, `deposit-topup` (R-9).
     - 03 §4 — P-16 одной транзакцией с проводкой (R-5); порт `Payouts` для P-12/P-13/P-15 (R-4).
