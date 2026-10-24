@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-
 func TestNewClaim(t *testing.T) {
 	now := mskTime(2026, 10, 20, 10, 0)
 	tests := []struct {

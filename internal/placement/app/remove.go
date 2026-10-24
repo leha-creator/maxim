@@ -12,9 +12,21 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
-// removable — состояния, в которых снятие по сроку удаляет пост (03 §4, особые правила).
-func removable(st domain.Status) bool {
-	return st == domain.StatusPublished || st == domain.StatusDisputed
+// removable — состояния, в которых снятие удаляет пост (03 §4, особые правила): по сроку — published
+// и disputed; при возврате (refund) — ещё refunded (R-10 этапа приёмки).
+func removable(st domain.Status, reason domain.RemovalReason) bool {
+	if st == domain.StatusPublished || st == domain.StatusDisputed {
+		return true
+	}
+	return st == domain.StatusRefunded && reason == domain.RemovalRefund
+}
+
+// removalReason — причина снятия задания: пусто — по сроку.
+func removalReason(j JobRef) domain.RemovalReason {
+	if j.Reason == "" {
+		return domain.RemovalSchedule
+	}
+	return j.Reason
 }
 
 // Remove — задание remove_placement (S-22, R-7): просмотры, намерение, удаление, P-10. Вызовы MAX —
@@ -33,7 +45,8 @@ func (s *Service) Remove(ctx context.Context, placementID uuid.UUID, j JobRef) e
 		return err
 	}
 	pub, err := s.Publications.GetByPlacement(ctx, placementID)
-	if errors.Is(err, domain.ErrNotFound) || (err == nil && !s.removalPending(p, pub)) {
+	reason := removalReason(j)
+	if errors.Is(err, domain.ErrNotFound) || (err == nil && !removalPending(p, pub, reason)) {
 		s.log.DebugContext(ctx, "remove job outdated", logx.KeyOp, op, "status", p.Status)
 		return nil
 	}
@@ -47,11 +60,16 @@ func (s *Service) Remove(ctx context.Context, placementID uuid.UUID, j JobRef) e
 	chatID := offers[p.ChannelID].MaxChatID
 	now := s.Clock.Now()
 	s.log.InfoContext(ctx, "placement removal started", logx.KeyOp, op, KeyChannelID, p.ChannelID, "max_message_id", pub.MaxMessageID,
-		"attempt", j.Attempts+1, "delay", now.Sub(*p.RemoveAt).String())
+		"attempt", j.Attempts+1, "delay", now.Sub(*p.RemoveAt).String(), "removal_reason", reason)
 
 	// Шаг 1: итоговые просмотры.
 	msg, err := s.Publisher.GetMessage(ctx, pub.MaxMessageID)
 	switch {
+	case errors.Is(err, domain.ErrMessageNotFound) && pub.Live() && reason != domain.RemovalSchedule:
+		// ПРЕДПОЛОЖЕНИЕ (Q-03): снятие при возврате или по решению администратора, а поста уже нет —
+		// снятие подтверждается без нарушения: спор уже открыт или решён.
+		s.log.InfoContext(ctx, "publication already gone", logx.KeyOp, op, "removal_reason", reason)
+		return s.recordRemoved(ctx, op, placementID, nil, j)
 	case errors.Is(err, domain.ErrMessageNotFound) && pub.Live():
 		// Поста нет, а мы его не удаляли — досрочное удаление (S-26).
 		return s.reportViolation(ctx, op, domain.Violation{PlacementID: p.ID, Kind: domain.ViolationRemovedEarly,
@@ -70,7 +88,7 @@ func (s *Service) Remove(ctx context.Context, placementID uuid.UUID, j JobRef) e
 			return err
 		}
 		if pub.RemovedAt == nil {
-			pub.MarkRemoving(s.Clock.Now())
+			pub.MarkRemovingFor(reason, s.Clock.Now())
 			return s.Publications.Update(ctx, pub)
 		}
 		return nil
@@ -85,16 +103,16 @@ func (s *Service) Remove(ctx context.Context, placementID uuid.UUID, j JobRef) e
 	return s.recordRemoved(ctx, op, placementID, msg.Views, j)
 }
 
-// removalPending — снятие по сроку ещё нужно: публикация в канале или намерение записано, а
-// снятие не подтверждено; размещение в published или disputed.
-func (s *Service) removalPending(p domain.Placement, pub domain.Publication) bool {
-	if !removable(p.Status) {
+// removalPending — снятие ещё нужно: публикация в канале или намерение с той же причиной записано,
+// а снятие не подтверждено (removed_at размещения пуст); состояние — removable.
+func removalPending(p domain.Placement, pub domain.Publication, reason domain.RemovalReason) bool {
+	if !removable(p.Status, reason) {
 		return false
 	}
 	if pub.Live() {
 		return true
 	}
-	return pub.RemovalReason == domain.RemovalSchedule && p.Status == domain.StatusPublished
+	return pub.RemovalReason == reason && p.RemovedAt == nil
 }
 
 // removeFailed — удаление не удалось (R-7): намерение откатывается, публикация removal_overdue,
@@ -172,7 +190,7 @@ func (s *Service) recordRemoved(ctx context.Context, op string, placementID uuid
 		}
 		now := s.Clock.Now()
 		if pub.RemovedAt == nil {
-			pub.MarkRemoving(now)
+			pub.MarkRemovingFor(removalReason(j), now)
 		}
 		removedAt := *pub.RemovedAt
 		pub.MarkRemoved(now)
@@ -183,8 +201,20 @@ func (s *Service) recordRemoved(ctx context.Context, op string, placementID uuid
 			return err
 		}
 		if p.Status != domain.StatusPublished {
+			// I-4: в disputed и refunded — время снятия и просмотры без перехода.
+			if p.RemovedAt == nil {
+				lv := p.LockVersion
+				p.RemovedAt, p.UpdatedAt, p.LockVersion = &removedAt, now, lv+1
+				if views != nil {
+					v := *views
+					p.FinalViews = &v
+				}
+				if err := s.Placements.UpdateIfStatus(ctx, p, p.Status, lv); err != nil {
+					return err
+				}
+			}
 			s.log.InfoContext(ctx, "publication removed, placement state kept", logx.KeyOp, op, "status", p.Status,
-				"publication_id", pub.ID)
+				"publication_id", pub.ID, "removal_reason", pub.RemovalReason, "final_views", views)
 			return nil
 		}
 		change, err := p.Remove(views, removedAt, s.Config.Control)

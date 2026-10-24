@@ -139,7 +139,7 @@ Rationale: план реализует этап целиком: приёмку �
 
 ### Phase 2: Сценарии
 
-- [ ] **Task 4: Приёмка P-12, P-13 и общая функция распределения (R-4 … R-7, R-16)** (depends on 3)
+- [x] **Task 4: Приёмка P-12, P-13 и общая функция распределения (R-4 … R-7, R-16)** (depends on 3)
   - `internal/placement/domain/ports.go`: `Holds.Settle(ctx, placementID, bloggerOrgID, d, by Settler)`; `placementtest.Holds` и `bridge.LedgerHolds` — актор в `ledgerdomain.ActorType` (R-6).
   - `internal/placement/app/accept.go`: `settleAccepted(ctx, op, o, p, change, d, src, by)` (R-5); `AcceptPlacement(ctx, orgID, userID, id, idemKey)` — P-12, `audit_log` `placement.accept_work`, повтор по ключу; `autoAccept(ctx, op, p, jobID)` — P-13.
   - `internal/placement/app/timers.go`: `TimerClaim` → `autoAccept`; убрать `errAutoAcceptancePending`; `transition.go` — `toJob` без бесконечных попыток T-05.
@@ -149,14 +149,14 @@ Rationale: план реализует этап целиком: приёмку �
   - Метрика `maxim_placements_accepted_total{transition}` — `Observer.Accepted(code)` и `placement/postgres.ControlMetrics` (I-6).
   - Файлы: `internal/placement/app/{accept.go,accept_test.go,timers.go,timers_test.go,devaccept.go,transition.go,service.go}`, `internal/placement/domain/ports.go`, `internal/placement/placementtest/placementtest.go`, `internal/placement/postgres/metrics.go`, `internal/bootstrap/bridge/ledger.go`, `internal/bootstrap/billing_e2e_test.go` (I-2).
 
-- [ ] **Task 5: Претензия рекламодателя P-14 (R-1 … R-4, R-15, R-16)** (depends on 4)
+- [x] **Task 5: Претензия рекламодателя P-14 (R-1 … R-4, R-15, R-16)** (depends on 4)
   - `internal/placement/app/claims.go`: `CreateClaim(ctx, orgID, userID, id, reason, text, idemKey)` — в транзакции: претензия, спор (`NewClaimDispute`, предложение R-3), P-14, `audit_log` `placement.claim`; после — оповещение `placement_disputed`, метрика.
   - `internal/placement/app/orders.go`, `blogger.go`: претензия в `PlacementView` (`Claims.ListByPlacements`), действия R-15.
   - Журнал: INFO `placement claim filed` (`claim_id`, `reason`), INFO `placement dispute opened` (`opened_by=advertiser`); WARN отказ (`claim_window_closed`, `claim_exists`). Текст претензии не пишется.
   - Тесты: претензия из `published` и из `removed`; после срока — `claim_window_closed`; вторая — `claim_exists`; при открытом споре системы — `invalid_transition`; предложение доли для `top_violated`; уведомления обоим и администратору; повтор с ключом.
   - Файлы: `internal/placement/app/{claims.go,claims_test.go,orders.go,blogger.go}`.
 
-- [ ] **Task 6: Решение администратора P-15, открытие спора и удаление поста (R-8 … R-14, R-16)** (depends on 4)
+- [x] **Task 6: Решение администратора P-15, открытие спора и удаление поста (R-8 … R-14, R-16)** (depends on 4)
   - `internal/placement/app/disputes.go`:
     - `ResolveDispute(ctx, ResolveInput{PlacementID, Resolution, Share *int, Comment, AdminID})` — R-8: доля, `Dispute.Resolve`, распределение, `accepted` → `settleAccepted` с актором `admin`; `refunded` → `SetDistribution` (доля 0) и `ReleaseHold`; живая публикация при `full_refund` — снятие «сейчас» с причиной `refund` (R-10); рейтинг (R-13); `audit_log` `dispute.resolved`; после — `Alerts.Resolve` для `placement_disputed` и `dispute_overdue`.
     - `OpenDisputeByAdmin(ctx, placementID, adminID, reason)` — R-12.
@@ -168,7 +168,7 @@ Rationale: план реализует этап целиком: приёмку �
   - Тесты (`dbtest`, `placementtest`): `full_payout` (выплата на всю цену, рейтинг без изменений); `proportional` с предложением 7500 (пример 03 §7: выплата 7 500,00, комиссия 1 125,00, возврат 2 875,00); `proportional` без предложения и без `--share` — `share_required`; `full_refund` — `refunded`, удержание снято, рейтинг −10, снятие поста поставлено с причиной `refund`; `accepted` при живой публикации — `publication_live`; повторное решение — `dispute_resolved`; T-06 после решения не поднимает оповещение; `open` из `published` и `removed`; `remove-post` из `published` открывает спор.
   - Файлы: `internal/placement/app/{disputes.go,disputes_test.go,service.go}`.
 
-- [ ] **Task 7: Снятие поста при возврате и по решению администратора (R-10, R-11)** (depends on 2)
+- [x] **Task 7: Снятие поста при возврате и по решению администратора (R-10, R-11)** (depends on 2)
   - `internal/placement/app/remove.go`: `removable` — ещё `refunded` с живой публикацией; причина снятия из `PlacementPayload.Reason` (по умолчанию `schedule`); при `refund`/`admin` пропажа поста до удаления — снятие без нарушения (допущение 3); P-10 только из `published` (как сейчас); в `disputed` и `refunded` — `removed_at` и `final_views` размещения без перехода (I-4).
   - Журнал: INFO `placement removal started` (`removal_reason`); INFO `publication removed, placement state kept`.
   - Тесты (`maxfake`/`placementtest` как в `remove_test.go`): удаление в `refunded` — публикация `refund`, состояние не меняется; `admin` в `disputed` до `remove_at`; пост уже удалён — без нарушения.
@@ -219,6 +219,15 @@ Rationale: план реализует этап целиком: приёмку �
   - Журнал: не применимо.
   - Файлы: `docs/02-scenarios.md`, `docs/03-placement.md`, `docs/04-domain-model.md`, `docs/06-finance-legal.md`, `docs/07-non-functional.md`, `docs/launch/legal-documents.md`, `docs/open-questions.md`, `README.md` (бэкенд).
 <!-- Commit checkpoint: tasks 11-12 -->
+
+## Решения при реализации
+
+- `settleAccepted` из R-5 реализован как `placement/app.settle`: общий для P-12, P-13, P-15 и `DevAccept`; для `refunded` он только записывает распределение и переход (удержание снимает `ReleaseHold`).
+- Сначала проверяется допустимость перехода, затем I-02: ошибка пользователя (`accept` из `published`) — обычный `409 invalid_transition` без ERROR; `publication_live` и ERROR `placement invariant violated` — только при рассогласовании (`removed` с живой публикацией) и для P-15 с исходом `accepted`.
+- `hold_release` при `full_refund` получает причину `full_refund` (код исхода, как `reason_code` истории P-15), а не `dispute_full_refund` из R-6.
+- Претензия: `claim_exists` проверяется до правил перехода, чтобы повторная претензия без ключа получала понятную причину; при споре системы без претензии — `invalid_transition`.
+- Снятие с причиной `refund`/`admin` подтверждается и в `disputed`/`refunded` (I-4); незавершённое намерение определяется по `placement.removed_at IS NULL`. Причина передаётся заданию через `PlacementPayload.Reason` → `app.JobRef.Reason`.
+- Порт рейтинга: `bridge.PlacementChannelRatings` поверх `channel/app.Service.LowerRating`; штрафы по умолчанию задаёт конфигурация (`WithDefaults` их не подставляет, 0 — без санкции).
 
 ## Критерии готовности этапа
 

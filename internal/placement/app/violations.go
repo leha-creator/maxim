@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/leha-creator/maxim/internal/placement/domain"
-	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/ids"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
@@ -100,11 +99,7 @@ func (s *Service) reportViolation(ctx context.Context, op string, v domain.Viola
 		s.Metrics.Violation(v.Kind, v.Source)
 	}
 	if opened != nil {
-		s.raise(ctx, op, alert.Alert{
-			Reason: "placement_disputed", ObjectKey: v.PlacementID.String(), Level: alert.LevelWarn,
-			Summary: "Открыт спор по нарушению размещения",
-			Fields:  map[string]any{"placement_id": v.PlacementID, "reason": opened.Reason, "deadline_at": opened.DeadlineAt},
-		})
+		s.disputeOpened(ctx, op, *opened, "Открыт спор по нарушению размещения")
 	}
 	return nil
 }

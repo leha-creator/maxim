@@ -20,6 +20,8 @@ type JobRef struct {
 	ID uuid.UUID
 	// Attempts — сколько раз задание уже завершалось ошибкой.
 	Attempts int
+	// Reason — причина снятия из полезной нагрузки remove_placement; пусто — по сроку.
+	Reason domain.RemovalReason
 }
 
 // publishLookbackBefore — насколько раньше publish_at искать свой пост после неизвестного исхода.

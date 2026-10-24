@@ -126,4 +126,3 @@ func (r *Violations) ListByPlacement(ctx context.Context, placementID uuid.UUID)
 	}
 	return out, nil
 }
-

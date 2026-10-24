@@ -9,7 +9,6 @@ import (
 
 	"github.com/leha-creator/maxim/internal/placement/domain"
 	"github.com/leha-creator/maxim/internal/platform/alert"
-	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
@@ -34,9 +33,7 @@ func (s *Service) HandleTimer(ctx context.Context, payload domain.TimerPayload, 
 				"status", p0.Status)
 			return nil
 		}
-		// R-14: P-13 — этап «Приёмка, споры и возвраты»; таймер ждёт, повторяясь раз в час.
-		s.log.DebugContext(ctx, "auto acceptance not implemented yet", logx.KeyOp, op, KeyPlacementID, p0.ID)
-		return job.Retry(errAutoAcceptancePending, time.Hour)
+		return s.autoAccept(ctx, op, p0, jobID)
 	case domain.TimerDispute:
 		return s.disputeDeadline(ctx, op, p0)
 	}
@@ -88,9 +85,6 @@ func (s *Service) OverdueScheduled(ctx context.Context, olderThan time.Time) ([]
 func (s *Service) CountByStatus(ctx context.Context) (map[domain.Status]int, error) {
 	return s.Placements.CountByStatus(ctx)
 }
-
-// errAutoAcceptancePending — автоприёмка (P-13) появится с этапом приёмки (R-14).
-var errAutoAcceptancePending = errors.New("placement: auto acceptance is not implemented yet")
 
 // disputeDeadline — T-06 (R-11): спор не решён к сроку — оповещение старшему администратору,
 // состояние не меняется.

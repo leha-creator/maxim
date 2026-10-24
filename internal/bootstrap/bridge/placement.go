@@ -22,6 +22,20 @@ import (
 
 // ---------------------------------------------------------------- placement ← channel
 
+// PlacementChannelRatings — placement/domain.ChannelRatings поверх сервиса модуля каналов (санкция
+// по решению спора, A-08).
+type PlacementChannelRatings struct{ Svc *channelapp.Service }
+
+var _ domain.ChannelRatings = PlacementChannelRatings{}
+
+func (b PlacementChannelRatings) Lower(ctx context.Context, channelID uuid.UUID, points int) (int, int, error) {
+	from, to, err := b.Svc.LowerRating(ctx, channelID, points)
+	if channelapp.IsNotFound(err) {
+		return 0, 0, domain.ErrNotFound
+	}
+	return from, to, err
+}
+
 // PlacementChannels — placement/domain.Channels поверх сервиса модуля каналов.
 type PlacementChannels struct{ Svc *channelapp.Service }
 

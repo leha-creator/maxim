@@ -99,8 +99,11 @@ type Deps struct {
 	Publications domain.Publications
 	Violations   domain.Violations
 	Disputes     domain.Disputes
-	Publisher    domain.ChannelPublisher
-	Content      domain.PublicationContent
+	// Claims и Ratings — претензии и рейтинг канала (этап «Приёмка, споры и возвраты»).
+	Claims    domain.Claims
+	Ratings   domain.ChannelRatings
+	Publisher domain.ChannelPublisher
+	Content   domain.PublicationContent
 	// Alerts — оповещения администратору (07 §3); nil — только журнал.
 	Alerts Alerter
 	// Metrics — метрики публикации и контроля (07 §5.5); nil — без метрик.
@@ -140,8 +143,11 @@ func ruleError(err error) error {
 		ie *domain.IncompleteError
 		cc *domain.CartChangedError
 		ib *domain.InsufficientBalanceError
+		te *domain.TransitionError
 	)
 	switch {
+	case errors.As(err, &te):
+		return apperr.InvalidTransition(string(te.Code), string(te.Status)).WithDetail("reason", te.Reason).WithCause(err)
 	case errors.As(err, &re):
 		return apperr.Validation(re.Field, re.Reason).WithCause(err)
 	case errors.As(err, &ce):
@@ -232,6 +238,8 @@ func uuidPtr(id uuid.UUID) *uuid.UUID { return &id }
 // Alerter — оповещения администратору (07 §3).
 type Alerter interface {
 	Raise(ctx context.Context, a alert.Alert) error
+	// Resolve закрывает оповещение по причине и объекту (спор решён).
+	Resolve(ctx context.Context, reason, objectKey string) error
 }
 
 // Observer — метрики публикации и контроля (07 §5.5, R-15).
@@ -242,6 +250,12 @@ type Observer interface {
 	RemoveDelay(d time.Duration)
 	// Violation — найдено нарушение.
 	Violation(kind domain.ViolationKind, source domain.ViolationSource)
+	// Accepted — размещение принято (P-12, P-13, P-15 с исходом accepted; R-16 этапа приёмки).
+	Accepted(code domain.TransitionCode)
+	// DisputeOpened — открыт спор: кто открыл и причина.
+	DisputeOpened(openedBy domain.OpenedBy, reason string)
+	// DisputeResolved — спор решён.
+	DisputeResolved(res domain.Resolution)
 }
 
 // NopObserver — метрики не собираются.
@@ -250,6 +264,9 @@ type NopObserver struct{}
 func (NopObserver) PublishDelay(time.Duration)                             {}
 func (NopObserver) RemoveDelay(time.Duration)                              {}
 func (NopObserver) Violation(domain.ViolationKind, domain.ViolationSource) {}
+func (NopObserver) Accepted(domain.TransitionCode)                         {}
+func (NopObserver) DisputeOpened(domain.OpenedBy, string)                  {}
+func (NopObserver) DisputeResolved(domain.Resolution)                      {}
 
 // raise поднимает оповещение; ошибка оповещения не отменяет сценарий — она в журнале.
 func (s *Service) raise(ctx context.Context, op string, a alert.Alert) {
@@ -258,5 +275,15 @@ func (s *Service) raise(ctx context.Context, op string, a alert.Alert) {
 	}
 	if err := s.Alerts.Raise(ctx, a); err != nil {
 		s.log.ErrorContext(ctx, "alert raise failed", logx.KeyOp, op, "reason", a.Reason, logx.KeyError, err.Error())
+	}
+}
+
+// resolveAlert закрывает оповещение; ошибка не отменяет сценарий — она в журнале.
+func (s *Service) resolveAlert(ctx context.Context, op, reason, objectKey string) {
+	if s.Alerts == nil {
+		return
+	}
+	if err := s.Alerts.Resolve(ctx, reason, objectKey); err != nil {
+		s.log.ErrorContext(ctx, "alert resolve failed", logx.KeyOp, op, "reason", reason, logx.KeyError, err.Error())
 	}
 }

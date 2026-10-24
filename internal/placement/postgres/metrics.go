@@ -43,6 +43,9 @@ type ControlMetrics struct {
 	publishDelay prometheus.Histogram
 	removeDelay  prometheus.Histogram
 	violations   *prometheus.CounterVec
+	accepted     *prometheus.CounterVec
+	opened       *prometheus.CounterVec
+	resolved     *prometheus.CounterVec
 }
 
 // delayBuckets — от секунды до часа: требование точности — 10 с (07 §2).
@@ -57,8 +60,14 @@ func NewControlMetrics(reg interface{ MustRegister(...prometheus.Collector) }) *
 			Help: "Removal delay relative to remove_at.", Buckets: delayBuckets}),
 		violations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "maxim_placement_violations_total",
 			Help: "Placement violations found by control."}, []string{"kind", "source"}),
+		accepted: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "maxim_placements_accepted_total",
+			Help: "Placements accepted, by transition (P-12, P-13, P-15)."}, []string{"transition"}),
+		opened: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "maxim_disputes_opened_total",
+			Help: "Placement disputes opened."}, []string{"opened_by", "reason"}),
+		resolved: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "maxim_disputes_resolved_total",
+			Help: "Placement disputes resolved."}, []string{"resolution"}),
 	}
-	reg.MustRegister(m.publishDelay, m.removeDelay, m.violations)
+	reg.MustRegister(m.publishDelay, m.removeDelay, m.violations, m.accepted, m.opened, m.resolved)
 	return m
 }
 
@@ -67,4 +76,16 @@ func (m *ControlMetrics) RemoveDelay(d time.Duration)  { m.removeDelay.Observe(m
 
 func (m *ControlMetrics) Violation(kind domain.ViolationKind, source domain.ViolationSource) {
 	m.violations.WithLabelValues(string(kind), string(source)).Inc()
+}
+
+func (m *ControlMetrics) Accepted(code domain.TransitionCode) {
+	m.accepted.WithLabelValues(string(code)).Inc()
+}
+
+func (m *ControlMetrics) DisputeOpened(openedBy domain.OpenedBy, reason string) {
+	m.opened.WithLabelValues(string(openedBy), reason).Inc()
+}
+
+func (m *ControlMetrics) DisputeResolved(res domain.Resolution) {
+	m.resolved.WithLabelValues(string(res)).Inc()
 }

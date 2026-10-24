@@ -83,7 +83,7 @@ func placementHandler(fn func(ctx context.Context, id uuid.UUID, j app.JobRef) e
 		if err := decode(r, &p); err != nil {
 			return err
 		}
-		return fn(ctx, p.PlacementID, app.JobRef{ID: r.ID, Attempts: r.Attempts})
+		return fn(ctx, p.PlacementID, app.JobRef{ID: r.ID, Attempts: r.Attempts, Reason: p.Reason})
 	}
 }
 

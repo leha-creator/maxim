@@ -17,6 +17,8 @@ type PlacementView struct {
 	// Publication и Dispute — пост в канале и спор, если есть (R-18 этапа «Автопостинг и контроль»).
 	Publication *domain.Publication
 	Dispute     *domain.Dispute
+	// Claim — претензия рекламодателя, если подана (R-15 этапа приёмки).
+	Claim *domain.Claim
 }
 
 // OrderSummary — строка списка заказов: название кампании и число размещений по состояниям.
@@ -128,6 +130,12 @@ func (s *Service) placementViews(ctx context.Context, ps []domain.Placement) ([]
 	if err != nil {
 		return nil, err
 	}
+	claims := map[uuid.UUID]domain.Claim{}
+	if s.Claims != nil {
+		if claims, err = s.Claims.ListByPlacements(ctx, ids); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]PlacementView, 0, len(ps))
 	for _, p := range ps {
 		ref := offers[p.ChannelID].Ref
@@ -138,7 +146,11 @@ func (s *Service) placementViews(ctx context.Context, ps []domain.Placement) ([]
 		if h == nil {
 			h = []domain.HistoryEntry{}
 		}
-		view := PlacementView{Placement: p, Channel: ref, History: h, Actions: domain.AdvertiserActions(&p, false, s.Clock.Now())}
+		c, hasClaim := claims[p.ID]
+		view := PlacementView{Placement: p, Channel: ref, History: h, Actions: domain.AdvertiserActions(&p, hasClaim, s.Clock.Now())}
+		if hasClaim {
+			view.Claim = &c
+		}
 		if pub, ok := pubs[p.ID]; ok {
 			view.Publication = &pub
 		}
