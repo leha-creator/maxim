@@ -141,7 +141,7 @@ func (h *Handlers) ListCatalogChannels(ctx context.Context, req api.ListCatalogC
 	})
 	h.logger(ctx).Debug("catalog filtered", "op", "Catalog.List", "q", p.Q, "category_id", p.CategoryId,
 		"format_id", p.FormatId, "sort", sortBy, "found", len(found))
-	pg, next := page(found, p.Limit, p.Cursor)
+	pg, next, total := page(found, p.Limit, p.Cursor)
 	items := []api.CatalogChannel{}
 	for _, c := range pg {
 		it := catalogChannel(tx, o.ID, c)
@@ -150,7 +150,7 @@ func (h *Handlers) ListCatalogChannels(ctx context.Context, req api.ListCatalogC
 		}
 		items = append(items, it)
 	}
-	return api.ListCatalogChannels200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListCatalogChannels200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) GetCatalogChannel(ctx context.Context, req api.GetCatalogChannelRequestObject) (api.GetCatalogChannelResponseObject, error) {
@@ -178,16 +178,22 @@ func (h *Handlers) GetCatalogChannel(ctx context.Context, req api.GetCatalogChan
 		}
 		out.AnomalyFlags = &flags
 	}
-	// Выдуманная история: плавный рост к текущему числу подписчиков.
+	out.MetricsHistory = metricsHistory(tx, c)
+	return out, nil
+}
+
+// metricsHistory — выдуманная история за 30 суток: плавный рост к текущему числу подписчиков.
+func metricsHistory(tx *store.Tx, c *store.Channel) []api.ChannelMetricsPoint {
+	out := []api.ChannelMetricsPoint{}
 	for i := 29; i >= 0; i-- {
 		d := tx.Now.AddDate(0, 0, -i)
 		subs := c.Subscribers - i*c.Subscribers/200
-		out.MetricsHistory = append(out.MetricsHistory, api.ChannelMetricsPoint{
+		out = append(out, api.ChannelMetricsPoint{
 			Date:             openapi_types.Date{Time: time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)},
 			SubscribersCount: subs, AvgViews: ptr(c.AvgViews - i*c.AvgViews/300),
 		})
 	}
-	return out, nil
+	return out
 }
 
 func unavailability(c *store.Channel) []api.Unavailability {

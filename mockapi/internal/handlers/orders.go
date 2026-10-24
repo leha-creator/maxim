@@ -47,6 +47,7 @@ func advertiserPlacement(tx *store.Tx, p *store.Placement) api.AdvertiserPlaceme
 	if p.Claim != nil {
 		out.Claim = &api.PlacementClaim{Reason: api.ClaimReason(p.Claim.Reason), Text: p.Claim.Text, CreatedAt: p.Claim.CreatedAt}
 	}
+	out.Dispute = disputeSummary(p)
 	for _, e := range p.History {
 		h := api.PlacementHistoryEntry{Transition: e.Transition, ToStatus: api.PlacementStatus(e.To),
 			ActorType: api.PlacementHistoryEntryActorType(e.ActorType), ReasonCode: strPtr(e.ReasonCode), CreatedAt: e.CreatedAt}
@@ -120,12 +121,12 @@ func (h *Handlers) ListOrders(ctx context.Context, req api.ListOrdersRequestObje
 		}
 	}
 	mine = newestFirst(mine, func(x *store.Order) time.Time { return x.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.OrderSummary{}
 	for _, x := range pg {
 		items = append(items, orderSummary(tx, x))
 	}
-	return api.ListOrders200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListOrders200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) GetOrder(ctx context.Context, req api.GetOrderRequestObject) (api.GetOrderResponseObject, error) {
@@ -195,9 +196,23 @@ func (h *Handlers) GetOrderReport(ctx context.Context, req api.GetOrderReportReq
 	out := api.GetOrderReport200JSONResponse{OrderId: x.ID, OrderNumber: x.Number, CampaignName: s.CampaignName, Rows: []api.OrderReportRow{}}
 	for _, p := range tx.OrderPlacements(x.ID) {
 		ch, _ := tx.Channel(p.ChannelID)
-		out.Rows = append(out.Rows, api.OrderReportRow{PlacementId: p.ID, Channel: channelRef(ch), Status: api.PlacementStatus(p.Status),
+		row := api.OrderReportRow{PlacementId: p.ID, Channel: channelRef(ch), Status: api.PlacementStatus(p.Status),
 			PublishedAt: p.PublishedAt, RemovedAt: p.RemovedAt, Views: p.Views, PublicationUrl: strPtr(p.PublicationURL),
-			UtmCampaign: ptr(fmt.Sprintf("order_%d", x.Number))}) // A-21
+			UtmCampaign: ptr(fmt.Sprintf("order_%d", x.Number))} // A-21
+		// Итоги — сумма строк: фронт больше не считает сумму строки сам.
+		switch {
+		case p.Status == "accepted" || p.Status == "paid":
+			refund := int64(0)
+			if p.RefundAmount != nil {
+				refund = *p.RefundAmount
+			}
+			row.SpentAmount, row.RefundedAmount = p.TotalAmount-refund, refund
+		case p.Status == "refunded" || (store.IsTerminal(p.Status) && !p.HoldActive):
+			row.RefundedAmount = p.TotalAmount
+		case p.HoldActive:
+			row.HeldAmount = p.TotalAmount // в работе или в споре
+		}
+		out.Rows = append(out.Rows, row)
 		out.Totals.Placements++
 		if p.PublishedAt != nil {
 			out.Totals.Published++
@@ -205,18 +220,11 @@ func (h *Handlers) GetOrderReport(ctx context.Context, req api.GetOrderReportReq
 		if p.Views != nil {
 			out.Totals.Views += *p.Views
 		}
-		switch {
-		case p.Status == "accepted" || p.Status == "paid":
-			refund := int64(0)
-			if p.RefundAmount != nil {
-				refund = *p.RefundAmount
-			}
-			out.Totals.SpentAmount += p.TotalAmount - refund
-			out.Totals.RefundedAmount += refund
-		case p.Status == "refunded" || (store.IsTerminal(p.Status) && !p.HoldActive):
-			out.Totals.RefundedAmount += p.TotalAmount
-		}
+		out.Totals.SpentAmount += row.SpentAmount
+		out.Totals.RefundedAmount += row.RefundedAmount
 	}
+	h.logger(ctx).Debug("[FIX] order report built", "op", "Order.Report", "order_id", x.ID, "rows", len(out.Rows),
+		"spent_amount", out.Totals.SpentAmount, "refunded_amount", out.Totals.RefundedAmount)
 	return out, nil
 }
 
@@ -302,13 +310,13 @@ func (h *Handlers) ListBalanceTransactions(ctx context.Context, req api.ListBala
 		}
 	}
 	mine = newestFirst(mine, func(e *store.LedgerEntry) time.Time { return e.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.BalanceTransaction{}
 	for _, e := range pg {
 		items = append(items, api.BalanceTransaction{Id: e.ID, Kind: api.BalanceTransactionKind(e.Kind), Amount: e.Amount,
 			Description: e.Description, OrderId: e.OrderID, PlacementId: e.PlacementID, InvoiceId: e.InvoiceID, CreatedAt: e.CreatedAt})
 	}
-	return api.ListBalanceTransactions200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListBalanceTransactions200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func invoice(i *store.Invoice) api.Invoice {
@@ -331,12 +339,12 @@ func (h *Handlers) ListInvoices(ctx context.Context, req api.ListInvoicesRequest
 		}
 	}
 	mine = newestFirst(mine, func(i *store.Invoice) time.Time { return i.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.Invoice{}
 	for _, i := range pg {
 		items = append(items, invoice(i))
 	}
-	return api.ListInvoices200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListInvoices200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) CreateInvoice(ctx context.Context, req api.CreateInvoiceRequestObject) (api.CreateInvoiceResponseObject, error) {

@@ -137,6 +137,22 @@ func Validation(field, message string) *Error {
 		Details: map[string]any{"field": field}}
 }
 
+// Invalid — 422 с полем и кодом причины в details.reason, как у бэкенда.
+func Invalid(field, reason, message string) *Error {
+	e := Validation(field, message)
+	e.Details["reason"] = reason
+	return e
+}
+
+// ConflictReason — 409 conflict с кодом причины в details.reason.
+func ConflictReason(reason, message string, details map[string]any) *Error {
+	if details == nil {
+		details = map[string]any{}
+	}
+	details["reason"] = reason
+	return Conflict("conflict", message, details)
+}
+
 func Conflict(code, message string, details map[string]any) *Error {
 	return &Error{Status: http.StatusConflict, Code: code, Message: message, Details: details}
 }

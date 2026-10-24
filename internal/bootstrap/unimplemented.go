@@ -226,6 +226,10 @@ func (unimplemented) ListNotifications(context.Context, apigen.ListNotifications
 	return nil, apperr.NotImplemented("listNotifications")
 }
 
+func (unimplemented) MarkAllNotificationsRead(context.Context, apigen.MarkAllNotificationsReadRequestObject) (apigen.MarkAllNotificationsReadResponseObject, error) {
+	return nil, apperr.NotImplemented("markAllNotificationsRead")
+}
+
 func (unimplemented) MarkNotificationRead(context.Context, apigen.MarkNotificationReadRequestObject) (apigen.MarkNotificationReadResponseObject, error) {
 	return nil, apperr.NotImplemented("markNotificationRead")
 }

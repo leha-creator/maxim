@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,7 +49,7 @@ func (tx *Tx) Checkout(org *Organization, userID uuid.UUID, c *Campaign) (*Order
 	if c.Status != "draft" {
 		return nil, Conflict("conflict", "campaign is already ordered", map[string]any{"status": c.Status})
 	}
-	var missing []string
+	missing := []string{} // в ответе — [], а не null
 	if c.DateFrom == nil || c.DateTo == nil {
 		missing = append(missing, "date_from", "date_to")
 	}
@@ -56,15 +57,18 @@ func (tx *Tx) Checkout(org *Organization, userID uuid.UUID, c *Campaign) (*Order
 		missing = append(missing, "time_from", "time_to")
 	}
 	body, problems := CheckDraft(c.Post)
+	if problems == nil {
+		problems = []Problem{}
+	}
 	if len(missing) > 0 || len(problems) > 0 {
-		log.Warn("checkout rejected: campaign incomplete", "missing", missing, "problems", len(problems))
+		log.Warn("[FIX] checkout rejected: campaign incomplete", "missing", missing, "problems", len(problems))
 		return nil, Conflict("campaign_incomplete", "campaign is not ready for payment",
 			map[string]any{"missing_fields": missing, "post_problems": problems})
 	}
 	windowStart, windowEnd := WindowFor(*c.DateFrom, *c.DateTo)
 	if !windowEnd.After(tx.Now.Add(time.Hour)) {
 		return nil, Conflict("campaign_incomplete", "campaign date range is in the past",
-			map[string]any{"missing_fields": []string{"date_to"}})
+			map[string]any{"missing_fields": []string{"date_to"}, "post_problems": []Problem{}})
 	}
 	lines := tx.Cart(org.ID)
 	if len(lines) == 0 {
@@ -132,13 +136,23 @@ func (tx *Tx) NewPostVersion(org *Organization, o *Order, c *Campaign) error {
 		return Conflict("conflict", "order is finished", map[string]any{"status": o.Status})
 	}
 	if cur := o.CurrentVersion(); cur.Status == "pending_moderation" || cur.Status == "approved" {
-		return Conflict("conflict", "current post version is still being processed", map[string]any{"post_version_status": cur.Status})
+		log.Warn("[FIX] post version rejected", "reason", "post_version_in_progress", "post_version_status", cur.Status)
+		return ConflictReason("post_version_in_progress", "current post version is still being processed",
+			map[string]any{"post_version_status": cur.Status})
+	}
+	ps := tx.OrderPlacements(o.ID)
+	pending := false
+	for _, p := range ps {
+		pending = pending || p.Status == "created" || Allowed("P-11", p.Status)
+	}
+	if !pending {
+		log.Warn("[FIX] post version rejected", "reason", "nothing_to_update")
+		return ConflictReason("nothing_to_update", "order has no placements before publication", nil)
 	}
 	body, problems := CheckDraft(c.Post)
 	if len(problems) > 0 {
 		return Conflict("campaign_incomplete", "post does not pass automatic checks", map[string]any{"post_problems": problems})
 	}
-	ps := tx.OrderPlacements(o.ID)
 	var need int64
 	for _, p := range ps {
 		if (p.Status == "created" || Allowed("P-11", p.Status)) && !p.HoldActive {
@@ -269,6 +283,8 @@ func (tx *Tx) ClaimPlacement(p *Placement, reason, text string) error {
 		return err
 	}
 	p.Claim = &Claim{Reason: reason, Text: text, CreatedAt: tx.Now}
+	p.Dispute = &Dispute{Reason: reason, OpenedByType: "advertiser", OpenedAt: tx.Now, DeadlineAt: tx.Now.Add(DisputeDeadline)}
+	tx.log.Info("[FIX] dispute opened", "op", "Placement.Claim", "placement_id", p.ID, "reason", reason)
 	return nil
 }
 
@@ -280,8 +296,15 @@ func (tx *Tx) BloggerAccept(org *Organization, p *Placement) error {
 	}
 	if org.LegalType != "legal_entity" {
 		if rw := tx.D.Rocketwork[org.ID]; rw == nil || rw.Status != "active" {
-			return Conflict("conflict", "rocketwork contractor is not active", map[string]any{"hint": "POST /blogger/rocketwork/invite"})
+			tx.log.Warn("[FIX] blogger accept rejected", "op", "Placement.BloggerAccept", "placement_id", p.ID, "reason", "contractor_inactive")
+			return ConflictReason("contractor_inactive", "rocketwork contractor is not active",
+				map[string]any{"hint": "POST /blogger/rocketwork/invite"})
 		}
+	}
+	if ch, err := tx.Channel(p.ChannelID); err == nil && ch.Status != "active" {
+		tx.log.Warn("[FIX] blogger accept rejected", "op", "Placement.BloggerAccept", "placement_id", p.ID,
+			"reason", "channel_not_active", "channel_status", ch.Status)
+		return ConflictReason("channel_not_active", "channel is not active", map[string]any{"status": ch.Status})
 	}
 	dl := minTime(tx.Now.Add(24*time.Hour), p.WindowEnd) // T-13
 	p.ScheduleDeadlineAt = &dl
@@ -293,18 +316,18 @@ func (tx *Tx) BloggerDecline(p *Placement) error { return tx.apply(p, "P-04", "d
 // checkPublishAt проверяет время публикации: I-06, I-07, A-11, D-17.
 func (tx *Tx) checkPublishAt(p *Placement, at time.Time, now bool) error {
 	if at.Before(p.WindowStart) || at.After(p.WindowEnd) {
-		return Validation("publish_at", "publish_at is outside campaign date range")
+		return Invalid("publish_at", "outside_window", "publish_at is outside campaign date range")
 	}
 	if !InTimeRange(at, p.TimeFrom, p.TimeTo) {
-		return Validation("publish_at", "publish_at is outside campaign time of day range")
+		return Invalid("publish_at", "outside_time", "publish_at is outside campaign time of day range")
 	}
 	if !now && at.Before(tx.Now.Add(time.Hour)) {
-		return Validation("publish_at", "publish_at must be at least 1 hour from now")
+		return Invalid("publish_at", "too_soon", "publish_at must be at least 1 hour from now")
 	}
 	if ch, err := tx.Channel(p.ChannelID); err == nil {
 		for _, u := range ch.Unavailability {
 			if !at.Before(u.StartsAt) && at.Before(u.EndsAt) {
-				return Validation("publish_at", "publish_at falls into channel unavailability")
+				return Invalid("publish_at", "channel_unavailable_interval", "publish_at falls into channel unavailability")
 			}
 		}
 	}
@@ -318,7 +341,7 @@ func (tx *Tx) BloggerSchedule(p *Placement, mode string, at *time.Time) error {
 	t := tx.Now
 	if mode == "at" {
 		if at == nil {
-			return Validation("publish_at", "publish_at is required for mode=at")
+			return Invalid("publish_at", "publish_at_required", "publish_at is required for mode=at")
 		}
 		t = at.UTC().Truncate(time.Second)
 	}
@@ -406,23 +429,106 @@ func (tx *Tx) RecheckChannel(c *Channel) {
 		return
 	}
 	prev := c.Status
-	hasPrice := false
-	for _, p := range c.Prices {
-		hasPrice = hasPrice || p.IsEnabled
-	}
-	rknOK := c.Subscribers < 10000 || c.RknStatus == "confirmed"
-	rights := c.BotIsAdmin && slices.Contains(c.BotPermissions, "write") && slices.Contains(c.BotPermissions, "delete")
+	missing := ApproveMissing(c)
 	switch {
-	case !c.IsPublic || !rights:
+	case slices.Contains(missing, "rights"):
 		c.Status, c.StatusReason = "pending_rights", "missing_rights"
-	case c.CategoryID == nil || !hasPrice:
+	case slices.Contains(missing, "category") || slices.Contains(missing, "price"):
 		c.Status, c.StatusReason = "moderation", ""
-	case !rknOK:
+	case slices.Contains(missing, "rkn"):
 		c.Status, c.StatusReason = "moderation", "rkn_required"
 	default:
 		c.Status, c.StatusReason = "active", ""
 	}
 	if prev != c.Status {
+		c.UpdatedAt = tx.Now
 		tx.log.Info("channel status changed", "op", "Channel.Recheck", "channel_id", c.ID, "from", prev, "to", c.Status)
 	}
+}
+
+// RknRecheckInterval — через сколько подтверждённый номер РКН пора проверить снова (06 §6.3).
+const RknRecheckInterval = 90 * 24 * time.Hour
+
+// RknRecheckDue — номер подтверждён больше RknRecheckInterval назад.
+func (tx *Tx) RknRecheckDue(c *Channel) bool {
+	return c.RknStatus == "confirmed" && c.RknCheckedAt != nil && tx.Now.Sub(*c.RknCheckedAt) > RknRecheckInterval
+}
+
+// ApproveMissing — чего не хватает каналу для одобрения (S-16, details.missing).
+func ApproveMissing(c *Channel) []string {
+	missing := []string{}
+	if !c.IsPublic || !c.BotIsAdmin || !slices.Contains(c.BotPermissions, "write") || !slices.Contains(c.BotPermissions, "delete") {
+		missing = append(missing, "rights")
+	}
+	if c.CategoryID == nil {
+		missing = append(missing, "category")
+	}
+	hasPrice := false
+	for _, p := range c.Prices {
+		hasPrice = hasPrice || p.IsEnabled
+	}
+	if !hasPrice {
+		missing = append(missing, "price")
+	}
+	if c.Subscribers >= 10000 && c.RknStatus != "confirmed" {
+		missing = append(missing, "rkn")
+	}
+	return missing
+}
+
+// ApproveChannel — администратор одобряет канал: moderation → active (S-16 шаг 3).
+func (tx *Tx) ApproveChannel(adminID uuid.UUID, c *Channel) error {
+	log := tx.log.With("op", "Admin.ApproveChannel", "channel_id", c.ID, "admin_id", adminID)
+	if c.Status != "moderation" {
+		log.Warn("[FIX] channel approve rejected", "status", c.Status)
+		return Conflict("conflict", "channel is not in moderation", map[string]any{"status": c.Status})
+	}
+	if missing := ApproveMissing(c); len(missing) > 0 {
+		log.Warn("[FIX] channel approve blocked", "missing", missing)
+		return Conflict("conflict", "channel does not meet approval requirements", map[string]any{"missing": missing})
+	}
+	c.Status, c.StatusReason = "active", ""
+	now := tx.Now
+	c.ModeratedAt, c.UpdatedAt = &now, now
+	c.Moderation = append(c.Moderation, ModerationEntry{Action: "approved", ActorUserID: adminID, CreatedAt: tx.Now})
+	log.Info("[FIX] channel approved")
+	return nil
+}
+
+// RejectChannel — отказ модерации: moderation → rejected, причина видна блогеру.
+func (tx *Tx) RejectChannel(adminID uuid.UUID, c *Channel, reason string) error {
+	log := tx.log.With("op", "Admin.RejectChannel", "channel_id", c.ID, "admin_id", adminID)
+	if c.Status != "moderation" {
+		log.Warn("[FIX] channel reject rejected", "status", c.Status)
+		return Conflict("conflict", "channel is not in moderation", map[string]any{"status": c.Status})
+	}
+	if reason = strings.TrimSpace(reason); reason == "" {
+		return Invalid("reason", "required", "reason is required")
+	}
+	c.Status, c.StatusReason = "rejected", reason
+	now := tx.Now
+	c.ModeratedAt, c.UpdatedAt = &now, now
+	c.Moderation = append(c.Moderation, ModerationEntry{Action: "rejected", ActorUserID: adminID, Comment: reason, CreatedAt: tx.Now})
+	log.Info("[FIX] channel rejected")
+	return nil
+}
+
+// RknCheckChannel — итог ручной сверки номера РКН с реестром (06 §6.3, Q-34).
+// confirmed возвращает в active канал, приостановленный с причиной rkn_required.
+func (tx *Tx) RknCheckChannel(adminID uuid.UUID, c *Channel, result, comment string) error {
+	log := tx.log.With("op", "Admin.RknCheck", "channel_id", c.ID, "admin_id", adminID, "result", result)
+	if c.Status == "unclaimed" || c.Status == "disconnected" || c.RknNumber == "" {
+		log.Warn("[FIX] rkn check rejected", "status", c.Status, "has_rkn_number", c.RknNumber != "")
+		return Conflict("conflict", "rkn number cannot be checked", map[string]any{"status": c.Status})
+	}
+	c.RknStatus = result
+	now := tx.Now
+	c.RknCheckedAt, c.UpdatedAt = &now, now
+	c.Moderation = append(c.Moderation, ModerationEntry{Action: "rkn_checked", ActorUserID: adminID, Result: result,
+		Comment: comment, CreatedAt: tx.Now})
+	if c.Status == "suspended" && c.StatusReason == "rkn_required" && result == "confirmed" {
+		c.Status, c.StatusReason = "active", ""
+	}
+	log.Info("[FIX] rkn checked", "status", c.Status)
+	return nil
 }

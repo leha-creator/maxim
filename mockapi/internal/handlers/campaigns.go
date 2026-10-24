@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -33,43 +35,79 @@ func campaign(c *store.Campaign) api.Campaign {
 	}
 }
 
+// Пределы формы кампании (A-39, R-17) — как в бэкенде.
+const (
+	maxCampaignPeriodDays   = 14
+	minCampaignWindowMinute = 60
+)
+
 // applyCampaignInput переносит поля в кампанию и проверяет период (A-39).
-func applyCampaignInput(tx *store.Tx, c *store.Campaign, in *api.CampaignInput) error {
+// Отказ — 422 с details.reason; кампания при отказе не меняется.
+func (h *Handlers) applyCampaignInput(ctx context.Context, tx *store.Tx, c *store.Campaign, in *api.CampaignInput) error {
 	periodChanged := in.DateFrom != nil || in.DateTo != nil || in.TimeFrom != nil || in.TimeTo != nil
 	if periodChanged && c.Status != "draft" {
 		return store.Conflict("conflict", "campaign period can be changed only in draft", map[string]any{"status": c.Status})
 	}
+	next := *c
 	if in.Name != nil {
-		c.Name = *in.Name
-	}
-	if in.ExtraRequirements != nil {
-		c.ExtraRequirements = in.ExtraRequirements
-	}
-	if in.DateFrom != nil {
-		c.DateFrom = &in.DateFrom.Time
-	}
-	if in.DateTo != nil {
-		c.DateTo = &in.DateTo.Time
-	}
-	if in.TimeFrom != nil {
-		c.TimeFrom = in.TimeFrom
-	}
-	if in.TimeTo != nil {
-		c.TimeTo = in.TimeTo
-	}
-	if c.DateFrom != nil && c.DateTo != nil && c.DateTo.Before(*c.DateFrom) {
-		return store.Validation("date_to", "date_to is before date_from")
-	}
-	if c.TimeFrom != nil && c.TimeTo != nil && *c.TimeTo <= *c.TimeFrom {
-		return store.Validation("time_to", "time_to must be after time_from")
-	}
-	if in.DateFrom != nil {
-		today := tx.Now.In(store.MSK)
-		if in.DateFrom.Time.Before(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)) {
-			return store.Validation("date_from", "date_from is in the past")
+		next.Name = strings.TrimSpace(*in.Name)
+		if next.Name == "" {
+			return store.Invalid("name", "required", "name is required")
 		}
 	}
-	c.UpdatedAt = tx.Now
+	if in.ExtraRequirements != nil {
+		next.ExtraRequirements = in.ExtraRequirements
+	}
+	if in.DateFrom != nil {
+		next.DateFrom = &in.DateFrom.Time
+	}
+	if in.DateTo != nil {
+		next.DateTo = &in.DateTo.Time
+	}
+	if in.TimeFrom != nil {
+		next.TimeFrom = in.TimeFrom
+	}
+	if in.TimeTo != nil {
+		next.TimeTo = in.TimeTo
+	}
+	if err := checkCampaignPeriod(tx, &next, in.DateFrom != nil || in.DateTo != nil); err != nil {
+		h.logger(ctx).Warn("[FIX] campaign input rejected", "op", "Campaign.Apply", "campaign_id", c.ID,
+			"field", err.Details["field"], "reason", err.Details["reason"])
+		return err
+	}
+	next.UpdatedAt = tx.Now
+	*c = next
+	return nil
+}
+
+// checkCampaignPeriod — правила периода дат и окна времени (A-39, R-17).
+// «Прошлое» проверяется, только когда меняются даты.
+func checkCampaignPeriod(tx *store.Tx, c *store.Campaign, datesChanged bool) *store.Error {
+	if c.DateFrom != nil && c.DateTo != nil {
+		if c.DateFrom.After(*c.DateTo) {
+			return store.Invalid("date_from", "period_order", "date_from is after date_to")
+		}
+		if days := int(c.DateTo.Sub(*c.DateFrom).Hours()/24) + 1; days > maxCampaignPeriodDays {
+			return store.Invalid("date_to", "period_too_long", fmt.Sprintf("period is longer than %d days", maxCampaignPeriodDays))
+		}
+	}
+	if datesChanged {
+		n := tx.Now.In(store.MSK)
+		today := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC)
+		if (c.DateFrom != nil && c.DateFrom.Before(today)) || (c.DateFrom == nil && c.DateTo != nil && c.DateTo.Before(today)) {
+			return store.Invalid("date_from", "period_in_past", "date_from is in the past")
+		}
+	}
+	if (c.TimeFrom == nil) != (c.TimeTo == nil) {
+		return store.Invalid("time_from", "time_pair", "time_from and time_to must be set together")
+	}
+	if c.TimeFrom != nil {
+		from, errFrom := time.Parse("15:04", *c.TimeFrom)
+		to, errTo := time.Parse("15:04", *c.TimeTo)
+		if errFrom != nil || errTo != nil || to.Sub(from) < minCampaignWindowMinute*time.Minute {
+			return store.Invalid("time_from", "time_window", "time window is shorter than 1 hour")
+		}
+	}
 	return nil
 }
 
@@ -87,12 +125,12 @@ func (h *Handlers) ListCampaigns(ctx context.Context, req api.ListCampaignsReque
 		}
 	}
 	mine = newestFirst(mine, func(c *store.Campaign) time.Time { return c.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.Campaign{}
 	for _, c := range pg {
 		items = append(items, campaign(c))
 	}
-	return api.ListCampaigns200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListCampaigns200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) CreateCampaign(ctx context.Context, req api.CreateCampaignRequestObject) (api.CreateCampaignResponseObject, error) {
@@ -103,12 +141,12 @@ func (h *Handlers) CreateCampaign(ctx context.Context, req api.CreateCampaignReq
 		return nil, err
 	}
 	if req.Body.Name == nil || *req.Body.Name == "" {
-		return nil, store.Validation("name", "name is required")
+		return nil, store.Invalid("name", "required", "name is required")
 	}
 	c := &store.Campaign{ID: store.NewID(), OrgID: o.ID, Status: "draft", CreatedAt: tx.Now,
 		Post: store.PostDraft{Doc: api.EditorDoc{Type: "doc", Content: []api.EditorBlock{}}, MediaIDs: []api.Uuid{},
 			TokenCarrier: "text", TokenPosition: "below", UpdatedAt: tx.Now}}
-	if err := applyCampaignInput(tx, c, req.Body); err != nil {
+	if err := h.applyCampaignInput(ctx, tx, c, req.Body); err != nil {
 		return nil, err
 	}
 	tx.D.Campaigns = append(tx.D.Campaigns, c)
@@ -141,7 +179,7 @@ func (h *Handlers) UpdateCampaign(ctx context.Context, req api.UpdateCampaignReq
 	if err != nil {
 		return nil, err
 	}
-	if err := applyCampaignInput(tx, c, req.Body); err != nil {
+	if err := h.applyCampaignInput(ctx, tx, c, req.Body); err != nil {
 		return nil, err
 	}
 	h.logger(ctx).Info("campaign updated", "op", "Campaign.Update", "campaign_id", c.ID)
@@ -271,12 +309,12 @@ func (h *Handlers) ListMedia(ctx context.Context, req api.ListMediaRequestObject
 		}
 	}
 	mine = newestFirst(mine, func(m *store.MediaFile) time.Time { return m.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.MediaFile{}
 	for _, m := range pg {
 		items = append(items, mediaFile(m))
 	}
-	return api.ListMedia200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListMedia200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) UploadMedia(ctx context.Context, req api.UploadMediaRequestObject) (api.UploadMediaResponseObject, error) {

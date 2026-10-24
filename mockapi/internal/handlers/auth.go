@@ -105,6 +105,9 @@ func me(tx *store.Tx, u *store.User) api.Me {
 		Organizations:           []api.OrganizationBrief{},
 		PendingLegalDocumentIds: []api.Uuid{},
 	}
+	if u.AdminRole != "" {
+		m.AdminRole = ptr(api.AdminRole(u.AdminRole))
+	}
 	if u.OrgID == nil {
 		return m
 	}
@@ -216,8 +219,8 @@ func (h *Handlers) CreateOrganization(ctx context.Context, req api.CreateOrganiz
 	}
 	for _, x := range tx.D.Orgs {
 		if x.INN == b.Inn {
-			log.Warn("organization rejected: inn already registered")
-			return nil, store.Conflict("conflict", "organization with this inn already exists", map[string]any{"field": "inn"})
+			log.Warn("[FIX] organization rejected: inn already registered", "code", "inn_taken")
+			return nil, store.Conflict("inn_taken", "organization with this inn already exists", map[string]any{"field": "inn"})
 		}
 	}
 	o := &store.Organization{
@@ -398,13 +401,32 @@ func (h *Handlers) ListNotifications(ctx context.Context, req api.ListNotificati
 		}
 	}
 	mine = newestFirst(mine, func(n *store.Notification) time.Time { return n.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.Notification{}
 	for _, n := range pg {
 		items = append(items, api.Notification{Id: n.ID, Template: n.Template, Title: n.Title, Text: n.Text,
 			ObjectType: n.ObjectType, ObjectId: n.ObjectID, IsRead: n.ReadAt != nil, CreatedAt: n.CreatedAt})
 	}
-	return api.ListNotifications200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListNotifications200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
+}
+
+func (h *Handlers) MarkAllNotificationsRead(ctx context.Context, _ api.MarkAllNotificationsReadRequestObject) (api.MarkAllNotificationsReadResponseObject, error) {
+	tx, done := h.st.Begin(ctx)
+	defer done()
+	u, err := user(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	marked := 0
+	for _, n := range tx.D.Notifications {
+		if n.UserID == u.ID && n.ReadAt == nil {
+			now := tx.Now
+			n.ReadAt = &now
+			marked++
+		}
+	}
+	h.logger(ctx).Info("[FIX] notifications marked read", "op", "Notification.ReadAll", "user_id", u.ID, "count", marked)
+	return api.MarkAllNotificationsRead204Response{}, nil
 }
 
 func (h *Handlers) MarkNotificationRead(ctx context.Context, req api.MarkNotificationReadRequestObject) (api.MarkNotificationReadResponseObject, error) {

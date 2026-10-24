@@ -301,6 +301,7 @@ func toMe(me *app.Me) apigen.Me {
 		User:                    apigen.User{Id: me.User.ID, Email: openapi_types.Email(me.User.Email), LastLoginAt: me.User.LastLoginAt},
 		Organizations:           []apigen.OrganizationBrief{},
 		PendingLegalDocumentIds: []uuid.UUID{},
+		AdminRole:               enum[apigen.AdminRole](me.User.AdminRole),
 	}
 	for _, o := range me.Organizations {
 		out.Organizations = append(out.Organizations, apigen.OrganizationBrief{

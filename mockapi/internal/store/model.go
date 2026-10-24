@@ -15,6 +15,7 @@ type User struct {
 	ID          uuid.UUID
 	Email       string
 	OrgID       *uuid.UUID // в первой версии у пользователя одна организация
+	AdminRole   string     // moderator | senior; пусто — не администратор
 	LastLoginAt *time.Time
 	CreatedAt   time.Time
 }
@@ -123,7 +124,20 @@ type Channel struct {
 	AnomalyFlags   []string
 	Prices         map[string]*Price // ключ — format_id
 	Unavailability []Unavailability
+	RknCheckedAt   *time.Time
+	ModeratedAt    *time.Time
+	Moderation     []ModerationEntry // решения администратора, старые первыми
 	CreatedAt      time.Time
+	UpdatedAt      time.Time // нулевое — не менялся после создания
+}
+
+// ModerationEntry — решение модерации или проверки РКН (S-16).
+type ModerationEntry struct {
+	Action      string // approved | rejected | rkn_checked
+	ActorUserID uuid.UUID
+	Result      string // для rkn_checked: confirmed | rejected
+	Comment     string
+	CreatedAt   time.Time
 }
 
 type LinkCode struct {
@@ -226,6 +240,17 @@ type Claim struct {
 	CreatedAt time.Time
 }
 
+// DisputeDeadline — T-06: срок решения по спору (03 §4).
+const DisputeDeadline = 72 * time.Hour
+
+// Dispute — спор по размещению (03 §6).
+type Dispute struct {
+	Reason       string
+	OpenedByType string // advertiser | system | admin
+	OpenedAt     time.Time
+	DeadlineAt   time.Time
+}
+
 type HistoryEntry struct {
 	Transition string
 	From       string
@@ -270,6 +295,7 @@ type Placement struct {
 	Views              *int
 	PublicationURL     string
 	Claim              *Claim
+	Dispute            *Dispute // открыт переходом P-14
 	History            []HistoryEntry
 	CreatedAt          time.Time
 }

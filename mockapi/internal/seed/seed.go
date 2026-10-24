@@ -44,6 +44,7 @@ var (
 	ChannelFree     = ID(108) // активный канал, которого нет в корзине
 	ChannelBlogger1 = ID(101)
 	ChannelModerate = ID(105)
+	ChannelQueue    = ID(113) // в очереди модерации, номер РКН ждёт сверки
 
 	PlacementAwaitingBlogger  = ID(801)
 	PlacementScheduled        = ID(802)
@@ -101,7 +102,7 @@ func Load(d *store.Data, now time.Time) {
 	}
 	d.Users[UserAdvertiser] = &store.User{ID: UserAdvertiser, Email: EmailAdvertiser, OrgID: ptr(OrgAdvertiser), CreatedAt: day(-40)}
 	d.Users[UserBlogger] = &store.User{ID: UserBlogger, Email: EmailBlogger, OrgID: ptr(OrgBlogger), CreatedAt: day(-60)}
-	d.Users[UserAdmin] = &store.User{ID: UserAdmin, Email: EmailAdmin, CreatedAt: day(-90)}
+	d.Users[UserAdmin] = &store.User{ID: UserAdmin, Email: EmailAdmin, AdminRole: "senior", CreatedAt: day(-90)}
 	d.Rocketwork[OrgBlogger] = &store.RocketworkContractor{Status: "active", OnboardingURL: "https://rocketwork.example.test/onboarding/12"}
 
 	// ------------------------------------------------ документы
@@ -161,6 +162,8 @@ func Load(d *store.Data, now time.Time) {
 		{110, OrgBlogger2, "Выдуманный автоклуб", 207, 12000, 900, "active", 400000, "4900000003", []string{"views_disproportion"}, "", true},
 		{111, OrgBlogger2, "Шутки для теста", 208, 6600, 2500, "active", 180000, "", []string{"subscribers_spike"}, "", true},
 		{112, OrgBlogger2, "Пример: код и кофе", 202, 9900, 3300, "active", 320000, "", nil, "", true},
+		// Ждёт модератора: всё заполнено, но номер РКН ещё не сверен — одобрение после rkn-check.
+		{113, OrgBlogger2, "Пример: очередь модерации", 203, 14000, 3500, "moderation", 450000, "4900000004", nil, "rkn_required", true},
 	}
 	for i, c := range channels {
 		org := c.org
@@ -178,6 +181,7 @@ func Load(d *store.Data, now time.Time) {
 		}
 		if c.rkn != "" {
 			x.RknNumber, x.RknStatus = c.rkn, "confirmed"
+			x.RknCheckedAt = ptr(day(-20))
 		}
 		if c.price > 0 {
 			x.Prices["f_1_24"] = &store.Price{Amount: c.price, IsEnabled: true}
@@ -186,6 +190,8 @@ func Load(d *store.Data, now time.Time) {
 		}
 		d.Channels = append(d.Channels, x)
 	}
+	d.Channels[3].RknCheckedAt = ptr(day(-100))                            // 104: пора проверить номер снова (rkn_recheck_due)
+	d.Channels[12].RknStatus, d.Channels[12].RknCheckedAt = "pending", nil // 113
 	d.Channels[2].Unavailability = []store.Unavailability{{ID: ID(1001), StartsAt: day(10), EndsAt: day(12)}}
 
 	// ------------------------------------------------ корзина и медиатека
@@ -344,6 +350,7 @@ func Load(d *store.Data, now time.Time) {
 	p805.PublishAt, p805.PublishedAt, p805.RemoveAt = ptr(ago(100)), ptr(ago(100)), ptr(ago(76))
 	p805.Views, p805.PublicationURL = ptr(800), "https://max.ru/c/70000000108/12002"
 	p805.Claim = &store.Claim{Reason: "removed_early", Text: "Пост удалён через 10 часов после публикации", CreatedAt: ago(90)}
+	p805.Dispute = &store.Dispute{Reason: "removed_early", OpenedByType: "advertiser", OpenedAt: ago(90), DeadlineAt: ago(90).Add(store.DisputeDeadline)}
 
 	p806 := placement(PlacementPaid, oPast, 102, "f_1_24", append(past, step{"P-10", "removed", 76}, step{"P-12", "accepted", 70}, step{"P-16", "paid", 60}))
 	p806.PublishAt, p806.PublishedAt, p806.RemoveAt, p806.RemovedAt = ptr(ago(100)), ptr(ago(100)), ptr(ago(76)), ptr(ago(76))

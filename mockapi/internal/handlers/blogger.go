@@ -111,9 +111,16 @@ func (h *Handlers) UpdateBloggerChannel(ctx context.Context, req api.UpdateBlogg
 	if b.Description != nil {
 		c.Description = *b.Description
 	}
-	if b.RknNumber != nil {
+	if b.RknNumber != nil && *b.RknNumber != c.RknNumber {
 		// Проверку в реестре РКН заглушка проходит сразу (S-16 делает её вручную).
-		c.RknNumber, c.RknStatus = *b.RknNumber, "confirmed"
+		// Тот же номер в запросе — не изменение: отметка о проверке остаётся прежней.
+		c.RknNumber = *b.RknNumber
+		c.RknStatus, c.RknCheckedAt = "not_required", nil
+		if c.RknNumber != "" {
+			now := tx.Now
+			c.RknStatus, c.RknCheckedAt = "confirmed", &now
+		}
+		h.logger(ctx).Info("[FIX] channel rkn number changed", "op", "Channel.Update", "channel_id", c.ID, "rkn_status", c.RknStatus)
 	}
 	if c.Status == "rejected" {
 		c.Status = "moderation"
@@ -161,13 +168,54 @@ func (h *Handlers) AddChannelUnavailability(ctx context.Context, req api.AddChan
 	if err != nil {
 		return nil, err
 	}
-	if !req.Body.EndsAt.After(req.Body.StartsAt) {
-		return nil, store.Validation("ends_at", "ends_at must be after starts_at")
+	u := store.Unavailability{ID: store.NewID(), StartsAt: req.Body.StartsAt.UTC(), EndsAt: req.Body.EndsAt.UTC()}
+	if err := checkUnavailability(tx, c, u); err != nil {
+		h.logger(ctx).Warn("[FIX] channel unavailability rejected", "op", "Channel.Unavailability", "channel_id", c.ID,
+			"code", err.Code, "reason", err.Details["reason"])
+		return nil, err
 	}
-	c.Unavailability = append(c.Unavailability, store.Unavailability{ID: store.NewID(),
-		StartsAt: req.Body.StartsAt.UTC(), EndsAt: req.Body.EndsAt.UTC()})
+	c.Unavailability = append(c.Unavailability, u)
 	h.logger(ctx).Info("channel unavailability added", "op", "Channel.Unavailability", "channel_id", c.ID)
 	return api.AddChannelUnavailability201JSONResponse(bloggerChannel(tx, c)), nil
+}
+
+// Пределы интервалов недоступности (S-13, 07 §8) — значения по умолчанию бэкенда.
+const (
+	unavailabilityMaxLength = 90 * 24 * time.Hour
+	unavailabilityHorizon   = 365 * 24 * time.Hour
+	unavailabilityMaxCount  = 50
+)
+
+// checkUnavailability — правила нового интервала: 409 для канала без приёма, иначе 422 с details.reason.
+func checkUnavailability(tx *store.Tx, c *store.Channel, u store.Unavailability) *store.Error {
+	switch c.Status {
+	case "unclaimed", "disconnected", "blocked":
+		return store.Conflict("conflict", "channel does not accept unavailability intervals", map[string]any{"status": c.Status})
+	}
+	if !u.StartsAt.Before(u.EndsAt) || !u.EndsAt.After(tx.Now) {
+		return store.Invalid("ends_at", "in_past", "ends_at must be after starts_at and in the future")
+	}
+	if u.EndsAt.Sub(u.StartsAt) > unavailabilityMaxLength {
+		return store.Invalid("ends_at", "too_long", "interval is longer than 90 days")
+	}
+	if u.StartsAt.After(tx.Now.Add(unavailabilityHorizon)) {
+		return store.Invalid("starts_at", "too_far", "interval starts more than 365 days ahead")
+	}
+	live := 0
+	for _, e := range c.Unavailability {
+		if !e.EndsAt.After(tx.Now) {
+			continue
+		}
+		live++
+		// Соприкосновение границ — не пересечение.
+		if u.StartsAt.Before(e.EndsAt) && e.StartsAt.Before(u.EndsAt) {
+			return store.Invalid("starts_at", "overlap", "interval overlaps another interval of the channel")
+		}
+	}
+	if live >= unavailabilityMaxCount {
+		return store.Invalid("starts_at", "too_many", "channel already has 50 intervals")
+	}
+	return nil
 }
 
 func (h *Handlers) DeleteChannelUnavailability(ctx context.Context, req api.DeleteChannelUnavailabilityRequestObject) (api.DeleteChannelUnavailabilityResponseObject, error) {
@@ -206,6 +254,7 @@ func bloggerPlacement(tx *store.Tx, p *store.Placement) api.BloggerPlacement {
 	if c, err := tx.Channel(p.ChannelID); err == nil {
 		out.Channel = channelRef(c)
 	}
+	out.Dispute = disputeSummary(p)
 	if o, err := tx.Order(p.OrderID); err == nil {
 		out.OrderNumber = o.Number
 		if adv, err := tx.Org(o.OrgID); err == nil {
@@ -259,12 +308,12 @@ func (h *Handlers) ListBloggerPlacements(ctx context.Context, req api.ListBlogge
 		mine = append(mine, p)
 	}
 	mine = newestFirst(mine, func(p *store.Placement) time.Time { return p.StatusChangedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.BloggerPlacement{}
 	for _, p := range pg {
 		items = append(items, bloggerPlacement(tx, p))
 	}
-	return api.ListBloggerPlacements200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListBloggerPlacements200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) GetBloggerPlacement(ctx context.Context, req api.GetBloggerPlacementRequestObject) (api.GetBloggerPlacementResponseObject, error) {
@@ -350,7 +399,7 @@ func (h *Handlers) ListBloggerPayouts(ctx context.Context, req api.ListBloggerPa
 		}
 	}
 	mine = newestFirst(mine, func(po *store.Payout) time.Time { return po.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.Payout{}
 	for _, po := range pg {
 		item := api.Payout{Id: po.ID, PlacementId: po.PlacementID, Amount: po.Amount, Status: api.PayoutStatus(po.Status),
@@ -365,7 +414,7 @@ func (h *Handlers) ListBloggerPayouts(ctx context.Context, req api.ListBloggerPa
 		}
 		items = append(items, item)
 	}
-	return api.ListBloggerPayouts200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListBloggerPayouts200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func rocketworkStatus(tx *store.Tx, o *store.Organization) api.RocketworkStatus {

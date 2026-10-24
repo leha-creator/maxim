@@ -324,6 +324,16 @@ paths:
                         items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /notifications/read-all:
+    post:
+      tags: [notifications]
+      operationId: markAllNotificationsRead
+      summary: Отметить все прочитанными
+      description: Отмечает прочитанными все непрочитанные уведомления пользователя. Повтор безопасен.
+      responses:
+        '204': { description: Отмечено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /notifications/{id}/read:
     post:
       tags: [notifications]
@@ -2079,6 +2089,12 @@ components:
         next_cursor:
           type: string
           description: Нет — это последняя страница
+        total:
+          type: integer
+          minimum: 0
+          description: |
+            Сколько всего записей подходит под фильтры списка (все страницы). Нет — сервер это
+            число для списка не считает; кабинет тогда не показывает «N из M».
 
     # ------------------------------------------------ enums (04 §9)
     LegalType:
@@ -2187,6 +2203,14 @@ components:
           type: array
           description: Документы, которые нужно принять для работы в открытых кабинетах
           items: { $ref: '#/components/schemas/Uuid' }
+        admin_role:
+          allOf: [{ $ref: '#/components/schemas/AdminRole' }]
+          description: |
+            Роль администратора (07 §4); нет — пользователь не администратор. Нужна кабинету,
+            чтобы показывать разделы `adm/*`; права всё равно проверяет каждая операция (`403`).
+    AdminRole:
+      type: string
+      enum: [moderator, senior]
     User:
       type: object
       required: [id, email]
@@ -2697,11 +2721,23 @@ components:
         refunded_amount: { $ref: '#/components/schemas/Money' }
     OrderReportRow:
       type: object
-      required: [placement_id, channel, status]
+      description: |
+        Строка отчёта по размещению. Суммы строк в сумме дают `totals.spent_amount` и
+        `totals.refunded_amount`.
+      required: [placement_id, channel, status, spent_amount, refunded_amount, held_amount]
       properties:
         placement_id: { $ref: '#/components/schemas/Uuid' }
         channel: { $ref: '#/components/schemas/ChannelRef' }
         status: { $ref: '#/components/schemas/PlacementStatus' }
+        spent_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Списано за размещение — цена с комиссией за вычетом возврата; есть с `accepted`
+        refunded_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Возвращено на баланс рекламодателя
+        held_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Ещё удержано — размещение не завершено или в споре
         published_at: { type: string, format: date-time }
         removed_at: { type: string, format: date-time }
         views: { type: integer }

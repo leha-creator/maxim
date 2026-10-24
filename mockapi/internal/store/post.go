@@ -88,7 +88,10 @@ func PlainText(doc api.EditorDoc) string {
 }
 
 // Problem — нарушение автоматической проверки поста.
-type Problem struct{ Code, Message string }
+type Problem struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
 
 // CheckDraft выполняет автоматические проверки черновика (S-05, S-06).
 func CheckDraft(d PostDraft) (body string, problems []Problem) {

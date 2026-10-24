@@ -32,7 +32,17 @@ type opCase struct {
 const (
 	adv = seed.EmailAdvertiser
 	blg = seed.EmailBlogger
+	adm = seed.EmailAdmin
 )
+
+// approvableQueue сверяет номер РКН канала из очереди, чтобы его можно было одобрить.
+func approvableQueue(e *env) (map[string]string, any) {
+	path := "/admin/channels/" + seed.ChannelQueue.String()
+	if r := e.do(e.client(adm), http.MethodPost, path+"/rkn-check", map[string]any{"result": "confirmed"}, ""); r.status != http.StatusOK {
+		e.t.Fatalf("rkn-check: %d %s", r.status, r.body)
+	}
+	return id(seed.ChannelQueue), noBodyMarker
+}
 
 var noBodyMarker = struct{}{}
 
@@ -92,6 +102,7 @@ var cases = map[string]opCase{
 		e.do(e.client(adv), http.MethodGet, "/notifications", nil, "").json(e.t, &page)
 		return map[string]string{"id": page.Items[0].ID}, noBodyMarker
 	}},
+	"markAllNotificationsRead": {user: adv, noBody: true},
 
 	// каталог и корзина
 	"listCatalogChannels":   {user: adv, query: "format_id=f_1_24&price_to=1000000&sort=price_desc&limit=3"},
@@ -158,12 +169,12 @@ var cases = map[string]opCase{
 	"getRocketworkStatus": {user: blg},
 	"inviteRocketwork":    {user: blg, noBody: true},
 
-	// администратор: тестовый сервер отвечает 501
-	"listAdminChannels":  {user: adv, status: http.StatusNotImplemented},
-	"getAdminChannel":    {user: adv, params: id(seed.ChannelModerate), status: http.StatusNotImplemented},
-	"approveChannel":     {user: adv, params: id(seed.ChannelModerate), noBody: true, status: http.StatusNotImplemented},
-	"rejectChannel":      {user: adv, params: id(seed.ChannelModerate), status: http.StatusNotImplemented},
-	"setChannelRknCheck": {user: adv, params: id(seed.ChannelModerate), status: http.StatusNotImplemented},
+	// администратор
+	"listAdminChannels":  {user: adm, query: "status=moderation"},
+	"getAdminChannel":    {user: adm, params: id(seed.ChannelQueue)},
+	"approveChannel":     {user: adm, prepare: approvableQueue},
+	"rejectChannel":      {user: adm, params: id(seed.ChannelModerate)},
+	"setChannelRknCheck": {user: adm, params: id(seed.ChannelQueue)},
 
 	// webhooks
 	"maxWebhook":        {params: map[string]string{"secret": "test-secret"}},

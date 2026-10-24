@@ -31,12 +31,12 @@ func (h *Handlers) ListClosingActs(ctx context.Context, req api.ListClosingActsR
 		}
 	}
 	mine = newestFirst(mine, func(a *store.ClosingAct) time.Time { return a.CreatedAt })
-	pg, next := page(mine, req.Params.Limit, req.Params.Cursor)
+	pg, next, total := page(mine, req.Params.Limit, req.Params.Cursor)
 	items := []api.ClosingAct{}
 	for _, a := range pg {
 		items = append(items, closingAct(a))
 	}
-	return api.ListClosingActs200JSONResponse{Items: items, NextCursor: next}, nil
+	return api.ListClosingActs200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
 func (h *Handlers) GetClosingActPdf(ctx context.Context, req api.GetClosingActPdfRequestObject) (api.GetClosingActPdfResponseObject, error) {

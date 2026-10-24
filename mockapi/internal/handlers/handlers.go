@@ -128,7 +128,14 @@ func blogger(ctx context.Context, tx *store.Tx) (*store.User, *store.Organizatio
 // ---------------------------------------------------------------- списки
 
 // page отдаёт страницу списка; курсор — смещение. Неверный курсор — с начала.
-func page[T any](items []T, limit *int, cursor *string) ([]T, *string) {
+// Третье значение — total для PageMeta: сколько записей во всём списке.
+func page[T any](items []T, limit *int, cursor *string) ([]T, *string, *int) {
+	total := len(items)
+	out, next := pageOf(items, limit, cursor)
+	return out, next, &total
+}
+
+func pageOf[T any](items []T, limit *int, cursor *string) ([]T, *string) {
 	n := 20
 	if limit != nil {
 		n = *limit
@@ -203,4 +210,14 @@ func versionMediaURLs(tx *store.Tx, orgID uuid.UUID, ids []uuid.UUID, carrier st
 		}
 	}
 	return out
+}
+
+// disputeSummary — спор размещения для кабинетов; nil — спора не было.
+func disputeSummary(p *store.Placement) *api.PlacementDisputeSummary {
+	if p.Dispute == nil {
+		return nil
+	}
+	return &api.PlacementDisputeSummary{Reason: api.PlacementDisputeSummaryReason(p.Dispute.Reason),
+		OpenedByType: api.PlacementDisputeSummaryOpenedByType(p.Dispute.OpenedByType),
+		OpenedAt:     p.Dispute.OpenedAt, DeadlineAt: p.Dispute.DeadlineAt}
 }
