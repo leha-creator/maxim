@@ -48,6 +48,47 @@ func (q *Queries) CountOrdObjectsByStatus(ctx context.Context) ([]CountOrdObject
 	return items, nil
 }
 
+const lastOrdRequest = `-- name: LastOrdRequest :one
+SELECT r.id, r.operation, r.attempt, r.request, r.response_status, r.response_body, r.error, r.created_at
+FROM outbound_request r
+WHERE r.system = 'yandex_ord' AND r.object_type = $1 AND r.object_id = $2
+ORDER BY r.created_at DESC
+LIMIT 1
+`
+
+type LastOrdRequestParams struct {
+	ObjectType *string
+	ObjectID   *string
+}
+
+type LastOrdRequestRow struct {
+	ID             uuid.UUID
+	Operation      string
+	Attempt        int32
+	Request        []byte
+	ResponseStatus *int32
+	ResponseBody   []byte
+	Error          *string
+	CreatedAt      time.Time
+}
+
+// Последний вызов ОРД по объекту (этап «API администратора», R-17): тела — как сохранены адаптером.
+func (q *Queries) LastOrdRequest(ctx context.Context, arg LastOrdRequestParams) (LastOrdRequestRow, error) {
+	row := q.db.QueryRow(ctx, lastOrdRequest, arg.ObjectType, arg.ObjectID)
+	var i LastOrdRequestRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.Attempt,
+		&i.Request,
+		&i.ResponseStatus,
+		&i.ResponseBody,
+		&i.Error,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listCreativesWithoutErid = `-- name: ListCreativesWithoutErid :many
 SELECT id, post_version_id, ord_contract_id, erid, erid_received_at, erir_status, erir_error, ord_external_id, sync_status, sync_request_id, sync_error, sync_attempts, synced_at, payload_hash, ord_status, sent_at, created_at, updated_at FROM creative WHERE erid IS NULL AND created_at < $1::timestamptz
 ORDER BY created_at, id
@@ -121,16 +162,18 @@ FROM (
     SELECT 'creative'::text, cr.id, cr.ord_external_id, cr.ord_status, cr.sync_error, cr.sync_attempts, cr.updated_at
     FROM creative cr WHERE cr.sync_status = 'error'
 ) e
-WHERE $1::timestamptz IS NULL
-   OR (e.updated_at, e.id) > ($1::timestamptz, $2::uuid)
+WHERE ($1::text = '' OR e.object_type = $1)
+  AND ($2::timestamptz IS NULL
+   OR (e.updated_at, e.id) > ($2::timestamptz, $3::uuid))
 ORDER BY e.updated_at, e.id
-LIMIT $3
+LIMIT $4
 `
 
 type ListOrdErrorsParams struct {
-	AfterAt *time.Time
-	AfterID *uuid.UUID
-	Lim     int32
+	ObjectType string
+	AfterAt    *time.Time
+	AfterID    *uuid.UUID
+	Lim        int32
 }
 
 type ListOrdErrorsRow struct {
@@ -147,7 +190,12 @@ type ListOrdErrorsRow struct {
 // Выборки по всем видам объектов ОРД: список ошибок S-20, зависшие (07 §3), метрика (07 §5.5).
 // Ключевой курсор (updated_at, id) по объединению видов; пустой курсор — с начала.
 func (q *Queries) ListOrdErrors(ctx context.Context, arg ListOrdErrorsParams) ([]ListOrdErrorsRow, error) {
-	rows, err := q.db.Query(ctx, listOrdErrors, arg.AfterAt, arg.AfterID, arg.Lim)
+	rows, err := q.db.Query(ctx, listOrdErrors,
+		arg.ObjectType,
+		arg.AfterAt,
+		arg.AfterID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

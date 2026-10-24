@@ -58,7 +58,8 @@ func (r *Users) SetLastLogin(ctx context.Context, id uuid.UUID, at time.Time) er
 func userFromRow(row sqlc.User) *domain.User {
 	return &domain.User{
 		ID: row.ID, Email: row.Email, AdminRole: enumPtr[domain.AdminRole](row.AdminRole),
-		Status: domain.Status(row.Status), LastLoginAt: row.LastLoginAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		Status: domain.Status(row.Status), LastLoginAt: row.LastLoginAt, BlockedAt: row.BlockedAt, BlockedReason: row.BlockedReason,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 }
 
@@ -66,6 +67,28 @@ func (r *Users) SetAdminRole(ctx context.Context, id uuid.UUID, role *domain.Adm
 	const op = "Account.Users.SetAdminRole"
 	r.s.debug(ctx, op, "user_id", id, "admin_role", strPtr(role))
 	if err := r.s.q(ctx).SetUserAdminRole(ctx, sqlc.SetUserAdminRoleParams{ID: id, AdminRole: strPtr(role), At: at}); err != nil {
+		return r.s.fail(ctx, op, err)
+	}
+	return nil
+}
+
+func (r *Users) GetForUpdate(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	const op = "Account.Users.GetForUpdate"
+	r.s.debug(ctx, op, "user_id", id)
+	row, err := r.s.q(ctx).GetUserForUpdate(ctx, id)
+	if err != nil {
+		return nil, r.s.fail(ctx, op, err)
+	}
+	return userFromRow(row), nil
+}
+
+func (r *Users) SetBlocked(ctx context.Context, u *domain.User) error {
+	const op = "Account.Users.SetBlocked"
+	r.s.debug(ctx, op, "user_id", u.ID, "status", u.Status)
+	err := r.s.q(ctx).SetUserBlocked(ctx, sqlc.SetUserBlockedParams{
+		ID: u.ID, Status: string(u.Status), BlockedAt: u.BlockedAt, BlockedReason: u.BlockedReason, At: u.UpdatedAt,
+	})
+	if err != nil {
 		return r.s.fail(ctx, op, err)
 	}
 	return nil

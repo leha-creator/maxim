@@ -22,8 +22,9 @@ FROM (
     SELECT 'creative'::text, cr.id, cr.ord_external_id, cr.ord_status, cr.sync_error, cr.sync_attempts, cr.updated_at
     FROM creative cr WHERE cr.sync_status = 'error'
 ) e
-WHERE sqlc.narg(after_at)::timestamptz IS NULL
-   OR (e.updated_at, e.id) > (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid)
+WHERE (@object_type::text = '' OR e.object_type = @object_type)
+  AND (sqlc.narg(after_at)::timestamptz IS NULL
+   OR (e.updated_at, e.id) > (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
 ORDER BY e.updated_at, e.id
 LIMIT @lim;
 
@@ -55,3 +56,11 @@ UNION ALL
 SELECT 'platform'::text, p.sync_status, count(*)::int FROM ord_platform p GROUP BY p.sync_status
 UNION ALL
 SELECT 'creative'::text, cr.sync_status, count(*)::int FROM creative cr GROUP BY cr.sync_status;
+
+-- name: LastOrdRequest :one
+-- Последний вызов ОРД по объекту (этап «API администратора», R-17): тела — как сохранены адаптером.
+SELECT r.id, r.operation, r.attempt, r.request, r.response_status, r.response_body, r.error, r.created_at
+FROM outbound_request r
+WHERE r.system = 'yandex_ord' AND r.object_type = @object_type AND r.object_id = @object_id
+ORDER BY r.created_at DESC
+LIMIT 1;

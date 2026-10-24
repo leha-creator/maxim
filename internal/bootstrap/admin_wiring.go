@@ -8,6 +8,7 @@ import (
 	billinghttp "github.com/leha-creator/maxim/internal/billing/httpapi"
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	ledgerhttp "github.com/leha-creator/maxim/internal/ledger/httpapi"
+	markinghttp "github.com/leha-creator/maxim/internal/marking/httpapi"
 	payouthttp "github.com/leha-creator/maxim/internal/payout/httpapi"
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
 	"github.com/leha-creator/maxim/internal/platform/adminref"
@@ -17,6 +18,9 @@ import (
 
 // adminHandlers — псевдоним для встраивания в apiImpl.
 type adminHandlers = adminhttp.Handlers
+
+// markingHandlers — псевдоним для встраивания в apiImpl.
+type markingHandlers = markinghttp.Handlers
 
 // wireAdmin собирает модуль admin (этап «API администратора»): второе подтверждение с
 // исполнителями ledger и payout (R-2, R-3), журнал действий, счётчики меню; подключает порты
@@ -40,7 +44,13 @@ func (m *modules) wireAdmin() {
 	svc.SetExecutor(admindomain.KindPayoutMarkPaid, bridge.AdminPayoutMarkPaid{Svc: m.payout})
 	m.admin, m.adminHTTP = svc, adminhttp.New(svc, refs, m.in.log)
 
-	m.placementHTTP.SetAdminPorts(placementhttp.AdminPorts{Refs: refs, Payouts: m.payoutHTTP})
+	placementPorts := placementhttp.AdminPorts{Refs: refs, Payouts: m.payoutHTTP}
+	if m.cfg.ORD.Enabled {
+		// Статус ОРД в карточках: креатив версии поста, контрагент организации.
+		placementPorts.Creatives = m.markingHTTP
+		m.accountHTTP.SetOrdCounterparty(m.markingHTTP)
+	}
+	m.placementHTTP.SetAdminPorts(placementPorts)
 	m.ledgerHTTP.SetAdminPorts(ledgerhttp.AdminPorts{Approvals: bridge.LedgerApprovals{H: m.adminHTTP},
 		Bank: bridge.LedgerBankStatement{Svc: m.billing}, Refs: refs})
 	m.payoutHTTP.SetAdminPorts(payouthttp.AdminPorts{Approvals: bridge.PayoutApprovals{H: m.adminHTTP}, Refs: refs})

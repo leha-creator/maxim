@@ -168,7 +168,7 @@ func TestOverview(t *testing.T) {
 	seen := map[uuid.UUID]int{}
 	var cursor *domain.ErrorCursor
 	for {
-		page, err := ov.ListErrors(ctx, cursor, 2)
+		page, err := ov.ListErrors(ctx, "", cursor, 2)
 		if err != nil {
 			t.Fatal(err)
 		}

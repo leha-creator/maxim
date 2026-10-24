@@ -21,6 +21,10 @@ type Users interface {
 	SetLastLogin(ctx context.Context, id uuid.UUID, at time.Time) error
 	// SetAdminRole ставит или снимает (nil) роль администратора (R-2 этапа «Каталог»).
 	SetAdminRole(ctx context.Context, id uuid.UUID, role *AdminRole, at time.Time) error
+	// GetForUpdate читает пользователя с блокировкой строки; ErrNotFound, если его нет.
+	GetForUpdate(ctx context.Context, id uuid.UUID) (*User, error)
+	// SetBlocked сохраняет статус и основание блокировки (R-12 этапа «API администратора»).
+	SetBlocked(ctx context.Context, u *User) error
 }
 
 // WindowCount — сколько записей в окне и когда появилась самая ранняя из них.
@@ -50,6 +54,8 @@ type Sessions interface {
 	GetByTokenHash(ctx context.Context, hash string) (*Session, error)
 	SetExpiresAt(ctx context.Context, id uuid.UUID, expiresAt, now time.Time) error
 	Revoke(ctx context.Context, id uuid.UUID, now time.Time) error
+	// RevokeAllForUser завершает все действующие сессии пользователя; возвращает их число.
+	RevokeAllForUser(ctx context.Context, userID uuid.UUID, now time.Time) (int64, error)
 }
 
 // Organizations — организации, участники и профили. Методы кабинета принимают
@@ -117,3 +123,34 @@ type OrganizationListener interface {
 type NopOrganizationListener struct{}
 
 func (NopOrganizationListener) OrganizationChanged(context.Context, uuid.UUID) error { return nil }
+
+// AdminOrganizationFilter — поиск организаций администратором (этап «API администратора», R-13).
+type AdminOrganizationFilter struct {
+	// Query — начало ИНН, часть наименования или точная почта участника; пусто — все.
+	Query string
+	// Cabinet — открытый кабинет; пусто — любой.
+	Cabinet Cabinet
+	Offset  int
+	Limit   int
+}
+
+// AdminOrganizationItem — строка списка организаций.
+type AdminOrganizationItem struct {
+	ID         uuid.UUID
+	Name       string
+	INN        string
+	LegalType  LegalType
+	Status     Status
+	Advertiser bool
+	Blogger    bool
+	CreatedAt  time.Time
+}
+
+// AdminOrganizations — организации для администратора; организация-платформа не видна.
+type AdminOrganizations interface {
+	AdminList(ctx context.Context, f AdminOrganizationFilter) ([]AdminOrganizationItem, int, error)
+	// AdminGet возвращает ErrNotFound, если организации нет.
+	AdminGet(ctx context.Context, id uuid.UUID) (*Organization, error)
+	// Members — участники, владелец первым.
+	Members(ctx context.Context, organizationID uuid.UUID) ([]User, error)
+}

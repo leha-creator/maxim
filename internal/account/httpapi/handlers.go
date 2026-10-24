@@ -31,6 +31,8 @@ type Handlers struct {
 	svc  *app.Service
 	opts Options
 	log  *slog.Logger
+	// ord — статус контрагента ОРД в карточке организации администратора; nil — не подключён.
+	ord OrdCounterparty
 }
 
 // New создаёт обработчики.

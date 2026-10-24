@@ -142,6 +142,18 @@ type ErrorItem struct {
 	LastRequestID uuid.UUID
 }
 
+// RequestLog — вызов ОРД из outbound_request: тела — как сохранены адаптером (ИНН с маской).
+type RequestLog struct {
+	ID             uuid.UUID
+	Operation      string
+	Attempt        int
+	Request        []byte
+	ResponseStatus *int
+	Response       []byte
+	Error          string
+	CreatedAt      time.Time
+}
+
 // ErrorCursor — ключ страницы списка ошибок: (updated_at, id).
 type ErrorCursor struct {
 	UpdatedAt time.Time
@@ -157,7 +169,9 @@ type StuckObject struct {
 // Overview — выборки по всем видам объектов: список S-20, зависшие, метрика.
 type Overview interface {
 	// ListErrors — объекты в error по (updated_at, id) после курсора.
-	ListErrors(ctx context.Context, after *ErrorCursor, limit int) ([]ErrorItem, error)
+	ListErrors(ctx context.Context, typ ObjectType, after *ErrorCursor, limit int) ([]ErrorItem, error)
+	// LastRequest — последний вызов ОРД по объекту; nil — вызовов не было (этап «API администратора», R-17).
+	LastRequest(ctx context.Context, ref ObjectRef, externalID string) (*RequestLog, error)
 	// StuckSent — объекты в sent с sent_at раньше before.
 	StuckSent(ctx context.Context, before time.Time, limit int) ([]StuckObject, error)
 	// CreativesWithoutErid — креативы без erid, созданные раньше before (T-11).

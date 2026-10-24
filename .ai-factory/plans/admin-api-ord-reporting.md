@@ -247,21 +247,21 @@ Rationale: план реализует этап целиком: операции
 
 ### Phase 5: Организации, журнал, счётчики, ошибки ОРД
 
-- [ ] **Task 13: Организации и пользователи (R-12 … R-14)** (depends on 3, 4)
+- [x] **Task 13: Организации и пользователи (R-12 … R-14)** (depends on 3, 4)
   - `account/app/admin_orgs.go`: `AdminOrganizations(ctx, query, role, cursor, limit)` (поиск по ИНН, наименованию, почте участника; роль — кабинет), `AdminOrganization(ctx, id)` (реквизиты, участники, кабинеты, статус ОРД контрагента — порт `account/domain.OrdStatus` над `marking`), `AdminUpdateOrganization(ctx, adminID, id, name, kpp, reason)` (проверки кабинета, `OrganizationListener`, `audit_log` `organization.admin_updated` с `audit.Diff`), `BlockUser`, `UnblockUser` (`audit_log` `user.blocked|unblocked`, сессии удаляются).
   - `account/httpapi/admin.go`: `ListAdminOrganizations`, `GetAdminOrganization` (обе роли, ИНН по R-14), `UpdateAdminOrganization`, `BlockUser`, `UnblockUser` (`senior`).
   - Журнал: WARN `admin organization updated` (`organization_id`, `fields`), WARN `user blocked|unblocked` (`user_id`).
   - Тесты: поиск по ИНН и почте; правка наименования ставит контрагента ОРД на повторную отправку; блокировка — сессия перестаёт работать (`401`); администратора — `409 admin_user`.
   - Файлы: `internal/account/{app/admin_orgs.go,app/admin_orgs_test.go,domain/ports.go,postgres/queries/*.sql,postgres/*.go,httpapi/admin.go}`, `internal/bootstrap/bridge/account.go`.
 
-- [ ] **Task 14: Журнал действий и счётчики (R-15, R-16)** (depends on 9)
+- [x] **Task 14: Журнал действий и счётчики (R-15, R-16)** (depends on 9)
   - `admin/postgres/queries/audit.sql` (чтение `audit_log` без `ip`), `admin/app/audit.go` (`AuditLog(filter, cursor, limit)`), `admin/app/counters.go` (порты `Counters` по модулям: `bridge.AdminCounters` над `channel`, `placement`, `marking`, `billing`, `payout`, `admin`).
   - `admin/httpapi`: `ListAuditLog` (`senior`), `GetAdminCounters` (обе).
   - Журнал: DEBUG `audit log listed`.
   - Тесты: фильтры `manual_only`, `action`, период; счётчики на сидах `dbtest`.
   - Файлы: `internal/admin/{app/audit.go,app/counters.go,postgres/queries/audit.sql,httpapi/*.go}`, `internal/bootstrap/bridge/admin.go`.
 
-- [ ] **Task 15: Ошибки ОРД через HTTP (S-20, R-17)** (depends on 4)
+- [x] **Task 15: Ошибки ОРД через HTTP (S-20, R-17)** (depends on 4)
   - `marking/app/errors.go`: фильтр по виду; `Object(ctx, ref)` — состояние, последний вызов (`outbound_request` по `LastRequestID`: операция, статус, тело запроса и ответа), зависимые (креативы договора, площадки контрагента).
   - `marking/httpapi/admin.go` (новый слой модуля): `ListOrdErrors`, `GetOrdObject`, `RetryOrdObject` (обе роли).
   - Журнал: `Retry` пишет сам (уже).
@@ -363,3 +363,4 @@ Rationale: план реализует этап целиком: операции
 - Ни текст основания, ни текст переписки, ни почта/ИНН без маскирования не пишутся в журнал приложения; выгрузки ИНН маскируют.
 - D-5 (задачи 5–8). Списки администратора — смещение в курсоре (`internal/platform/adminpage`, base64url `o:N`, `limit` 1…100, по умолчанию 20) и `total`; чтения — SQL с соединением таблиц модулей (как сверка). Ссылки на юрлицо и почту — `internal/platform/adminref` (ИНН всегда с маской). Действующее лицо audit_log администратора ставит `httpx.AdminContext`. Блокировка канала не вызывает `ChannelUnavailable` (S-25): начатые размещения продолжаются, блогер получает `channel.blocked`. Без маркировки (`ORD_ENABLED=false`) одобрение поста сразу выдаёт `erid` вида `dev-<номер заказа>`. Метрика `maxim_dispute_resolution_seconds{resolution}` — время от открытия до решения спора.
 - D-6 (задачи 9–12, 14). Ключ запроса подтверждения и проводки HTTP — `http:<вид>:<admin_id>:<Idempotency-Key>`: у каждого администратора и вида свой, команды CLI не пересекаются. Исполнитель подтверждения получает ключ запроса как ключ операции, поэтому повтор после сбоя не создаёт второй проводки; сбой исполнения откатывает решение (запрос остаётся `pending`). Автор отклоняет свой запрос — это отзыв (`withdrawn` в `audit_log`). Просроченные `pending` переводятся в `expired` при чтении списка, счётчиков и при попытке решения. Проверка порога отметки выплаты перенесена в `payout/app.MarkLegalPaid` (`ErrSecondApproval`); проверка в команде CLI оставлена как ранний отказ. Модуль `admin` читает `audit_log` без `ip`; `approver_user_id` проводки — из записи журнала действий ручной операции. Порт `placement/httpapi.AdminPayouts` — обработчики `payout/httpapi` (moderator получает пустой список). `getLatestBankStatement` — последняя по времени загрузки (для сверки — по дате конца периода, как в команде).
+- D-7 (задачи 13–15). Порты статуса ОРД в карточках (`account/httpapi.OrdCounterparty`, `placement/httpapi.AdminCreatives`) реализует `marking/httpapi.Handlers` и подключаются только при `ORD_ENABLED=true`; отдельного порта `account/domain.OrdStatus` нет — домен аккаунтов статус ОРД не использует. Блокировка: повтор ничего не меняет (без записи в журнал), администратора — `409 admin_user`; все сессии отзываются в той же транзакции. Правка реквизитов администратором — `organization.admin_updated` с основанием, проверки кабинета (КПП только у блогера-юрлица). `GetOrdObject` читает объект под блокировкой строки в короткой транзакции (как `Retry`) и последний `outbound_request` по `(object_type, ord_external_id)`; в списке ошибок `title` — `<вид>:<id>` без чтения объекта; поле `blocked` (зависимые объекты) не заполняется — оставлено на следующий этап.

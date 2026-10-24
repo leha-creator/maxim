@@ -31,6 +31,7 @@ import (
 	ledgerjobs "github.com/leha-creator/maxim/internal/ledger/jobs"
 	ledgerpg "github.com/leha-creator/maxim/internal/ledger/postgres"
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
+	markinghttp "github.com/leha-creator/maxim/internal/marking/httpapi"
 	markingjobs "github.com/leha-creator/maxim/internal/marking/jobs"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
 	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
@@ -185,6 +186,8 @@ type modules struct {
 	// marking — объекты ОРД и erid; markingStore — для метрики.
 	marking      *markingapp.Service
 	markingStore *markingpg.Store
+	// markingHTTP — ошибки и объекты ОРД для администратора (этап «API администратора»).
+	markingHTTP *markinghttp.Handlers
 	// payout — выплаты блогерам через Рокет Ворк; payoutStore — для команд администратора.
 	payout      *payoutapp.Service
 	payoutStore *payoutpg.Store
@@ -212,7 +215,7 @@ func newModules(cfg Config, in *infra) *modules {
 
 	deps := accountapp.Deps{
 		Users: accountStore.Users(), AuthCodes: accountStore.AuthCodes(), Sessions: accountStore.Sessions(),
-		Organizations: accountStore.Organizations(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
+		Organizations: accountStore.Organizations(), Admin: accountStore.Organizations(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
 		Sender: in.mail, Uploads: auditLog, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: log,
 		Config: accountapp.Config{
 			LoginCodeTTL: cfg.Auth.LoginCodeTTL, LoginCodeAttempts: cfg.Auth.LoginCodeAttempts,
@@ -270,6 +273,7 @@ func newModules(cfg Config, in *infra) *modules {
 		ledgerStore:       ledgerStore,
 		marking:           markingSvc,
 		markingStore:      markingStore,
+		markingHTTP:       markinghttp.New(markingSvc, log),
 		notification:      notificationSvc,
 		notificationHTTP:  notificationhttp.New(notificationSvc, log),
 		notificationStore: notificationStore,
@@ -321,6 +325,7 @@ type apiImpl struct {
 	*payoutHandlers
 	*notificationHandlers
 	*adminHandlers
+	*markingHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -336,7 +341,8 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Metrics: reg,
 		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
 			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP,
-			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP, adminHandlers: m.adminHTTP},
+			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP, adminHandlers: m.adminHTTP,
+			markingHandlers: m.markingHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),

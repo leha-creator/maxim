@@ -2,7 +2,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/leha-creator/maxim/internal/marking/domain"
 	"github.com/leha-creator/maxim/internal/marking/postgres/sqlc"
@@ -12,8 +15,8 @@ import (
 type Overview struct{ *Store }
 
 // ListErrors — объекты в error по (updated_at, id) после курсора (S-20).
-func (r *Overview) ListErrors(ctx context.Context, after *domain.ErrorCursor, limit int) ([]domain.ErrorItem, error) {
-	p := sqlc.ListOrdErrorsParams{Lim: int32(limit)}
+func (r *Overview) ListErrors(ctx context.Context, typ domain.ObjectType, after *domain.ErrorCursor, limit int) ([]domain.ErrorItem, error) {
+	p := sqlc.ListOrdErrorsParams{ObjectType: string(typ), Lim: int32(limit)}
 	if after != nil {
 		at, id := after.UpdatedAt, after.ID
 		p.AfterAt, p.AfterID = &at, &id
@@ -76,6 +79,31 @@ func (r *Overview) CountByStatus(ctx context.Context) (map[domain.ObjectType]map
 	}
 	for _, row := range rows {
 		out[domain.ObjectType(row.ObjectType)][domain.SyncStatus(row.SyncStatus)] = int(row.N)
+	}
+	return out, nil
+}
+
+// LastRequest — последний вызов ОРД по объекту; nil — вызовов не было.
+func (r *Overview) LastRequest(ctx context.Context, ref domain.ObjectRef, externalID string) (*domain.RequestLog, error) {
+	if externalID == "" {
+		return nil, nil
+	}
+	objectType := string(ref.Type)
+	if ref.Type == domain.TypePlatform {
+		objectType = "platforms" // операция адаптера, как в ListOrdErrors
+	}
+	row, err := r.q(ctx).LastOrdRequest(ctx, sqlc.LastOrdRequestParams{ObjectType: &objectType, ObjectID: &externalID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, r.fail(ctx, "Overview.LastRequest", err)
+	}
+	out := &domain.RequestLog{ID: row.ID, Operation: row.Operation, Attempt: int(row.Attempt), Request: row.Request,
+		Response: row.ResponseBody, Error: str(row.Error), CreatedAt: row.CreatedAt.UTC()}
+	if row.ResponseStatus != nil {
+		s := int(*row.ResponseStatus)
+		out.ResponseStatus = &s
 	}
 	return out, nil
 }
