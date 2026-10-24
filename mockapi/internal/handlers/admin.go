@@ -9,16 +9,26 @@ import (
 	"maxim/mockapi/internal/store"
 )
 
-// Операции администратора для каналов (тег admin-channels, S-16). Доступны пользователю
-// с ролью moderator или senior; остальным — 403 с details.reason = admin_required, как у бэкенда.
+// Операции администратора. Матрица ролей — как у бэкенда (R-1): admin — moderator или senior,
+// senior — только senior; иначе 403 с details.reason = admin_required.
 
 // admin требует роль администратора.
 func admin(ctx context.Context, tx *store.Tx) (*store.User, error) {
+	return adminWith(ctx, tx, false)
+}
+
+// senior требует роль senior.
+func senior(ctx context.Context, tx *store.Tx) (*store.User, error) {
+	return adminWith(ctx, tx, true)
+}
+
+func adminWith(ctx context.Context, tx *store.Tx, seniorOnly bool) (*store.User, error) {
 	u, err := user(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	if u.AdminRole == "" {
+	if u.AdminRole == "" || (seniorOnly && u.AdminRole != "senior") {
+		tx.Log().Warn("admin access denied", "op", "Admin.Access", "user_id", u.ID, "senior_only", seniorOnly)
 		e := store.Forbidden("admin role is required")
 		e.Details = map[string]any{"reason": "admin_required"}
 		return nil, e

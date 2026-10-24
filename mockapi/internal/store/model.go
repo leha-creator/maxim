@@ -18,6 +18,10 @@ type User struct {
 	AdminRole   string     // moderator | senior; пусто — не администратор
 	LastLoginAt *time.Time
 	CreatedAt   time.Time
+	// Blocked — пользователь заблокирован администратором: вход и сессии отклоняются (R-12).
+	Blocked       bool
+	BlockedReason string
+	BlockedAt     *time.Time
 }
 
 type Session struct {
@@ -81,6 +85,7 @@ type Category struct {
 	Slug     string
 	Name     string
 	Position int
+	Archived bool // не предлагается для новых каналов и не видна в фильтре каталога
 }
 
 type Format struct {
@@ -252,8 +257,13 @@ type Dispute struct {
 	OpenedAt     time.Time
 	DeadlineAt   time.Time
 	// Resolution и ResolvedAt — решение администратора (P-15); пусто — спор открыт.
-	Resolution string
-	ResolvedAt *time.Time
+	Resolution       string
+	ResolvedAt       *time.Time
+	ID               uuid.UUID
+	SuggestedShare   *int
+	PerformanceShare *int
+	Comment          string
+	ResolvedBy       *uuid.UUID
 }
 
 type HistoryEntry struct {
@@ -301,20 +311,23 @@ type Placement struct {
 	PublicationURL     string
 	Claim              *Claim
 	Dispute            *Dispute // открыт переходом P-14
+	Violations         []Violation
+	RemovalReason      string // schedule | external | admin | refund; пусто — пост не снят
 	History            []HistoryEntry
 	CreatedAt          time.Time
 }
 
 type Invoice struct {
-	ID         uuid.UUID
-	Number     string
-	OrgID      uuid.UUID
-	Amount     int64
-	Status     string
-	ExpiresAt  time.Time
-	PaidAt     *time.Time
-	PaidAmount *int64
-	CreatedAt  time.Time
+	ID           uuid.UUID
+	Number       string
+	OrgID        uuid.UUID
+	Amount       int64
+	Status       string
+	ExpiresAt    time.Time
+	PaidAt       *time.Time
+	CancelReason string
+	PaidAmount   *int64
+	CreatedAt    time.Time
 }
 
 // LedgerEntry — движение по балансу рекламодателя. Полный план счетов
@@ -332,15 +345,19 @@ type LedgerEntry struct {
 }
 
 type Payout struct {
-	ID          uuid.UUID
-	PlacementID uuid.UUID
-	OrgID       uuid.UUID
-	Amount      int64
-	Status      string
-	Attempt     int
-	ReceiptURL  string
-	CreatedAt   time.Time
-	CompletedAt *time.Time
+	ID             uuid.UUID
+	PlacementID    uuid.UUID
+	OrgID          uuid.UUID
+	Amount         int64
+	Status         string
+	Attempt        int
+	ReceiptURL     string
+	CreatedAt      time.Time
+	CompletedAt    *time.Time
+	Method         string // rocketwork | bank_transfer; пусто — rocketwork
+	FailureCode    string
+	FailureMessage string
+	BankReference  string
 }
 
 type RocketworkContractor struct {
@@ -370,9 +387,18 @@ type Data struct {
 	ClosingActs   []*ClosingAct
 	Payouts       []*Payout
 	Rocketwork    map[uuid.UUID]*RocketworkContractor
-	NextOrderNo   int64
-	NextInvoiceNo int64
-	NextMaxChatID int64
+	// Администратор (этап «API администратора»).
+	DisputeMessages []*DisputeMessage
+	Approvals       []*Approval
+	Audit           []*AuditEntry
+	BankStatements  []*BankStatement
+	BankTxs         []*BankTx
+	AdminLedger     []*AdminLedgerTx
+	OrdObjects      []*OrdObject
+	OrdReports      []*OrdReport
+	NextOrderNo     int64
+	NextInvoiceNo   int64
+	NextMaxChatID   int64
 }
 
 // NewData создаёт пустое состояние.

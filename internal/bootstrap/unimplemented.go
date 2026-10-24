@@ -14,6 +14,50 @@ type unimplemented struct{}
 
 var _ apigen.StrictServerInterface = unimplemented{}
 
+func (unimplemented) ListAdminApprovals(context.Context, apigen.ListAdminApprovalsRequestObject) (apigen.ListAdminApprovalsResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminApprovals")
+}
+
+func (unimplemented) ApproveAdminApproval(context.Context, apigen.ApproveAdminApprovalRequestObject) (apigen.ApproveAdminApprovalResponseObject, error) {
+	return nil, apperr.NotImplemented("approveAdminApproval")
+}
+
+func (unimplemented) RejectAdminApproval(context.Context, apigen.RejectAdminApprovalRequestObject) (apigen.RejectAdminApprovalResponseObject, error) {
+	return nil, apperr.NotImplemented("rejectAdminApproval")
+}
+
+func (unimplemented) ListAuditLog(context.Context, apigen.ListAuditLogRequestObject) (apigen.ListAuditLogResponseObject, error) {
+	return nil, apperr.NotImplemented("listAuditLog")
+}
+
+func (unimplemented) UploadBankStatement(context.Context, apigen.UploadBankStatementRequestObject) (apigen.UploadBankStatementResponseObject, error) {
+	return nil, apperr.NotImplemented("uploadBankStatement")
+}
+
+func (unimplemented) GetLatestBankStatement(context.Context, apigen.GetLatestBankStatementRequestObject) (apigen.GetLatestBankStatementResponseObject, error) {
+	return nil, apperr.NotImplemented("getLatestBankStatement")
+}
+
+func (unimplemented) ListBankTransactions(context.Context, apigen.ListBankTransactionsRequestObject) (apigen.ListBankTransactionsResponseObject, error) {
+	return nil, apperr.NotImplemented("listBankTransactions")
+}
+
+func (unimplemented) IgnoreBankTransaction(context.Context, apigen.IgnoreBankTransactionRequestObject) (apigen.IgnoreBankTransactionResponseObject, error) {
+	return nil, apperr.NotImplemented("ignoreBankTransaction")
+}
+
+func (unimplemented) MatchBankTransaction(context.Context, apigen.MatchBankTransactionRequestObject) (apigen.MatchBankTransactionResponseObject, error) {
+	return nil, apperr.NotImplemented("matchBankTransaction")
+}
+
+func (unimplemented) CreateChannelCategory(context.Context, apigen.CreateChannelCategoryRequestObject) (apigen.CreateChannelCategoryResponseObject, error) {
+	return nil, apperr.NotImplemented("createChannelCategory")
+}
+
+func (unimplemented) UpdateChannelCategory(context.Context, apigen.UpdateChannelCategoryRequestObject) (apigen.UpdateChannelCategoryResponseObject, error) {
+	return nil, apperr.NotImplemented("updateChannelCategory")
+}
+
 func (unimplemented) ListAdminChannels(context.Context, apigen.ListAdminChannelsRequestObject) (apigen.ListAdminChannelsResponseObject, error) {
 	return nil, apperr.NotImplemented("listAdminChannels")
 }
@@ -26,12 +70,184 @@ func (unimplemented) ApproveChannel(context.Context, apigen.ApproveChannelReques
 	return nil, apperr.NotImplemented("approveChannel")
 }
 
+func (unimplemented) BlockChannel(context.Context, apigen.BlockChannelRequestObject) (apigen.BlockChannelResponseObject, error) {
+	return nil, apperr.NotImplemented("blockChannel")
+}
+
 func (unimplemented) RejectChannel(context.Context, apigen.RejectChannelRequestObject) (apigen.RejectChannelResponseObject, error) {
 	return nil, apperr.NotImplemented("rejectChannel")
 }
 
 func (unimplemented) SetChannelRknCheck(context.Context, apigen.SetChannelRknCheckRequestObject) (apigen.SetChannelRknCheckResponseObject, error) {
 	return nil, apperr.NotImplemented("setChannelRknCheck")
+}
+
+func (unimplemented) UnblockChannel(context.Context, apigen.UnblockChannelRequestObject) (apigen.UnblockChannelResponseObject, error) {
+	return nil, apperr.NotImplemented("unblockChannel")
+}
+
+func (unimplemented) GetAdminCounters(context.Context, apigen.GetAdminCountersRequestObject) (apigen.GetAdminCountersResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminCounters")
+}
+
+func (unimplemented) ListAdminDisputes(context.Context, apigen.ListAdminDisputesRequestObject) (apigen.ListAdminDisputesResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminDisputes")
+}
+
+func (unimplemented) GetAdminDispute(context.Context, apigen.GetAdminDisputeRequestObject) (apigen.GetAdminDisputeResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminDispute")
+}
+
+func (unimplemented) ListAdminDisputeMessages(context.Context, apigen.ListAdminDisputeMessagesRequestObject) (apigen.ListAdminDisputeMessagesResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminDisputeMessages")
+}
+
+func (unimplemented) CreateAdminDisputeMessage(context.Context, apigen.CreateAdminDisputeMessageRequestObject) (apigen.CreateAdminDisputeMessageResponseObject, error) {
+	return nil, apperr.NotImplemented("createAdminDisputeMessage")
+}
+
+func (unimplemented) PreviewDisputeResolution(context.Context, apigen.PreviewDisputeResolutionRequestObject) (apigen.PreviewDisputeResolutionResponseObject, error) {
+	return nil, apperr.NotImplemented("previewDisputeResolution")
+}
+
+func (unimplemented) ResolveDispute(context.Context, apigen.ResolveDisputeRequestObject) (apigen.ResolveDisputeResponseObject, error) {
+	return nil, apperr.NotImplemented("resolveDispute")
+}
+
+func (unimplemented) ListAdminInvoices(context.Context, apigen.ListAdminInvoicesRequestObject) (apigen.ListAdminInvoicesResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminInvoices")
+}
+
+func (unimplemented) CancelAdminInvoice(context.Context, apigen.CancelAdminInvoiceRequestObject) (apigen.CancelAdminInvoiceResponseObject, error) {
+	return nil, apperr.NotImplemented("cancelAdminInvoice")
+}
+
+func (unimplemented) CreateDepositTopup(context.Context, apigen.CreateDepositTopupRequestObject) (apigen.CreateDepositTopupResponseObject, error) {
+	return nil, apperr.NotImplemented("createDepositTopup")
+}
+
+func (unimplemented) ListLedgerEntries(context.Context, apigen.ListLedgerEntriesRequestObject) (apigen.ListLedgerEntriesResponseObject, error) {
+	return nil, apperr.NotImplemented("listLedgerEntries")
+}
+
+func (unimplemented) CreateManualLedgerEntry(context.Context, apigen.CreateManualLedgerEntryRequestObject) (apigen.CreateManualLedgerEntryResponseObject, error) {
+	return nil, apperr.NotImplemented("createManualLedgerEntry")
+}
+
+func (unimplemented) GetLedgerSummary(context.Context, apigen.GetLedgerSummaryRequestObject) (apigen.GetLedgerSummaryResponseObject, error) {
+	return nil, apperr.NotImplemented("getLedgerSummary")
+}
+
+func (unimplemented) ListOrdErrors(context.Context, apigen.ListOrdErrorsRequestObject) (apigen.ListOrdErrorsResponseObject, error) {
+	return nil, apperr.NotImplemented("listOrdErrors")
+}
+
+func (unimplemented) GetOrdObject(context.Context, apigen.GetOrdObjectRequestObject) (apigen.GetOrdObjectResponseObject, error) {
+	return nil, apperr.NotImplemented("getOrdObject")
+}
+
+func (unimplemented) RetryOrdObject(context.Context, apigen.RetryOrdObjectRequestObject) (apigen.RetryOrdObjectResponseObject, error) {
+	return nil, apperr.NotImplemented("retryOrdObject")
+}
+
+func (unimplemented) ListOrdReports(context.Context, apigen.ListOrdReportsRequestObject) (apigen.ListOrdReportsResponseObject, error) {
+	return nil, apperr.NotImplemented("listOrdReports")
+}
+
+func (unimplemented) GetOrdReport(context.Context, apigen.GetOrdReportRequestObject) (apigen.GetOrdReportResponseObject, error) {
+	return nil, apperr.NotImplemented("getOrdReport")
+}
+
+func (unimplemented) RebuildOrdReport(context.Context, apigen.RebuildOrdReportRequestObject) (apigen.RebuildOrdReportResponseObject, error) {
+	return nil, apperr.NotImplemented("rebuildOrdReport")
+}
+
+func (unimplemented) SendOrdReport(context.Context, apigen.SendOrdReportRequestObject) (apigen.SendOrdReportResponseObject, error) {
+	return nil, apperr.NotImplemented("sendOrdReport")
+}
+
+func (unimplemented) ListAdminOrders(context.Context, apigen.ListAdminOrdersRequestObject) (apigen.ListAdminOrdersResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminOrders")
+}
+
+func (unimplemented) GetAdminOrder(context.Context, apigen.GetAdminOrderRequestObject) (apigen.GetAdminOrderResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminOrder")
+}
+
+func (unimplemented) ApproveOrderPost(context.Context, apigen.ApproveOrderPostRequestObject) (apigen.ApproveOrderPostResponseObject, error) {
+	return nil, apperr.NotImplemented("approveOrderPost")
+}
+
+func (unimplemented) RejectOrderPost(context.Context, apigen.RejectOrderPostRequestObject) (apigen.RejectOrderPostResponseObject, error) {
+	return nil, apperr.NotImplemented("rejectOrderPost")
+}
+
+func (unimplemented) ListAdminOrganizations(context.Context, apigen.ListAdminOrganizationsRequestObject) (apigen.ListAdminOrganizationsResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminOrganizations")
+}
+
+func (unimplemented) GetAdminOrganization(context.Context, apigen.GetAdminOrganizationRequestObject) (apigen.GetAdminOrganizationResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminOrganization")
+}
+
+func (unimplemented) UpdateAdminOrganization(context.Context, apigen.UpdateAdminOrganizationRequestObject) (apigen.UpdateAdminOrganizationResponseObject, error) {
+	return nil, apperr.NotImplemented("updateAdminOrganization")
+}
+
+func (unimplemented) CreateBalanceReturn(context.Context, apigen.CreateBalanceReturnRequestObject) (apigen.CreateBalanceReturnResponseObject, error) {
+	return nil, apperr.NotImplemented("createBalanceReturn")
+}
+
+func (unimplemented) ListAdminPayouts(context.Context, apigen.ListAdminPayoutsRequestObject) (apigen.ListAdminPayoutsResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminPayouts")
+}
+
+func (unimplemented) ExportAdminPayouts(context.Context, apigen.ExportAdminPayoutsRequestObject) (apigen.ExportAdminPayoutsResponseObject, error) {
+	return nil, apperr.NotImplemented("exportAdminPayouts")
+}
+
+func (unimplemented) GetAdminPayoutSummary(context.Context, apigen.GetAdminPayoutSummaryRequestObject) (apigen.GetAdminPayoutSummaryResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminPayoutSummary")
+}
+
+func (unimplemented) MarkPayoutPaid(context.Context, apigen.MarkPayoutPaidRequestObject) (apigen.MarkPayoutPaidResponseObject, error) {
+	return nil, apperr.NotImplemented("markPayoutPaid")
+}
+
+func (unimplemented) RetryPayout(context.Context, apigen.RetryPayoutRequestObject) (apigen.RetryPayoutResponseObject, error) {
+	return nil, apperr.NotImplemented("retryPayout")
+}
+
+func (unimplemented) ListAdminPlacements(context.Context, apigen.ListAdminPlacementsRequestObject) (apigen.ListAdminPlacementsResponseObject, error) {
+	return nil, apperr.NotImplemented("listAdminPlacements")
+}
+
+func (unimplemented) GetAdminPlacement(context.Context, apigen.GetAdminPlacementRequestObject) (apigen.GetAdminPlacementResponseObject, error) {
+	return nil, apperr.NotImplemented("getAdminPlacement")
+}
+
+func (unimplemented) AdminCancelPlacement(context.Context, apigen.AdminCancelPlacementRequestObject) (apigen.AdminCancelPlacementResponseObject, error) {
+	return nil, apperr.NotImplemented("adminCancelPlacement")
+}
+
+func (unimplemented) AdminMarkRemoved(context.Context, apigen.AdminMarkRemovedRequestObject) (apigen.AdminMarkRemovedResponseObject, error) {
+	return nil, apperr.NotImplemented("adminMarkRemoved")
+}
+
+func (unimplemented) AdminOpenDispute(context.Context, apigen.AdminOpenDisputeRequestObject) (apigen.AdminOpenDisputeResponseObject, error) {
+	return nil, apperr.NotImplemented("adminOpenDispute")
+}
+
+func (unimplemented) AdminRemovePost(context.Context, apigen.AdminRemovePostRequestObject) (apigen.AdminRemovePostResponseObject, error) {
+	return nil, apperr.NotImplemented("adminRemovePost")
+}
+
+func (unimplemented) BlockUser(context.Context, apigen.BlockUserRequestObject) (apigen.BlockUserResponseObject, error) {
+	return nil, apperr.NotImplemented("blockUser")
+}
+
+func (unimplemented) UnblockUser(context.Context, apigen.UnblockUserRequestObject) (apigen.UnblockUserResponseObject, error) {
+	return nil, apperr.NotImplemented("unblockUser")
 }
 
 func (unimplemented) RequestLoginCode(context.Context, apigen.RequestLoginCodeRequestObject) (apigen.RequestLoginCodeResponseObject, error) {
@@ -104,6 +320,14 @@ func (unimplemented) BloggerAcceptPlacement(context.Context, apigen.BloggerAccep
 
 func (unimplemented) BloggerDeclinePlacement(context.Context, apigen.BloggerDeclinePlacementRequestObject) (apigen.BloggerDeclinePlacementResponseObject, error) {
 	return nil, apperr.NotImplemented("bloggerDeclinePlacement")
+}
+
+func (unimplemented) ListBloggerDisputeMessages(context.Context, apigen.ListBloggerDisputeMessagesRequestObject) (apigen.ListBloggerDisputeMessagesResponseObject, error) {
+	return nil, apperr.NotImplemented("listBloggerDisputeMessages")
+}
+
+func (unimplemented) CreateBloggerDisputeMessage(context.Context, apigen.CreateBloggerDisputeMessageRequestObject) (apigen.CreateBloggerDisputeMessageResponseObject, error) {
+	return nil, apperr.NotImplemented("createBloggerDisputeMessage")
 }
 
 func (unimplemented) BloggerReschedulePlacement(context.Context, apigen.BloggerReschedulePlacementRequestObject) (apigen.BloggerReschedulePlacementResponseObject, error) {
@@ -296,6 +520,14 @@ func (unimplemented) CancelPlacement(context.Context, apigen.CancelPlacementRequ
 
 func (unimplemented) CreatePlacementClaim(context.Context, apigen.CreatePlacementClaimRequestObject) (apigen.CreatePlacementClaimResponseObject, error) {
 	return nil, apperr.NotImplemented("createPlacementClaim")
+}
+
+func (unimplemented) ListPlacementDisputeMessages(context.Context, apigen.ListPlacementDisputeMessagesRequestObject) (apigen.ListPlacementDisputeMessagesResponseObject, error) {
+	return nil, apperr.NotImplemented("listPlacementDisputeMessages")
+}
+
+func (unimplemented) CreatePlacementDisputeMessage(context.Context, apigen.CreatePlacementDisputeMessageRequestObject) (apigen.CreatePlacementDisputeMessageResponseObject, error) {
+	return nil, apperr.NotImplemented("createPlacementDisputeMessage")
 }
 
 func (unimplemented) MaxWebhook(context.Context, apigen.MaxWebhookRequestObject) (apigen.MaxWebhookResponseObject, error) {

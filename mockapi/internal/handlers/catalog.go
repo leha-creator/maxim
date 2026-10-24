@@ -209,6 +209,9 @@ func (h *Handlers) ListChannelCategories(ctx context.Context, req api.ListChanne
 	defer done()
 	items := []api.ChannelCategory{}
 	for _, c := range tx.D.Categories {
+		if c.Archived {
+			continue
+		}
 		items = append(items, api.ChannelCategory{Id: c.ID, Slug: c.Slug, Name: c.Name})
 	}
 	return api.ListChannelCategories200JSONResponse{Items: items}, nil

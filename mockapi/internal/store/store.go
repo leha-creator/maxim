@@ -106,7 +106,7 @@ func (s *Store) SessionUser(token string) (uuid.UUID, bool) {
 	if !ok {
 		return uuid.Nil, false
 	}
-	if _, ok := s.data.Users[sess.UserID]; !ok {
+	if u, ok := s.data.Users[sess.UserID]; !ok || u.Blocked {
 		return uuid.Nil, false
 	}
 	return sess.UserID, true

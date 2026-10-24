@@ -121,7 +121,7 @@ Rationale: план реализует этап целиком: операции
 
 ### Phase 1: Контракт (разблокирует фронтенд)
 
-- [ ] **Task 1: OpenAPI операций администратора (R-1 … R-17, R-21)**
+- [x] **Task 1: OpenAPI операций администратора (R-1 … R-17, R-21)**
   - `api/openapi.yaml`: теги и операции (имена — `operationId`):
     - `admin-orders`: `listAdminOrders`, `getAdminOrder`, `approveOrderPost`, `rejectOrderPost`.
     - `admin-channels` (дополнение): `blockChannel`, `unblockChannel`; описание тега без «тестовый сервер не реализует».
@@ -143,7 +143,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты: `mockapi/internal/api/spec_test.go` (спецификация валидна); `go build ./...`.
   - Файлы: `api/openapi.yaml`, `internal/apigen/api.gen.go`, `internal/bootstrap/unimplemented.go`, `mockapi/internal/api/api.gen.go`.
 
-- [ ] **Task 2: `mockapi` для новых операций** (depends on 1)
+- [x] **Task 2: `mockapi` для новых операций** (depends on 1)
   - `mockapi/internal/handlers/admin_*.go`, `store/admin.go`: операции на данных в памяти — очередь и модерация заказов (одобрение двигает заказ как `_mock/approve-post`), размещения и ручные операции (через существующие переходы), споры (решение — существующий P-15 мок), переписка, выплаты и CSV, выписка (разбор не нужен: фиксированная сводка), поступления, счета, проводки (журнал из модели денег мока), подтверждения (порог как у бэкенда: `senior` второй — другой пользователь сида), организации, блокировка, журнал действий (что пишет мок), ошибки и отчёты ОРД (данные сида), счётчики. Роли: `moderator` и `senior` различаются (сид: второй администратор `mod@example.test` — `moderator`, `adm2@example.test` — `senior`).
   - `seed.go`: пользователи-администраторы, спор, выплата `failed`, поступление `unmatched`, ошибка ОРД, отчёт ОРД прошлого месяца.
   - `contract_test.go`: случай на каждую новую операцию; `gaps_test.go`: `moderator` на операции `senior` — `403 admin_required`; второе подтверждение — `202`, подтверждение тем же администратором — `409 same_admin`, другим — исполнено; переписка видна адресату.
@@ -346,6 +346,13 @@ Rationale: план реализует этап целиком: операции
   - Журнал: не применимо.
   - Файлы: `docs/{02-scenarios.md,04-domain-model.md,05-integrations.md,07-non-functional.md,08-screens.md,open-questions.md,frontend-api-gaps.md}`, `README.md`, `.ai-factory/ARCHITECTURE.md`.
 <!-- Commit checkpoint: tasks 23-24 -->
+
+## Решения при реализации
+
+- D-1 (задача 1). `listOrdErrors` отдаёт `OrdObject` (та же схема, что `getOrdObject`, без `last_request`): отдельная `OrdErrorItem` не нужна. Схема `AdminDisputeBrief` — общая часть спора в карточке размещения и в списке споров.
+- D-2 (задача 1). `ChannelCategoryInput` принимает `slug` (латиница, уникален), а не `id`: идентификатор создаёт сервер, `slug` нужен каталогу. Архив — существующий `channel_category.is_active` (миграция 00004), поле `archived_at` не добавляется.
+- D-3 (задача 1). ИНН в `AdminOrganizationRef` всегда с маской (ссылки в списках размещений, споров, выплат); полный ИНН у `senior` — в `AdminOrganization*`, `BankTransaction.payer_inn`. Почта и телефон в `AdminOrganization` у `moderator` — с маской.
+- D-4 (задача 2). `mockapi`: второй `senior` — `adm2@example.test`, `moderator` — `mod@example.test`; юрлицо-блогер `ООО «Тестовые медиа»` с приостановленным каналом 114 — выплата переводом; размещение 808 — выплата `failed`. `contract_test` передаёт заголовки (`Idempotency-Key`) через `opCase.header`.
 
 ## Критерии готовности этапа
 

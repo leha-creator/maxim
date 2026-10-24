@@ -5,8 +5,22 @@ info:
   description: |
     HTTP API кабинетов рекламодателя и блогера. Черновик: составлен по документам
     `docs/02-scenarios.md`, `docs/03-placement.md`, `docs/04-domain-model.md`, `docs/08-screens.md`.
-    При расхождении правы документы. Из раздела администратора описаны операции для каналов
-    (тег `admin-channels`, этап «Каталог»); остальные операции администратора — этап «API администратора».
+    При расхождении правы документы.
+
+    Администратор (07 §4). Операции `/admin/*` требуют роль `moderator` или `senior`; в описании каждой
+    операции указано, какой роли она доступна («Роль: moderator, senior» или «Роль: senior»). Без роли —
+    `403` с `details.reason = admin_required`. Обеим ролям: модерация каналов и постов, чтение размещений,
+    удаление поста и открытие спора, споры и переписка, ошибки и отчёты ОРД (чтение и «Повторить»),
+    организации (чтение), счётчики. Только `senior`: отмена размещения и отметка снятия, блокировки,
+    справочники, правка организации, выплаты, оплаты и счета, проводки, подтверждения, журнал действий,
+    формирование и отправка отчёта ОРД.
+
+    Второе подтверждение (R-2). Ручная проводка, пополнение депозита и отметка выплаты юрлицу на сумму
+    больше порога (`LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD`, 100 000 ₽) не исполняются сразу: ответ `202`
+    с запросом `AdminApproval`; операцию исполняет подтверждение другого `senior`.
+
+    ИНН и почта в ответах администратора: у `senior` — полные в организациях, оплатах и выплатах; у
+    `moderator` и в ссылках на организации (`AdminOrganizationRef`) — с маской (`77****1234`).
 
     Соглашения:
     - Деньги — целые копейки (`int64`). Суммы считает сервер; клиент передаёт идентификаторы.
@@ -57,9 +71,32 @@ tags:
     description: Выплаты и Рокет Ворк (S-11, S-15; `blg/payouts`)
   - name: admin-channels
     description: |
-      Модерация каналов и проверка номера РКН администратором (S-16, 06 §6.3). Нужна роль
-      администратора `moderator` или `senior` (07 §4), иначе `403` с `details.reason = admin_required`.
-      Тестовый сервер эти операции не реализует (`501`).
+      Модерация каналов и проверка номера РКН (S-16, 06 §6.3), блокировка канала (S-19). Нужна роль
+      администратора (07 §4), иначе `403` с `details.reason = admin_required`.
+  - name: admin-dictionaries
+    description: Справочники администратора (категории каналов)
+  - name: admin-orders
+    description: Модерация поста заказа (S-17; `adm/moderation`)
+  - name: admin-placements
+    description: Размещения и ручные операции (S-19; `adm/placements`)
+  - name: admin-disputes
+    description: Споры (S-18; `adm/disputes`)
+  - name: admin-payouts
+    description: Реестр выплат блогерам (`adm/payouts`)
+  - name: admin-payments
+    description: Выписки, поступления и счета (S-30; `adm/payments`)
+  - name: admin-ledger
+    description: Журнал денег, сверка и ручные проводки (06 §2.4; `adm/ledger`)
+  - name: admin-approvals
+    description: Второе подтверждение ручных денежных операций (07 §4)
+  - name: admin-organizations
+    description: Организации и пользователи (S-20; `adm/organizations`)
+  - name: admin-audit
+    description: Журнал действий (`adm/audit`)
+  - name: admin-ord
+    description: Ошибки и отчётность ОРД (S-20, S-31; `adm/ord`)
+  - name: admin
+    description: Общее для кабинета администратора
   - name: webhooks
     description: Входящие события внешних систем. Тестовый сервер принимает и ничего не делает
   - name: _mock
@@ -1817,6 +1854,1597 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/channels/{id}/block:
+    post:
+      tags: [admin-channels]
+      operationId: blockChannel
+      summary: Заблокировать канал (S-19 `block_channel`)
+      description: |
+        Роль: senior. Из любого состояния, кроме `blocked`. Канал пропадает из каталога и корзины,
+        новые размещения невозможны; уже идущие размещения продолжаются. Основание видно блогеру
+        в `status_reason`. Повторная блокировка — `409`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Накрутка подписчиков подтверждена }
+      responses:
+        '200':
+          description: Канал
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannel' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/channels/{id}/unblock:
+    post:
+      tags: [admin-channels]
+      operationId: unblockChannel
+      summary: Снять блокировку канала
+      description: |
+        Роль: senior. Только из `blocked`; канал уходит на повторную модерацию (`moderation`).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Блогер подтвердил живую аудиторию }
+      responses:
+        '200':
+          description: Канал
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannel' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: dictionaries
+  /admin/channel-categories:
+    post:
+      tags: [admin-dictionaries]
+      operationId: createChannelCategory
+      summary: Добавить категорию каналов
+      description: |
+        Роль: senior. `slug` — латиница, цифры и дефис, уникален; занят — `409` с `details.reason = slug_taken`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChannelCategoryInput' }
+            example: { slug: pets, name: Животные, position: 120 }
+      responses:
+        '201':
+          description: Категория
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannelCategory' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/channel-categories/{id}:
+    patch:
+      tags: [admin-dictionaries]
+      operationId: updateChannelCategory
+      summary: Изменить или убрать в архив категорию каналов
+      description: |
+        Роль: senior. Архивная категория не предлагается для новых каналов и не показывается в
+        фильтре каталога; у каналов, где она уже выбрана, остаётся.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChannelCategoryUpdate' }
+            example: { name: Домашние животные }
+      responses:
+        '200':
+          description: Категория
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminChannelCategory' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: orders (S-17)
+  /admin/orders:
+    get:
+      tags: [admin-orders]
+      operationId: listAdminOrders
+      summary: Заказы для модерации поста (S-17 шаг 1)
+      description: |
+        Роль: moderator, senior. По умолчанию — `moderation`: сначала по началу периода публикации
+        кампании, затем по времени ожидания; `urgent = true` — до начала периода меньше 6 часов или
+        он уже начался (A-40). `marking` и `all` — по времени ожидания.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [moderation, marking, all], default: moderation }
+        - name: query
+          in: query
+          description: Номер заказа или ИНН рекламодателя
+          schema: { type: string, maxLength: 100 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Заказы
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminOrderListItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/orders/{id}:
+    get:
+      tags: [admin-orders]
+      operationId: getAdminOrder
+      summary: Заказ для модерации поста (S-17)
+      description: |
+        Роль: moderator, senior. Пост текущей версии в итоговом виде, каналы заказа, состояние креатива в ОРД.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrder' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/orders/{id}/approve:
+    post:
+      tags: [admin-orders]
+      operationId: approveOrderPost
+      summary: Одобрить пост заказа (S-17 шаг 3)
+      description: |
+        Роль: moderator, senior. Только заказ в `moderation`: версия поста одобрена, заказ уходит в
+        `marking`, креатив регистрируется в ОРД; после erid размещения переходят в `awaiting_blogger`.
+        Иначе — `409 invalid_transition`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrder' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+  /admin/orders/{id}/reject:
+    post:
+      tags: [admin-orders]
+      operationId: rejectOrderPost
+      summary: Отклонить пост заказа (S-17 шаг 4)
+      description: |
+        Роль: moderator, senior. Только заказ в `moderation`: заказ `rejected`, удержания сняты,
+        рекламодатель видит причину и может исправить пост (S-29).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChannelRejectInput' }
+            example: { reason: Нет сведений о продавце }
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrder' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: placements (S-19)
+  /admin/placements:
+    get:
+      tags: [admin-placements]
+      operationId: listAdminPlacements
+      summary: Размещения всех организаций
+      description: 'Роль: moderator, senior. Новые первыми.'
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PlacementStatus' }
+        - name: channel_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: order_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: from
+          in: query
+          description: Создано не раньше (дата по Москве)
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Создано не позже (дата по Москве, включительно)
+          schema: { type: string, format: date }
+        - name: removal_overdue
+          in: query
+          description: Только с просроченным снятием (пост жив после `remove_at`)
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Размещения
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminPlacementListItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/placements/{id}:
+    get:
+      tags: [admin-placements]
+      operationId: getAdminPlacement
+      summary: 'Размещение: история и ручные операции'
+      description: |
+        Роль: moderator, senior. `available_actions` учитывает и состояние, и роль: `cancel`,
+        `mark_removed`, `retry_payout` есть только у `senior`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: 'Размещение'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPlacement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/placements/{id}/cancel:
+    post:
+      tags: [admin-placements]
+      operationId: adminCancelPlacement
+      summary: Отменить размещение (S-19 `admin_cancel`)
+      description: |
+        Роль: senior. P-06 из `created`, `awaiting_blogger`, `awaiting_schedule`, `scheduled`:
+        размещение `cancelled`, удержание снято, стороны уведомлены. Иначе — `409 invalid_transition`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: 'Канал заблокирован, рекламодатель просит отменить' }
+      responses:
+        '200':
+          description: 'Размещение'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPlacement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/placements/{id}/remove-post:
+    post:
+      tags: [admin-placements]
+      operationId: adminRemovePost
+      summary: Удалить пост (S-19 `admin_remove_post`)
+      description: |
+        Роль: moderator, senior. `published` или `disputed` с живой публикацией: бот удаляет пост
+        сейчас; из `published` сначала открывается спор с причиной `admin`. Пост уже снят —
+        `409` с `details.reason = publication_not_live`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Пост нарушает правила площадки }
+      responses:
+        '200':
+          description: 'Размещение'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPlacement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/placements/{id}/mark-removed:
+    post:
+      tags: [admin-placements]
+      operationId: adminMarkRemoved
+      summary: Отметить пост снятым (S-19 `admin_mark_removed`)
+      description: |
+        Роль: senior. Только `published`, когда бот не может удалить пост: публикация считается
+        снятой в `removed_at` (между публикацией и «сейчас»), размещение `removed` (P-10), нарушение
+        не записывается, срок претензии — от `removed_at`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarkRemovedInput' }
+            example: { removed_at: '2026-10-21T10:00:00Z', reason: Блогер удалил пост вручную по сроку }
+      responses:
+        '200':
+          description: 'Размещение'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPlacement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/placements/{id}/open-dispute:
+    post:
+      tags: [admin-placements]
+      operationId: adminOpenDispute
+      summary: Открыть спор (S-19 `admin_open_dispute`)
+      description: |
+        Роль: moderator, senior. P-14 из `published` или `removed` с причиной `admin`; основание —
+        в истории и журнале действий. Иначе — `409 invalid_transition`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Жалоба рекламодателя по телефону }
+      responses:
+        '200':
+          description: 'Размещение'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPlacement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: disputes (S-18)
+  /admin/disputes:
+    get:
+      tags: [admin-disputes]
+      operationId: listAdminDisputes
+      summary: Споры
+      description: |
+        Роль: moderator, senior. `open` — ближайший срок решения первым; `resolved` и `all` — новые первыми.
+      parameters:
+        - name: state
+          in: query
+          schema: { type: string, enum: [open, resolved, all], default: open }
+        - name: overdue
+          in: query
+          description: Только открытые с прошедшим сроком T-06
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Споры
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminDisputeListItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/disputes/{id}:
+    get:
+      tags: [admin-disputes]
+      operationId: getAdminDispute
+      summary: Разбор спора (S-18 шаг 1)
+      description: |
+        Роль: moderator, senior. Причина, претензия с текстом, нарушения, публикация (план и факт),
+        история, переписка, предпросмотр распределения по предложенной доле.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Спор
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDispute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/disputes/{id}/preview:
+    get:
+      tags: [admin-disputes]
+      operationId: previewDisputeResolution
+      summary: Как распределятся деньги при решении
+      description: |
+        Роль: moderator, senior. Ничего не меняет. `proportional` без `share` — по предложению системы;
+        его нет — `422` с `details.reason = share_required`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: resolution
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/DisputeResolution' }
+        - name: share
+          in: query
+          description: Доля исполнения для `proportional`, 1…9999 (сотые доли процента)
+          schema: { type: integer, minimum: 1, maximum: 9999 }
+      responses:
+        '200':
+          description: Распределение
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisputePreview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/disputes/{id}/resolve:
+    post:
+      tags: [admin-disputes]
+      operationId: resolveDispute
+      summary: Вынести решение (S-18 шаг 3, P-15)
+      description: |
+        Роль: moderator, senior. Решение окончательное: повтор — `409` с `details.reason = dispute_resolved`.
+        `accepted` при живой публикации — `409` с `details.reason = publication_live` (удалите пост
+        или дождитесь снятия по сроку). `full_refund` при живой публикации удаляет пост сейчас.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisputeResolutionInput' }
+            example: { resolution: proportional, share: 7500, comment: Пост снят на 6 часов раньше срока }
+      responses:
+        '200':
+          description: Спор
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDispute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/disputes/{id}/messages:
+    get:
+      tags: [admin-disputes]
+      operationId: listAdminDisputeMessages
+      summary: Переписка по спору (S-18 шаг 2)
+      description: 'Роль: moderator, senior. Все сообщения спора, старые первыми.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Сообщения
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DisputeMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [admin-disputes]
+      operationId: createAdminDisputeMessage
+      summary: Запросить пояснение у стороны
+      description: |
+        Роль: moderator, senior. Сообщение видит адресат (`advertiser`, `blogger` или `both`) в кабинете
+        и получает уведомление. После решения — `409` с `details.reason = dispute_resolved`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminDisputeMessageInput' }
+            example: { to: blogger, text: 'Почему пост удалён раньше срока?' }
+      responses:
+        '201':
+          description: Сообщение
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisputeMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /placements/{id}/dispute/messages:
+    get:
+      tags: [orders]
+      operationId: listPlacementDisputeMessages
+      summary: Переписка по спору размещения (рекламодатель)
+      description: Сообщения администратора рекламодателю или обеим сторонам и ответы рекламодателя. Спора нет — `404`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Сообщения
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DisputeMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [orders]
+      operationId: createPlacementDisputeMessage
+      summary: Ответить администратору по спору (рекламодатель)
+      description: Только пока спор не решён (`409` с `details.reason = dispute_resolved`).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisputeMessageInput' }
+            example: { text: 'Пост был удалён в 14:00, скриншот приложен к претензии' }
+      responses:
+        '201':
+          description: Сообщение
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisputeMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /blogger/placements/{id}/dispute/messages:
+    get:
+      tags: [blogger-placements]
+      operationId: listBloggerDisputeMessages
+      summary: Переписка по спору размещения (блогер)
+      description: Сообщения администратора блогеру или обеим сторонам и ответы блогера. Спора нет — `404`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Сообщения
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DisputeMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [blogger-placements]
+      operationId: createBloggerDisputeMessage
+      summary: Ответить администратору по спору (блогер)
+      description: Только пока спор не решён (`409` с `details.reason = dispute_resolved`).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisputeMessageInput' }
+            example: { text: 'Пост удалил MAX по жалобе, я его не трогал' }
+      responses:
+        '201':
+          description: Сообщение
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisputeMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: payouts
+  /admin/payouts:
+    get:
+      tags: [admin-payouts]
+      operationId: listAdminPayouts
+      summary: Реестр выплат блогерам
+      description: 'Роль: senior. Новые первыми.'
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PayoutStatus' }
+        - name: organization_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Выплаты
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminPayout' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/payouts/summary:
+    get:
+      tags: [admin-payouts]
+      operationId: getAdminPayoutSummary
+      summary: Сводка выплат и депозита Рокет Ворк
+      description: |
+        Роль: senior. Числа журнала проводок и таблицы выплат; остаток депозита по данным Рокет Ворк
+        и расхождение — в сверке (`maxim admin money reconcile`, задание `check_rocketwork_deposit`).
+      responses:
+        '200':
+          description: Сводка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPayoutSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/payouts/export:
+    get:
+      tags: [admin-payouts]
+      operationId: exportAdminPayouts
+      summary: Реестр выплат в CSV
+      description: |
+        Роль: senior. Те же фильтры, что у списка, без постраничности (до 10 000 строк). UTF-8 с BOM,
+        разделитель `;`, суммы в рублях с запятой, время по Москве; ИНН маскирован. Выгрузка
+        пишется в журнал действий.
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PayoutStatus' }
+        - name: organization_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/payouts/{id}/retry:
+    post:
+      tags: [admin-payouts]
+      operationId: retryPayout
+      summary: Повторить выплату (S-19 `retry_payout`)
+      description: |
+        Роль: senior. Только последняя попытка `failed` размещения в `accepted`: создаётся новая попытка.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Блогер восстановил статус самозанятого }
+      responses:
+        '200':
+          description: Новая попытка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPayout' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/payouts/{id}/mark-paid:
+    post:
+      tags: [admin-payouts]
+      operationId: markPayoutPaid
+      summary: Выплата юрлицу выполнена переводом
+      description: |
+        Роль: senior. Только `bank_transfer`. Сумма больше порога второго подтверждения — ответ `202`
+        с запросом подтверждения: выплата отмечается после подтверждения другим `senior`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayoutMarkPaidInput' }
+            example: { bank_reference: п/п 1024 от 21.10.2026, reason: Оплачено по реестру }
+      responses:
+        '200':
+          description: Выплата
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPayout' }
+        '202': { $ref: '#/components/responses/ApprovalRequired' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: payments (S-30)
+  /admin/bank-statements:
+    post:
+      tags: [admin-payments]
+      operationId: uploadBankStatement
+      summary: Загрузить выписку (S-30 шаг 1)
+      description: |
+        Роль: senior. Файл «1С:Предприятие» (UTF-8, cp866, windows-1251). Повтор того же файла — `409`
+        с `details.reason = statement_already_imported`; выписка не по счёту платформы — `422`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Итог загрузки
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankStatementSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/bank-statements/latest:
+    get:
+      tags: [admin-payments]
+      operationId: getLatestBankStatement
+      summary: Последняя загруженная выписка
+      description: 'Роль: senior. Выписок нет — `404`.'
+      responses:
+        '200':
+          description: Выписка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankStatementSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/bank-transactions:
+    get:
+      tags: [admin-payments]
+      operationId: listBankTransactions
+      summary: Поступления по выпискам
+      description: 'Роль: senior. Новые первыми.'
+      parameters:
+        - name: match_status
+          in: query
+          schema: { $ref: '#/components/schemas/BankMatchStatus' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Поступления
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/BankTransaction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/bank-transactions/{id}/match:
+    post:
+      tags: [admin-payments]
+      operationId: matchBankTransaction
+      summary: Зачислить поступление организации (S-30 шаг 3)
+      description: |
+        Роль: senior. Из `unmatched` или `ignored`; `matched` — `409`. Сумма зачисляется на баланс,
+        счёт (если указан) помечается `paid`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankTransactionMatchInput' }
+            example: { organization_id: 0190a000-0000-7000-8000-000000000011, reason: Плательщик — директор рекламодателя }
+      responses:
+        '200':
+          description: Поступление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankTransaction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/bank-transactions/{id}/ignore:
+    post:
+      tags: [admin-payments]
+      operationId: ignoreBankTransaction
+      summary: Пометить поступление посторонним
+      description: 'Роль: senior. Только из `unmatched`.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: 'Возврат поставщика, не оплата рекламы' }
+      responses:
+        '200':
+          description: Поступление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankTransaction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/invoices:
+    get:
+      tags: [admin-payments]
+      operationId: listAdminInvoices
+      summary: Счета на оплату всех организаций
+      description: 'Роль: senior. Новые первыми.'
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/InvoiceStatus' }
+        - name: organization_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: number
+          in: query
+          schema: { type: string, maxLength: 32 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Счета
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminInvoice' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/invoices/{id}/cancel:
+    post:
+      tags: [admin-payments]
+      operationId: cancelAdminInvoice
+      summary: Отменить счёт
+      description: 'Роль: senior. Только `issued`.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Рекламодатель попросил перевыставить }
+      responses:
+        '200':
+          description: Счёт
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminInvoice' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: ledger
+  /admin/ledger/summary:
+    get:
+      tags: [admin-ledger]
+      operationId: getLedgerSummary
+      summary: Сверка журнала проводок (06 §2.4)
+      description: |
+        Роль: senior. Остатки по видам счетов, сверка с последней выпиской, обязательства перед
+        рекламодателями против денег. Внешних вызовов нет.
+      responses:
+        '200':
+          description: Сверка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/ledger/entries:
+    get:
+      tags: [admin-ledger]
+      operationId: listLedgerEntries
+      summary: Журнал денег (проводки)
+      description: 'Роль: senior. Новые первыми.'
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/LedgerTransactionKind' }
+        - name: organization_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Проводки
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/LedgerEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/ledger/manual:
+    post:
+      tags: [admin-ledger]
+      operationId: createManualLedgerEntry
+      summary: Корректирующая проводка (S-19 `manual_ledger_entry`)
+      description: |
+        Роль: senior. Основание обязательно. Сумма не больше порога `LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD`
+        (100 000 ₽) — проводка сразу (`201`); больше — `202` с запросом подтверждения: проводка
+        создаётся, когда другой `senior` подтвердит запрос. Повтор с тем же `Idempotency-Key`
+        возвращает ту же проводку или тот же запрос.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualLedgerInput' }
+            example:
+              debit: { kind: bank }
+              credit: { kind: platform_revenue }
+              amount: 150000
+              reason: Комиссия банка за октябрь
+      responses:
+        '201':
+          description: Проводка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerOperationResult' }
+        '202': { $ref: '#/components/responses/ApprovalRequired' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/ledger/deposit-topups:
+    post:
+      tags: [admin-ledger]
+      operationId: createDepositTopup
+      summary: Пополнение депозита Рокет Ворк с расчётного счёта
+      description: |
+        Роль: senior. Проводка `deposit_topup` (bank → rocketwork_deposit); порог второго подтверждения — как у ручной проводки.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AmountReasonInput' }
+            example: { amount: 5000000, reason: Пополнение по платёжке 77 }
+      responses:
+        '201':
+          description: Проводка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerOperationResult' }
+        '202': { $ref: '#/components/responses/ApprovalRequired' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/organizations/{id}/balance-returns:
+    post:
+      tags: [admin-ledger]
+      operationId: createBalanceReturn
+      summary: Возврат свободного остатка рекламодателю (S-33)
+      description: |
+        Роль: senior. Не больше свободного остатка баланса (иначе `409` с `details.reason = insufficient_balance`);
+        перевод на счёт рекламодателя делает человек по реквизитам организации.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AmountReasonInput' }
+            example: { amount: 120000, reason: Заявление на возврат от 20.10.2026 }
+      responses:
+        '201':
+          description: Проводка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerOperationResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: approvals
+  /admin/approvals:
+    get:
+      tags: [admin-approvals]
+      operationId: listAdminApprovals
+      summary: Запросы второго подтверждения
+      description: 'Роль: senior. По умолчанию — `pending`, старые первыми.'
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/AdminApprovalStatus' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Запросы
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminApproval' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/approvals/{id}/approve:
+    post:
+      tags: [admin-approvals]
+      operationId: approveAdminApproval
+      summary: Подтвердить операцию вторым администратором
+      description: |
+        Роль: senior, не автор запроса (`409` с `details.reason = same_admin`). Операция исполняется
+        сразу; уже решённый запрос — `409 approval_decided`, просроченный — `409 approval_expired`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Запрос с результатом
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminApproval' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/approvals/{id}/reject:
+    post:
+      tags: [admin-approvals]
+      operationId: rejectAdminApproval
+      summary: Отклонить запрос подтверждения
+      description: 'Роль: senior. Автор может отозвать свой запрос этой же операцией.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Сумма не совпадает с актом сверки }
+      responses:
+        '200':
+          description: Запрос
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminApproval' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: organizations and users
+  /admin/organizations:
+    get:
+      tags: [admin-organizations]
+      operationId: listAdminOrganizations
+      summary: Организации
+      description: |
+        Роль: moderator, senior. Поиск по ИНН, наименованию или почте участника. ИНН полный у `senior`,
+        маскированный у `moderator`.
+      parameters:
+        - name: query
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 200 }
+        - name: role
+          in: query
+          description: Открытый кабинет организации
+          schema: { $ref: '#/components/schemas/Cabinet' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Организации
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminOrganizationListItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/organizations/{id}:
+    get:
+      tags: [admin-organizations]
+      operationId: getAdminOrganization
+      summary: 'Организация: реквизиты, участники, контрагент ОРД'
+      description: 'Роль: moderator, senior. ИНН полный у `senior`.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: 'Организация'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrganization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [admin-organizations]
+      operationId: updateAdminOrganization
+      summary: Исправить реквизиты организации (S-20)
+      description: |
+        Роль: senior. Наименование и КПП; ИНН и тип лица не меняются. Изменение наименования или
+        КПП отправляет контрагента в ОРД заново. Ошибки полей — `422` с `details.field`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminOrganizationUpdate' }
+            example: { name: ООО «Ромашка», reason: Наименование по выписке ЕГРЮЛ }
+      responses:
+        '200':
+          description: 'Организация'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrganization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/users/{id}/block:
+    post:
+      tags: [admin-organizations]
+      operationId: blockUser
+      summary: Заблокировать пользователя
+      description: |
+        Роль: senior. Все сессии пользователя завершаются, вход невозможен. Администратора
+        заблокировать нельзя (`409` с `details.reason = admin_user`): сначала снимите роль.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Мошеннические оплаты }
+      responses:
+        '200':
+          description: Пользователь
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/users/{id}/unblock:
+    post:
+      tags: [admin-organizations]
+      operationId: unblockUser
+      summary: Разблокировать пользователя
+      description: 'Роль: senior.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Проверка завершена }
+      responses:
+        '200':
+          description: Пользователь
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: audit log
+  /admin/audit-log:
+    get:
+      tags: [admin-audit]
+      operationId: listAuditLog
+      summary: Журнал действий
+      description: |
+        Роль: senior. Новые первыми. `data` — как записано (ИНН, почта, телефон и ФИО маскируются при записи);
+        IP-адрес не отдаётся. `manual_only` — только действия администраторов. Коды действий: `channel.approved`,
+        `channel.rejected`, `channel.rkn_checked`, `channel.blocked`, `channel.unblocked`, `channel_category.created`,
+        `channel_category.updated`, `post_version.approved`, `post_version.rejected`, `placement.admin_cancel`,
+        `placement.admin_mark_removed`, `dispute.opened`, `dispute.resolved`, `dispute.remove_post`,
+        `dispute.message`, `payout.retry`, `payout.mark_paid`, `payout.exported`, `ledger.manual`,
+        `ledger.balance_return`, `ledger.deposit_topup`, `admin_approval.requested`, `admin_approval.approved`,
+        `admin_approval.rejected`, `bank_statement.imported`, `bank_transaction.matched`, `bank_transaction.ignored`,
+        `invoice.cancelled`, `organization.admin_updated`, `user.blocked`, `user.unblocked`,
+        `user.admin_role_changed`, `ord.retry`, `ord_report.built`, `ord_report.send_requested`,
+        `personal_data.exported`, `personal_data.anonymized` и действия кабинетов.
+      parameters:
+        - name: actor_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: actor_type
+          in: query
+          schema: { type: string, enum: [advertiser, blogger, admin, system] }
+        - name: action
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: object_type
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: object_id
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: organization_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: manual_only
+          in: query
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Записи
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AuditLogEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: ORD (S-20, S-31)
+  /admin/ord/errors:
+    get:
+      tags: [admin-ord]
+      operationId: listOrdErrors
+      summary: 'Объекты ОРД в ошибке (S-20 шаг 1)'
+      description: 'Роль: moderator, senior. Давно изменённые первыми.'
+      parameters:
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/OrdObjectType' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'Объекты'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/OrdObject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/ord/objects/{type}/{id}:
+    get:
+      tags: [admin-ord]
+      operationId: getOrdObject
+      summary: 'Объект ОРД: состояние, последний запрос и ответ'
+      description: |
+        Роль: moderator, senior. Запрос — как сохранён (ИНН маскирован, вместо текста креатива — длина).
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/OrdObjectType' }
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: 'Объект'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrdObject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/ord/objects/{type}/{id}/retry:
+    post:
+      tags: [admin-ord]
+      operationId: retryOrdObject
+      summary: Повторить отправку в ОРД (S-20 шаг 2)
+      description: |
+        Роль: moderator, senior. Только объект в `error`; иначе — `409`. Креатив с erid заново не
+        отправляется: возобновляется опрос статуса.
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/OrdObjectType' }
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Наименование исправлено }
+      responses:
+        '200':
+          description: 'Объект'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrdObject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/ord/reports:
+    get:
+      tags: [admin-ord]
+      operationId: listOrdReports
+      summary: Ежемесячная отчётность ОРД (S-31)
+      description: 'Роль: moderator, senior. Месяцы, по которым отчёт формировался, новые первыми.'
+      responses:
+        '200':
+          description: Отчёты
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrdReportSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/ord/reports/{period}:
+    get:
+      tags: [admin-ord]
+      operationId: getOrdReport
+      summary: Отчёт ОРД за месяц
+      description: |
+        Роль: moderator, senior. Статистика по парам «креатив + площадка» и акты по договорам.
+        Отчёт не формировался — `state = not_built` и пустые списки.
+      parameters:
+        - $ref: '#/components/parameters/Period'
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrdReport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/ord/reports/{period}/rebuild:
+    post:
+      tags: [admin-ord]
+      operationId: rebuildOrdReport
+      summary: Сформировать отчёт заново
+      description: |
+        Роль: senior. Пересчитывает статистику и акты месяца по данным размещений. Изменившиеся
+        отправленные записи снова ждут отправки; ничего не отправляет. Только прошедший месяц
+        (текущий и будущий — `422` с `details.reason = period_not_closed`).
+      parameters:
+        - $ref: '#/components/parameters/Period'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Спор решён после формирования отчёта }
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrdReport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /admin/ord/reports/{period}/send:
+    post:
+      tags: [admin-ord]
+      operationId: sendOrdReport
+      summary: Отправить отчёт в ОРД
+      description: |
+        Роль: senior. Ставит в очередь отправки все записи месяца, ждущие отправки или в ошибке.
+        Отчёт не сформирован — `409` с `details.reason = report_not_built`.
+      parameters:
+        - $ref: '#/components/parameters/Period'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReasonInput' }
+            example: { reason: Отправка после исправления ошибок }
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrdReport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- admin: counters
+  /admin/counters:
+    get:
+      tags: [admin]
+      operationId: getAdminCounters
+      summary: Счётчики для меню администратора
+      description: 'Роль: moderator, senior.'
+      responses:
+        '200':
+          description: Счётчики
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCounters' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ---------------------------------------------------------------- webhooks
   /webhooks/max/{secret}:
@@ -2055,8 +3683,21 @@ components:
         объекта без нового перехода. Без ключа повтор действия отклоняется `409 invalid_transition`
         с фактическим состоянием.
       schema: { type: string, minLength: 1, maxLength: 64 }
+    Period:
+      name: period
+      in: path
+      required: true
+      description: Месяц по Москве
+      schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: '2026-09' }
 
   responses:
+    ApprovalRequired:
+      description: |
+        Сумма больше порога второго подтверждения: операция не исполнена, создан запрос (R-2).
+        Её исполнит подтверждение другого `senior` (`POST /admin/approvals/{id}/approve`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminApproval' }
     ValidationFailed:
       description: Запрос не прошёл проверку
       content:
@@ -2071,7 +3712,9 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
-      description: Нет нужного кабинета или не заполнены реквизиты
+      description: |
+        Нет нужного кабинета или не заполнены реквизиты; для операций администратора — нет нужной
+        роли (`details.reason = admin_required`) или запрос не из разрешённой сети (`admin_network`)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -3216,6 +4859,640 @@ components:
       properties:
         result: { type: string, enum: [confirmed, rejected] }
         comment: { type: string, maxLength: 500 }
+
+
+    # ------------------------------------------------ admin: common
+    AdminReasonInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500, description: Основание; пишется в журнал действий }
+    AmountReasonInput:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount: { type: integer, format: int64, minimum: 1, maximum: 100000000000, description: Копейки }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    AdminUserRef:
+      type: object
+      required: [id, email]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string }
+    AdminApprovalStatus:
+      type: string
+      enum: [pending, approved, rejected, expired]
+    AdminApproval:
+      type: object
+      description: Запрос второго подтверждения ручной денежной операции (R-2)
+      required: [id, kind, status, amount, summary, reason, requested_by, created_at, expires_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { type: string, enum: [ledger_manual, deposit_topup, payout_mark_paid] }
+        status: { $ref: '#/components/schemas/AdminApprovalStatus' }
+        amount: { $ref: '#/components/schemas/Money' }
+        summary: { type: string, description: 'Что будет сделано, например «bank → platform_revenue»' }
+        object_id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Выплата для `payout_mark_paid`
+        reason: { type: string }
+        requested_by: { $ref: '#/components/schemas/AdminUserRef' }
+        decided_by: { $ref: '#/components/schemas/AdminUserRef' }
+        decision_reason: { type: string }
+        result_id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Проводка или выплата после исполнения
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+    AdminCounters:
+      type: object
+      required: [channels_moderation, orders_moderation, disputes_open, disputes_overdue, ord_errors, bank_transactions_unmatched, payouts_failed, approvals_pending, ord_report_pending]
+      properties:
+        channels_moderation: { type: integer, minimum: 0 }
+        orders_moderation: { type: integer, minimum: 0 }
+        disputes_open: { type: integer, minimum: 0 }
+        disputes_overdue: { type: integer, minimum: 0 }
+        ord_errors: { type: integer, minimum: 0 }
+        bank_transactions_unmatched: { type: integer, minimum: 0 }
+        payouts_failed: { type: integer, minimum: 0 }
+        approvals_pending: { type: integer, minimum: 0 }
+        ord_report_pending:
+          type: boolean
+          description: Отчёт ОРД за прошлый месяц не отправлен целиком
+
+    # ------------------------------------------------ admin: dictionaries
+    AdminChannelCategory:
+      allOf:
+        - $ref: '#/components/schemas/ChannelCategory'
+        - type: object
+          required: [position, archived]
+          properties:
+            position: { type: integer, minimum: 0 }
+            archived: { type: boolean }
+    ChannelCategoryInput:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,49}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        position: { type: integer, minimum: 0, description: Нет — в конец списка }
+    ChannelCategoryUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        position: { type: integer, minimum: 0 }
+        archived: { type: boolean }
+
+    # ------------------------------------------------ admin: orders
+    AdminOrderListItem:
+      type: object
+      required: [id, number, status, advertiser, campaign_name, placements_count, total_amount, urgent, waiting_since, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        number: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        advertiser: { $ref: '#/components/schemas/AdminOrganizationRef' }
+        campaign_name: { type: string }
+        placements_count: { type: integer }
+        total_amount: { $ref: '#/components/schemas/Money' }
+        publish_from:
+          type: string
+          format: date-time
+          description: Самое раннее начало окна публикации размещений заказа
+        urgent:
+          type: boolean
+          description: До `publish_from` меньше 6 часов или оно прошло (A-40)
+        waiting_since: { type: string, format: date-time, description: С какого момента заказ в текущем состоянии }
+        created_at: { type: string, format: date-time }
+    AdminOrder:
+      allOf:
+        - $ref: '#/components/schemas/AdminOrderListItem'
+        - type: object
+          required: [campaign_id, current_post_version, placements]
+          properties:
+            campaign_id: { $ref: '#/components/schemas/Uuid' }
+            current_post_version: { $ref: '#/components/schemas/PostVersion' }
+            links:
+              type: array
+              description: Ссылки поста (проверка на `https`, A-03)
+              items: { type: string, format: uri }
+            creative: { $ref: '#/components/schemas/OrdObject' }
+            placements:
+              type: array
+              items: { $ref: '#/components/schemas/AdminPlacementListItem' }
+
+    # ------------------------------------------------ admin: placements
+    AdminPlacementAction:
+      type: string
+      enum: [cancel, remove_post, mark_removed, open_dispute, resolve_dispute, retry_payout]
+    AdminPlacementListItem:
+      allOf:
+        - $ref: '#/components/schemas/PlacementTiming'
+        - type: object
+          required: [id, order_id, order_number, channel, advertiser, blogger, status, status_changed_at, total_amount, created_at]
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            order_id: { $ref: '#/components/schemas/Uuid' }
+            order_number: { type: integer, format: int64 }
+            channel: { $ref: '#/components/schemas/ChannelRef' }
+            advertiser: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            blogger: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            status: { $ref: '#/components/schemas/PlacementStatus' }
+            status_reason: { type: string }
+            status_changed_at: { type: string, format: date-time }
+            total_amount: { $ref: '#/components/schemas/Money' }
+            refund_amount: { $ref: '#/components/schemas/Money' }
+            removal_overdue: { type: boolean, description: Пост жив после `remove_at` }
+            created_at: { type: string, format: date-time }
+    PlacementViolation:
+      type: object
+      required: [kind, occurred_at, source]
+      properties:
+        kind: { type: string, enum: [removed_early, content_modified, top_violated, bot_access_lost] }
+        occurred_at: { type: string, format: date-time }
+        source: { type: string, enum: [event, reconciliation] }
+    AdminPlacement:
+      allOf:
+        - $ref: '#/components/schemas/AdminPlacementListItem'
+        - type: object
+          required: [blogger_amount, fee_amount, history, violations, payouts, available_actions]
+          properties:
+            blogger_amount: { $ref: '#/components/schemas/Money' }
+            fee_amount: { $ref: '#/components/schemas/Money' }
+            payout_amount: { $ref: '#/components/schemas/Money' }
+            performance_share: { type: integer, minimum: 0, maximum: 10000 }
+            publication_url: { type: string, format: uri }
+            views: { type: integer }
+            removal_reason: { type: string, enum: [schedule, external, admin, refund] }
+            claim: { $ref: '#/components/schemas/PlacementClaim' }
+            dispute: { $ref: '#/components/schemas/AdminDisputeBrief' }
+            violations:
+              type: array
+              items: { $ref: '#/components/schemas/PlacementViolation' }
+            history:
+              type: array
+              items: { $ref: '#/components/schemas/PlacementHistoryEntry' }
+            payouts:
+              type: array
+              description: Попытки выплаты, последняя первой
+              items: { $ref: '#/components/schemas/AdminPayout' }
+            available_actions:
+              type: array
+              description: Действия, допустимые сейчас этому администратору (состояние и роль)
+              items: { $ref: '#/components/schemas/AdminPlacementAction' }
+    MarkRemovedInput:
+      type: object
+      required: [removed_at, reason]
+      properties:
+        removed_at: { type: string, format: date-time, description: Между публикацией и «сейчас» }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+
+    # ------------------------------------------------ admin: disputes
+    DisputeResolution:
+      type: string
+      enum: [full_payout, proportional, full_refund]
+    AdminDisputeBrief:
+      allOf:
+        - $ref: '#/components/schemas/PlacementDisputeSummary'
+        - type: object
+          required: [id, overdue]
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            overdue: { type: boolean, description: Открыт и срок T-06 прошёл }
+            suggested_share:
+              type: integer
+              minimum: 0
+              maximum: 10000
+              description: Предложение системы для `proportional` (03 §7)
+            performance_share: { type: integer, minimum: 0, maximum: 10000 }
+            comment: { type: string, description: Основание решения (видит только администратор) }
+            resolved_by: { $ref: '#/components/schemas/AdminUserRef' }
+    AdminDisputeListItem:
+      allOf:
+        - $ref: '#/components/schemas/AdminDisputeBrief'
+        - type: object
+          required: [placement_id, order_number, channel, advertiser, blogger, placement_status, total_amount]
+          properties:
+            placement_id: { $ref: '#/components/schemas/Uuid' }
+            order_number: { type: integer, format: int64 }
+            channel: { $ref: '#/components/schemas/ChannelRef' }
+            advertiser: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            blogger: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            placement_status: { $ref: '#/components/schemas/PlacementStatus' }
+            total_amount: { $ref: '#/components/schemas/Money' }
+    AdminDispute:
+      allOf:
+        - $ref: '#/components/schemas/AdminDisputeListItem'
+        - type: object
+          required: [placement, messages]
+          properties:
+            placement: { $ref: '#/components/schemas/AdminPlacement' }
+            preview:
+              allOf: [{ $ref: '#/components/schemas/DisputePreview' }]
+              description: Распределение по предложенной доле; нет — предложения нет или спор решён
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/DisputeMessage' }
+    DisputePreview:
+      type: object
+      required: [resolution, share, total_amount, blogger_amount, fee_amount, refund_amount]
+      properties:
+        resolution: { $ref: '#/components/schemas/DisputeResolution' }
+        share: { type: integer, minimum: 0, maximum: 10000, description: Доля исполнения }
+        total_amount: { $ref: '#/components/schemas/Money' }
+        blogger_amount: { $ref: '#/components/schemas/Money' }
+        fee_amount: { $ref: '#/components/schemas/Money' }
+        refund_amount: { $ref: '#/components/schemas/Money' }
+    DisputeResolutionInput:
+      type: object
+      required: [resolution, comment]
+      properties:
+        resolution: { $ref: '#/components/schemas/DisputeResolution' }
+        share:
+          type: integer
+          minimum: 1
+          maximum: 9999
+          description: Для `proportional`; нет — предложение системы
+        comment: { type: string, minLength: 1, maxLength: 2000 }
+    DisputeMessage:
+      type: object
+      required: [id, author_type, text, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        author_type: { type: string, enum: [admin, advertiser, blogger] }
+        recipient:
+          type: string
+          enum: [advertiser, blogger, both]
+          description: Адресат сообщения администратора
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+    AdminDisputeMessageInput:
+      type: object
+      required: [to, text]
+      properties:
+        to: { type: string, enum: [advertiser, blogger, both] }
+        text: { type: string, minLength: 1, maxLength: 2000 }
+    DisputeMessageInput:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 2000 }
+
+    # ------------------------------------------------ admin: payouts
+    AdminPayout:
+      allOf:
+        - $ref: '#/components/schemas/Payout'
+        - type: object
+          required: [blogger]
+          properties:
+            blogger: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            bank_reference: { type: string, description: Платёжное поручение для `bank_transfer` }
+    AdminPayoutStatusTotal:
+      type: object
+      required: [status, count, amount]
+      properties:
+        status: { $ref: '#/components/schemas/PayoutStatus' }
+        count: { type: integer, minimum: 0 }
+        amount: { $ref: '#/components/schemas/Money' }
+    AdminPayoutSummary:
+      type: object
+      required: [by_status, deposit_ledger_amount, payable_amount, in_progress_amount, shortage_amount]
+      properties:
+        by_status:
+          type: array
+          items: { $ref: '#/components/schemas/AdminPayoutStatusTotal' }
+        deposit_ledger_amount:
+          allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
+          description: Остаток депозита Рокет Ворк по журналу проводок
+        payable_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Начислено блогерам и не выплачено (`blogger_payable`)
+        in_progress_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Попытки `created` и `sent`
+        shortage_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Сколько не хватает депозита по журналу до суммы к выплате; 0 — хватает
+    PayoutMarkPaidInput:
+      type: object
+      required: [bank_reference, reason]
+      properties:
+        bank_reference: { type: string, minLength: 1, maxLength: 200 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+
+    # ------------------------------------------------ admin: payments
+    BankMatchStatus:
+      type: string
+      enum: [matched, unmatched, ignored]
+    BankStatementSummary:
+      type: object
+      required: [id, account_number, incoming_count, matched_count, unmatched_count, duplicate_count, uploaded_by, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        account_number: { type: string }
+        date_from: { type: string, format: date }
+        date_to: { type: string, format: date }
+        opening_balance: { $ref: '#/components/schemas/SignedMoney' }
+        closing_balance: { $ref: '#/components/schemas/SignedMoney' }
+        incoming_count: { type: integer, minimum: 0 }
+        matched_count: { type: integer, minimum: 0 }
+        unmatched_count: { type: integer, minimum: 0 }
+        duplicate_count: { type: integer, minimum: 0 }
+        uploaded_by: { $ref: '#/components/schemas/AdminUserRef' }
+        created_at: { type: string, format: date-time }
+    BankTransaction:
+      type: object
+      required: [id, operation_date, amount, match_status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        operation_date: { type: string, format: date }
+        amount: { $ref: '#/components/schemas/Money' }
+        payer_name: { type: string }
+        payer_inn: { type: string }
+        payer_account: { type: string }
+        purpose: { type: string }
+        match_status: { $ref: '#/components/schemas/BankMatchStatus' }
+        organization: { $ref: '#/components/schemas/AdminOrganizationRef' }
+        invoice_number: { type: string }
+        matched_manually: { type: boolean }
+        ignored_reason: { type: string }
+        created_at: { type: string, format: date-time }
+    BankTransactionMatchInput:
+      type: object
+      required: [organization_id, reason]
+      properties:
+        organization_id: { $ref: '#/components/schemas/Uuid' }
+        invoice_id: { $ref: '#/components/schemas/Uuid' }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    AdminInvoice:
+      allOf:
+        - $ref: '#/components/schemas/Invoice'
+        - type: object
+          required: [organization]
+          properties:
+            organization: { $ref: '#/components/schemas/AdminOrganizationRef' }
+            cancel_reason: { type: string }
+
+    # ------------------------------------------------ admin: ledger
+    LedgerAccountKind:
+      type: string
+      enum: [bank, rocketwork_deposit, payout_fees, advertiser_balance, placement_hold, blogger_payable, platform_revenue]
+    LedgerTransactionKind:
+      type: string
+      enum: [deposit, hold, hold_release, settlement, payout, deposit_topup, balance_return, manual]
+    LedgerAccountRef:
+      type: object
+      required: [kind]
+      properties:
+        kind: { $ref: '#/components/schemas/LedgerAccountKind' }
+        organization_id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Для `advertiser_balance` и `blogger_payable`
+        placement_id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Для `placement_hold`
+    LedgerAccountTotal:
+      type: object
+      required: [kind, balance]
+      properties:
+        kind: { $ref: '#/components/schemas/LedgerAccountKind' }
+        balance: { $ref: '#/components/schemas/SignedMoney' }
+    LedgerSummary:
+      type: object
+      required: [accounts, balanced, advertiser_liabilities, bank_ledger_amount]
+      properties:
+        accounts:
+          type: array
+          description: Остаток по каждому виду счетов
+          items: { $ref: '#/components/schemas/LedgerAccountTotal' }
+        balanced: { type: boolean, description: Сумма остатков активов равна сумме пассивов (06 §2.2) }
+        advertiser_liabilities:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Балансы и удержания рекламодателей
+        bank_ledger_amount:
+          allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
+          description: Расчётный счёт по журналу
+        bank_statement_amount:
+          allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
+          description: Исходящий остаток последней выписки; нет — выписок нет или в ней нет остатка
+        bank_statement_date: { type: string, format: date }
+        bank_difference:
+          allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
+          description: Выписка минус журнал
+    LedgerEntry:
+      type: object
+      required: [id, kind, amount, debit, credit, actor_type, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { $ref: '#/components/schemas/LedgerTransactionKind' }
+        amount: { $ref: '#/components/schemas/Money' }
+        debit: { $ref: '#/components/schemas/LedgerAccountRef' }
+        credit: { $ref: '#/components/schemas/LedgerAccountRef' }
+        actor_type: { type: string, enum: [system, admin, advertiser] }
+        actor_user_id: { $ref: '#/components/schemas/Uuid' }
+        approver_user_id: { $ref: '#/components/schemas/Uuid' }
+        reason: { type: string }
+        placement_id: { $ref: '#/components/schemas/Uuid' }
+        invoice_id: { $ref: '#/components/schemas/Uuid' }
+        payout_id: { $ref: '#/components/schemas/Uuid' }
+        created_at: { type: string, format: date-time }
+    ManualLedgerInput:
+      type: object
+      required: [debit, credit, amount, reason]
+      properties:
+        debit: { $ref: '#/components/schemas/LedgerAccountRef' }
+        credit: { $ref: '#/components/schemas/LedgerAccountRef' }
+        amount: { type: integer, format: int64, minimum: 1, maximum: 100000000000 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    LedgerOperationResult:
+      type: object
+      required: [transaction_id, replayed]
+      properties:
+        transaction_id: { $ref: '#/components/schemas/Uuid' }
+        replayed: { type: boolean, description: Повтор с тем же ключом — проводка уже была }
+
+    # ------------------------------------------------ admin: organizations
+    AdminOrganizationListItem:
+      type: object
+      required: [id, name, inn, legal_type, status, cabinets, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        inn: { type: string, description: 'Полный у `senior`, с маской у `moderator`' }
+        legal_type: { $ref: '#/components/schemas/LegalType' }
+        status: { type: string, enum: [active, blocked] }
+        cabinets:
+          type: array
+          items: { $ref: '#/components/schemas/Cabinet' }
+        created_at: { type: string, format: date-time }
+    AdminUser:
+      type: object
+      required: [id, email, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string, description: 'Полная у `senior`, с маской у `moderator`' }
+        status: { type: string, enum: [active, blocked] }
+        admin_role: { $ref: '#/components/schemas/AdminRole' }
+        blocked_reason: { type: string }
+        blocked_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    AdminOrganization:
+      allOf:
+        - $ref: '#/components/schemas/AdminOrganizationListItem'
+        - type: object
+          required: [members, tax_document_uploaded]
+          properties:
+            kpp: { type: string }
+            contact_name: { type: string }
+            phone: { type: string, description: 'Полный у `senior`, с маской у `moderator`' }
+            address: { type: string }
+            tax_regime: { $ref: '#/components/schemas/TaxRegime' }
+            vat_rate: { $ref: '#/components/schemas/VatRate' }
+            tax_document_uploaded: { type: boolean }
+            members:
+              type: array
+              items: { $ref: '#/components/schemas/AdminUser' }
+            ord_counterparty: { $ref: '#/components/schemas/OrdObject' }
+    AdminOrganizationUpdate:
+      type: object
+      required: [reason]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 500 }
+        kpp: { type: string, pattern: '^[0-9]{9}$', description: Только для `legal_entity` }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+
+    # ------------------------------------------------ admin: audit log
+    AuditLogEntry:
+      type: object
+      required: [id, actor_type, action, object_type, object_id, data, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        actor_type: { type: string, enum: [advertiser, blogger, admin, system] }
+        actor: { $ref: '#/components/schemas/AdminUserRef' }
+        organization_id: { $ref: '#/components/schemas/Uuid' }
+        action: { type: string, example: dispute.resolved }
+        object_type: { type: string, example: dispute }
+        object_id: { type: string }
+        reason: { type: string }
+        data:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+
+    # ------------------------------------------------ admin: ORD
+    OrdObjectType:
+      type: string
+      enum: [organization, contract, platform, creative, statistics, invoice]
+    OrdSyncStatus:
+      type: string
+      enum: [pending, sent, synced, error]
+    OrdObject:
+      type: object
+      required: [type, id, title, status, attempts, updated_at]
+      properties:
+        type: { $ref: '#/components/schemas/OrdObjectType' }
+        id: { $ref: '#/components/schemas/Uuid' }
+        title: { type: string, description: 'Что это, для списка (наименование, номер заказа, канал, месяц)' }
+        external_id: { type: string }
+        status: { $ref: '#/components/schemas/OrdSyncStatus' }
+        ord_status: { type: string, description: Статус ответа ОРД }
+        erid: { type: string, description: Для креатива }
+        error: { type: string }
+        attempts: { type: integer, minimum: 0 }
+        updated_at: { type: string, format: date-time }
+        last_request: { $ref: '#/components/schemas/OrdRequestLog' }
+        blocked:
+          type: array
+          description: Что ждёт этот объект (зависимые объекты)
+          items: { $ref: '#/components/schemas/OrdObjectRef' }
+    OrdObjectRef:
+      type: object
+      required: [type, id]
+      properties:
+        type: { $ref: '#/components/schemas/OrdObjectType' }
+        id: { $ref: '#/components/schemas/Uuid' }
+    OrdRequestLog:
+      type: object
+      required: [id, operation, attempt, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        operation: { type: string }
+        attempt: { type: integer }
+        request:
+          type: object
+          additionalProperties: true
+          description: Тело запроса, как сохранено (ИНН с маской, вместо текста — длина)
+        response_status: { type: integer }
+        response:
+          type: object
+          additionalProperties: true
+        error: { type: string }
+        created_at: { type: string, format: date-time }
+    OrdReportState:
+      type: string
+      enum: [not_built, built, sending, sent, has_errors]
+    OrdReportSummary:
+      type: object
+      required: [period, state, statistics_count, invoices_count, pending_count, error_count, due_date]
+      properties:
+        period: { type: string, pattern: '^\d{4}-\d{2}$', example: '2026-09' }
+        state: { $ref: '#/components/schemas/OrdReportState' }
+        statistics_count: { type: integer, minimum: 0 }
+        invoices_count: { type: integer, minimum: 0 }
+        pending_count: { type: integer, minimum: 0, description: Ждут отправки или подтверждения ОРД }
+        error_count: { type: integer, minimum: 0 }
+        impressions: { type: integer, format: int64, minimum: 0 }
+        amount: { $ref: '#/components/schemas/Money' }
+        built_at: { type: string, format: date-time }
+        send_requested_at: { type: string, format: date-time }
+        due_date:
+          type: string
+          format: date
+          description: Срок сдачи — 30-е число следующего месяца (05 §3.7)
+    OrdStatisticsRow:
+      type: object
+      required: [id, placement_id, creative_id, channel, impressions, amount, shown_from, shown_to, status, attempts]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        placement_id: { $ref: '#/components/schemas/Uuid' }
+        creative_id: { $ref: '#/components/schemas/Uuid' }
+        erid: { type: string }
+        channel: { $ref: '#/components/schemas/ChannelRef' }
+        impressions: { type: integer, format: int64, minimum: 0 }
+        amount: { $ref: '#/components/schemas/Money' }
+        shown_from: { type: string, format: date }
+        shown_to: { type: string, format: date }
+        status: { $ref: '#/components/schemas/OrdSyncStatus' }
+        error: { type: string }
+        attempts: { type: integer, minimum: 0 }
+    OrdInvoiceRow:
+      type: object
+      required: [id, contract_kind, organization, number, invoice_date, amount, items_count, status, attempts]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        contract_kind: { type: string, enum: [initial, publisher] }
+        organization: { $ref: '#/components/schemas/AdminOrganizationRef' }
+        number: { type: string, example: MX-202609-1 }
+        invoice_date: { type: string, format: date }
+        amount: { $ref: '#/components/schemas/Money' }
+        items_count: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/OrdSyncStatus' }
+        error: { type: string }
+        attempts: { type: integer, minimum: 0 }
+    OrdReport:
+      allOf:
+        - $ref: '#/components/schemas/OrdReportSummary'
+        - type: object
+          required: [statistics, invoices]
+          properties:
+            statistics:
+              type: array
+              items: { $ref: '#/components/schemas/OrdStatisticsRow' }
+            invoices:
+              type: array
+              items: { $ref: '#/components/schemas/OrdInvoiceRow' }
 
     # ------------------------------------------------ webhooks, mock
     WebhookPayload:
