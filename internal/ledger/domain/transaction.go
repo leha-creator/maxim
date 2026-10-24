@@ -157,6 +157,16 @@ var rules = map[Kind]func(Transaction) error{
 		if len(t.Postings) > 2 {
 			return fmt.Errorf("%w: payout has %d postings", ErrInvalidPosting, len(t.Postings))
 		}
+		// Второй вариант (R-3, A-36): юрлицу переводом из bank, одна проводка, только администратор.
+		if p := t.Postings[0]; p.Credit.Kind == AccountBank {
+			if p.Debit.Kind != AccountBloggerPayable || len(t.Postings) != 1 {
+				return fmt.Errorf("%w: bank payout must be a single blogger_payable to bank posting", ErrInvalidPosting)
+			}
+			if t.Actor != ActorAdmin || strings.TrimSpace(t.Reason) == "" {
+				return fmt.Errorf("%w: bank payout needs an admin and a reason", ErrInvalidPosting)
+			}
+			return nil
+		}
 		if p := t.Postings[0]; p.Debit.Kind != AccountBloggerPayable || p.Credit.Kind != AccountRocketworkDeposit {
 			return fmt.Errorf("%w: payout must move blogger_payable to rocketwork_deposit", ErrInvalidPosting)
 		}

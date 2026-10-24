@@ -29,6 +29,7 @@ func TestBuildersAreValid(t *testing.T) {
 		"settlement_full": NewSettlement(placement, org, blogger, Distribution{Payout: 1000000, FeeCharged: 150000}, ActorSystem, uuid.Nil),
 		"payout":          NewPayout(payoutID, placement, blogger, 750000, 7500),
 		"payout_no_fee":   NewPayout(payoutID, placement, blogger, 750000, 0),
+		"payout_legal":    NewLegalPayout(payoutID, placement, blogger, 750000, admin, "п/п 12"),
 		"deposit_topup":   NewDepositTopup("k1", 5000000, admin, "перевод на депозит"),
 		"balance_return":  NewBalanceReturn("k2", org, 100000, admin, "обращение 15"),
 		"manual":          NewManual("k3", []Posting{{Debit: PlatformRevenue(), Credit: AdvertiserBalance(org), Amount: 100}}, admin, "исправление"),
@@ -67,6 +68,13 @@ func TestValidateRejects(t *testing.T) {
 	noKey := NewHold(placement, version, org, 1)
 	noKey.IdempotencyKey = ""
 	empty := NewSettlement(placement, org, blogger, Distribution{}, ActorSystem, uuid.Nil)
+	legalWithFee := NewLegalPayout(payoutID, placement, blogger, 100, admin, "п/п 1")
+	legalWithFee.Postings = append(legalWithFee.Postings, Posting{Debit: PayoutFees(), Credit: Bank(), Amount: 1})
+	legalBySystem := NewLegalPayout(payoutID, placement, blogger, 100, admin, "п/п 1")
+	legalBySystem.Actor = ActorSystem
+	legalNoReason := NewLegalPayout(payoutID, placement, blogger, 100, admin, "")
+	feeToBank := NewPayout(payoutID, placement, blogger, 100, 1)
+	feeToBank.Postings[1].Credit = Bank()
 
 	cases := map[string]Transaction{
 		"swapped hold":           swapped,
@@ -81,6 +89,10 @@ func TestValidateRejects(t *testing.T) {
 		"scope mismatch":         badScope,
 		"empty key":              noKey,
 		"no postings":            empty,
+		"legal payout with fee":  legalWithFee,
+		"legal payout by system": legalBySystem,
+		"legal payout no reason": legalNoReason,
+		"payout fee to bank":     feeToBank,
 	}
 	for name, tx := range cases {
 		t.Run(name, func(t *testing.T) {

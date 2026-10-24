@@ -125,7 +125,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 ### Phase 1: Данные, правила, контракт адаптера
 
-- [ ] **Task 1: Миграция выплат (R-3, R-6, R-10)**
+- [x] **Task 1: Миграция выплат (R-3, R-6, R-10)**
   - `migrations/00011_payouts.sql` по 04 §7:
     - `rocketwork_contractor` (`organization_id unique not null`, `external_id unique`, `status check in (invited, pending, active, blocked)`, `blocked_reason`, `onboarding_url`, `status_checked_at`, `last_error`, `created_at`, `updated_at`).
     - `payout` (`placement_id`, `blogger_organization_id`, `method check in (rocketwork, bank_transfer)`, `rocketwork_contractor_id` — обязателен при `rocketwork`, пуст при `bank_transfer`, `amount > 0`, `attempt >= 1`, `status check in (created, sent, succeeded, failed)`, `external_id`, `provider_fee >= 0`, `receipt_url`, `bank_reference`, `failure_code check in (contractor_not_active, tax_status_lost, income_limit_exceeded, insufficient_deposit, provider_error)`, `failure_message`, `sent_at`, `completed_at`, `idempotency_key unique`, `lock_version`, `created_by`); `UNIQUE (placement_id, attempt)`; частичный уникальный индекс `(placement_id) WHERE status in (created, sent, succeeded)`; `check`: `succeeded` ⇒ `completed_at`, `failed` ⇒ `failure_code`; индексы `(blogger_organization_id, created_at DESC, id DESC)`, `(status, created_at)`.
@@ -135,7 +135,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты: `up` → `down` → `up`; две живые выплаты размещения не вставляются; после `failed` вставляется попытка 2; `rocketwork` без исполнителя и `bank_transfer` с исполнителем не проходят; `failed` без кода не проходит; роль приложения не может `DELETE payout`.
   - Файлы: `migrations/00011_payouts.sql`.
 
-- [ ] **Task 2: `payout/domain` (R-2, R-3, R-8, R-10, R-13)** (depends on 1)
+- [x] **Task 2: `payout/domain` (R-2, R-3, R-8, R-10, R-13)** (depends on 1)
   - `internal/payout/domain/contractor.go`: `ContractorStatus`, `Contractor`, `Required(legalType) bool` (юрлицо — нет), `CanAccept()`, `Apply(ProviderContractor) (changed bool)`.
   - `internal/payout/domain/payout.go`: `Status`, `Method`, `FailureCode` (05 §4.3, флаг `Terminal()` и `Retryable()`), `Payout`; переходы `MarkSent(externalID, at)`, `MarkSucceeded(fee, receiptURL, at)`, `MarkFailed(code, message, at)`, `NextAttempt()` — с ошибкой `ErrInvalidPayoutState`; `IdempotencyKey(id)` (R-6).
   - `internal/payout/domain/schedule.go`: `PollDelay(since, now, fast, slow)` (R-10).
@@ -146,7 +146,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты (табличные): все допустимые и недопустимые переходы выплаты и исполнителя; повторный `MarkSucceeded` с теми же данными — no-op, с другими — ошибка; `PollDelay` на 0, 59, 60, 61 мин; `NPDWarning` на 89,99% / 90% / 100%; `DepositNeed`; правило `payout` — оба варианта валидны, `payout_fees` при выплате в `bank` — `ErrInvalidPosting`.
   - Файлы: `internal/payout/domain/{contractor.go,payout.go,schedule.go,limits.go,ports.go,errors.go,*_test.go}`, `internal/ledger/domain/{transaction.go,builders.go,transaction_test.go}`.
 
-- [ ] **Task 3: Контракт адаптера и `rocketworkfake` (R-1, R-2, R-6, R-11, R-18)** (depends on 2)
+- [x] **Task 3: Контракт адаптера и `rocketworkfake` (R-1, R-2, R-6, R-11, R-18)** (depends on 2)
   - `internal/integration/rocketwork/types.go`: запросы и ответы контракта 05 §4.2 в наших терминах, коды отказов, `ErrDisabled`; `disabled.go` — реализация режима `disabled`.
   - `internal/integration/rocketwork/redact.go`: маскирование ИНН, ФИО, телефона в теле для `outbound_request` (образец — `integration/ord/redact.go`); `webhook.go`: общая проверка HMAC (для подделки и будущего клиента), лимит тела.
   - `internal/integration/rocketwork/rocketworkfake`: `New()`, исполнители и выплаты в памяти; управление тестами: `ActivateContractor`, `BlockContractor(reason)`, `SetDeposit`, `CompletePayout(fee)`, `FailPayout(code)`, `FailNext`, `TimeoutNext`, `UnknownStatusNext`, `Calls()`; `SignedWebhook(event) (header, body)`; `CreatePayout` идемпотентен по ключу, `FindPayout` по ключу; списание депозита при успехе.
@@ -155,7 +155,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты: идемпотентность `CreatePayout` и `EnsureContractor` (по ИНН); подпись — верная, чужой секрет, изменённое тело, пустой заголовок; маскирование тела; неизвестный статус → `pending`/`sent`.
   - Файлы: `internal/integration/rocketwork/{types.go,disabled.go,redact.go,webhook.go,*_test.go}`, `internal/integration/rocketwork/rocketworkfake/{fake.go,fake_test.go}`, `internal/bootstrap/bridge/payout.go`.
 
-- [ ] **Task 3a: HTTP-клиент Рокет Ворк по предполагаемому контракту (R-1, I-6)** (depends on 3)
+- [x] **Task 3a: HTTP-клиент Рокет Ворк по предполагаемому контракту (R-1, I-6)** (depends on 3)
   - `internal/integration/rocketwork/client.go`: `Client` через `platform/outbound` (`SystemRocketWork`) и `ratelimit` (как `integration/ord`): `EnsureContractor`, `GetContractor`, `GetDepositBalance`, `CreatePayout` (`Idempotency-Key`), `GetPayout`, `FindPayout`, `ParseWebhook` — по разделу «Допущения о внешних данных»; каждое допущение — `// ПРЕДПОЛОЖЕНИЕ (Q-NN): …`. Приведение статусов и кодов — общие функции `types.go` (их же использует подделка).
   - Журнал: `outbound_request` с маскированным телом (`redact.go`); DEBUG тела ответа.
   - Тесты (`httptest`): каждый метод, `Idempotency-Key`, `401`, `422 insufficient_funds`, `404`, `5xx`, неизвестный статус.

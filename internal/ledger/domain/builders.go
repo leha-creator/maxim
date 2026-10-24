@@ -113,6 +113,20 @@ func NewPayout(payoutID, placementID, bloggerOrgID uuid.UUID, amount, providerFe
 	}
 }
 
+// NewLegalPayout — выплата блогеру-юрлицу переводом с расчётного счёта (R-3, A-36): одна
+// проводка blogger_payable → bank, комиссии сервиса нет. Ключ тот же, что у NewPayout.
+func NewLegalPayout(payoutID, placementID, bloggerOrgID uuid.UUID, amount money.Kopecks, adminID uuid.UUID, reason string) Transaction {
+	return Transaction{
+		Kind:           KindPayout,
+		Basis:          Basis{PayoutID: payoutID, PlacementID: placementID},
+		Actor:          ActorAdmin,
+		ActorUserID:    adminID,
+		Reason:         reason,
+		IdempotencyKey: PayoutKey(payoutID),
+		Postings:       []Posting{{Debit: BloggerPayable(bloggerOrgID), Credit: Bank(), Amount: amount}},
+	}
+}
+
 // NewDepositTopup — администратор отразил перевод на депозит Рокет Ворк.
 func NewDepositTopup(key string, amount money.Kopecks, adminID uuid.UUID, reason string) Transaction {
 	return Transaction{

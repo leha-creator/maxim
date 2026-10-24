@@ -539,6 +539,30 @@ type OutboundRequest struct {
 	CreatedAt      time.Time
 }
 
+type Payout struct {
+	ID                     uuid.UUID
+	PlacementID            uuid.UUID
+	BloggerOrganizationID  uuid.UUID
+	Method                 string
+	RocketworkContractorID *uuid.UUID
+	Amount                 int64
+	Attempt                int32
+	Status                 string
+	ExternalID             *string
+	ProviderFee            *int64
+	ReceiptUrl             *string
+	BankReference          *string
+	FailureCode            *string
+	FailureMessage         *string
+	SentAt                 *time.Time
+	CompletedAt            *time.Time
+	IdempotencyKey         string
+	LockVersion            int32
+	CreatedBy              *uuid.UUID
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type Placement struct {
 	ID                    uuid.UUID
 	OrderID               uuid.UUID
@@ -666,6 +690,19 @@ type RateLimitBucket struct {
 	Key        string
 	Tokens     float64
 	RefilledAt time.Time
+}
+
+type RocketworkContractor struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	ExternalID      *string
+	Status          string
+	BlockedReason   *string
+	OnboardingUrl   *string
+	StatusCheckedAt *time.Time
+	LastError       *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type Session struct {
