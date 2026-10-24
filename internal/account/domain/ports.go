@@ -154,3 +154,36 @@ type AdminOrganizations interface {
 	// Members — участники, владелец первым.
 	Members(ctx context.Context, organizationID uuid.UUID) ([]User, error)
 }
+
+// SubjectAcceptance — принятие документа субъектом (выгрузка ПДн, R-26).
+type SubjectAcceptance struct {
+	Kind       LegalDocumentKind
+	Version    int
+	AcceptedAt time.Time
+	IP         *netip.Addr
+}
+
+// SubjectSession — сессия субъекта (выгрузка ПДн).
+type SubjectSession struct {
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt *time.Time
+	IP        *netip.Addr
+	UserAgent *string
+}
+
+// PersonalData — выгрузка и обезличивание данных субъекта (152-ФЗ, этап «API администратора», R-26).
+type PersonalData interface {
+	Acceptances(ctx context.Context, userID uuid.UUID) ([]SubjectAcceptance, error)
+	SubjectSessions(ctx context.Context, userID uuid.UUID) ([]SubjectSession, error)
+	// MemberCount — участников организации.
+	MemberCount(ctx context.Context, organizationID uuid.UUID) (int, error)
+	// SaveAnonymized сохраняет почту, статус и отметку обезличивания пользователя.
+	SaveAnonymized(ctx context.Context, u *User) error
+	// ClearSessions завершает сессии и стирает в них IP и браузер; возвращает число сессий.
+	ClearSessions(ctx context.Context, userID uuid.UUID, at time.Time) (int64, error)
+	// DeleteLoginCodes удаляет коды входа адреса (и IP запроса в них).
+	DeleteLoginCodes(ctx context.Context, email string) (int64, error)
+	// ClearOrganizationContacts стирает контактное лицо и телефон организации.
+	ClearOrganizationContacts(ctx context.Context, organizationID uuid.UUID, at time.Time) error
+}

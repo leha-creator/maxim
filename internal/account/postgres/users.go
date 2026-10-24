@@ -59,7 +59,8 @@ func userFromRow(row sqlc.User) *domain.User {
 	return &domain.User{
 		ID: row.ID, Email: row.Email, AdminRole: enumPtr[domain.AdminRole](row.AdminRole),
 		Status: domain.Status(row.Status), LastLoginAt: row.LastLoginAt, BlockedAt: row.BlockedAt, BlockedReason: row.BlockedReason,
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		AnonymizedAt: row.AnonymizedAt,
+		CreatedAt:    row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 }
 

@@ -1,5 +1,6 @@
 # Сайт API бэкенда для общего edge-прокси сервера (/opt/edge, как у стенда заглушки).
-# release.sh подставляет __DOMAIN__ (домен окружения) и __PREFIX__ (EDGE_ALIAS_PREFIX),
+# release.sh подставляет __DOMAIN__ (домен окружения), __PREFIX__ (EDGE_ALIAS_PREFIX) и
+# __ADMIN_ALLOW__ (EDGE_ADMIN_ALLOW — адреса команды для API администратора),
 # кладёт файл в /opt/edge/sites/<prefix>.caddy и делает caddy validate + reload.
 #
 # Выпуск без простоя (07 §8): обе ячейки в списке, запросы идут в первую живую. Активная
@@ -23,6 +24,17 @@ __DOMAIN__ {
 	# Изображение медиатеки — до 51 МБ (07 §4); остальные пределы проверяет api.
 	request_body {
 		max_size 52MB
+	}
+
+	# API администратора — только с адресов команды (07 §4, этап «API администратора»): с
+	# остальных 403 до api. Роль проверяет api; это второй рубеж на случай утечки сессии.
+	@admin_denied {
+		path /api/v1/admin /api/v1/admin/*
+		not remote_ip __ADMIN_ALLOW__
+	}
+	handle @admin_denied {
+		header Content-Type "application/json"
+		respond `{"error":{"code":"forbidden","message":"admin api is not available from this address"}}` 403
 	}
 
 	reverse_proxy __PREFIX__-api-a:8080 __PREFIX__-api-b:8080 {

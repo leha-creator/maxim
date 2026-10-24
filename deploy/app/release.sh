@@ -84,6 +84,10 @@ IMAGE=$(value_of "$STACK_ENV" MAXIM_IMAGE)
 PROJECT=$(value_of "$STACK_ENV" COMPOSE_PROJECT_NAME)
 PREFIX=$(value_of "$STACK_ENV" EDGE_ALIAS_PREFIX)
 DOMAIN=$(value_of "$STACK_ENV" DOMAIN)
+# Адреса команды для API администратора (сайт edge): CIDR через пробел или private_ranges.
+ADMIN_ALLOW=$(value_of "$STACK_ENV" EDGE_ADMIN_ALLOW)
+admin_allow_re='^[0-9A-Za-z_.:/ ]+$'
+[[ $ADMIN_ALLOW =~ $admin_allow_re ]] || { log error invalid_config file="$STACK_ENV" hint="EDGE_ADMIN_ALLOW is required: CIDR list or private_ranges"; exit 1; }
 [[ -n $IMAGE && -n $PROJECT ]] || { log error invalid_config file="$STACK_ENV" hint="MAXIM_IMAGE and COMPOSE_PROJECT_NAME are required"; exit 1; }
 
 [[ -f $SLOTS_ENV ]] || printf 'ACTIVE_SLOT=\nMAXIM_TAG_A=\nMAXIM_TAG_B=\n' > "$SLOTS_ENV"
@@ -251,7 +255,7 @@ if ((NO_EDGE == 0)); then
   if [[ -n $EDGE_DIR ]]; then
     step_start edge
     site="$EDGE_DIR/sites/$PREFIX.caddy"
-    rendered=$(sed -e "s/__DOMAIN__/$DOMAIN/" -e "s/__PREFIX__/$PREFIX/g" "$APP_DIR/maxim-app.caddy")
+    rendered=$(sed -e "s/__DOMAIN__/$DOMAIN/" -e "s/__PREFIX__/$PREFIX/g" -e "s|__ADMIN_ALLOW__|$ADMIN_ALLOW|g" "$APP_DIR/maxim-app.caddy")
     if [[ ! -f $site || $(cat "$site") != "$rendered" ]]; then
       [[ -f $site ]] && cp "$site" "$site.prev"
       printf '%s\n' "$rendered" > "$site"

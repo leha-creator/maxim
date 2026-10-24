@@ -7,7 +7,8 @@
 //	maxim migrate up|down|status    — миграции базы
 //	maxim legal publish|list        — оферты и правила (до API администратора, R-8)
 //	maxim admin grant|revoke        — роль администратора (до API администратора)
-//	maxim admin ord errors|retry    — ошибки Яндекс ОРД и повтор (S-20, до API администратора)
+//	maxim admin ord errors|retry|report — ошибки Яндекс ОРД, повтор, ежемесячный отчёт
+//	maxim admin pd export|anonymize — запросы субъекта персональных данных
 //	maxim dev post-version          — двинуть версию поста заказа (только development и test, R-23)
 //	maxim config check --for <mode>  — проверить конфигурацию режима до выпуска
 //	maxim probe <url>                — проверка здоровья для HEALTHCHECK (код 0 при 200)
@@ -38,6 +39,9 @@ commands:
   admin grant|revoke       grant (--email, --role moderator|senior) or revoke (--email) an admin role
   admin ord errors         list ORD objects in error [--limit N]
   admin ord retry          --object <type>:<id> --reason <text> --email <admin>: retry an ORD object
+  admin ord report         show|build|send --period YYYY-MM [--reason <text> --email <senior>]: monthly ORD report
+  admin pd export          --email <subject> --operator-email <senior>: personal data of a subject as JSON
+  admin pd anonymize       --email <subject> --reason <text> --operator-email <senior>: anonymize a subject
   admin money              statement import | bank-tx list|match|ignore | invoice cancel | ledger manual|list |
                            balance-return | reconcile | closing-acts: money operations (senior admin, --email)
   dev post-version         --order <number> approve|ready|reject [--erid X] [--reason Y] (development and test only;

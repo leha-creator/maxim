@@ -216,7 +216,7 @@ func newModules(cfg Config, in *infra) *modules {
 
 	deps := accountapp.Deps{
 		Users: accountStore.Users(), AuthCodes: accountStore.AuthCodes(), Sessions: accountStore.Sessions(),
-		Organizations: accountStore.Organizations(), Admin: accountStore.Organizations(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
+		Organizations: accountStore.Organizations(), Admin: accountStore.Organizations(), PersonalData: accountStore.PersonalData(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
 		Sender: in.mail, Uploads: auditLog, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: log,
 		Config: accountapp.Config{
 			LoginCodeTTL: cfg.Auth.LoginCodeTTL, LoginCodeAttempts: cfg.Auth.LoginCodeAttempts,
