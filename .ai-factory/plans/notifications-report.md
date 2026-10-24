@@ -81,6 +81,8 @@ Rationale: план реализует этап целиком: задание `
 | E-6 | Почта | SMTP принимает письмо синхронно, отказ адреса — ошибка `5xx` при `RCPT TO`; отчёты о недоставке (bounce) не обрабатываются | `integration/mail` |
 | E-7 | Тексты уведомлений | Тексты написаны для этапа, без согласования с продуктом; правятся в `templates/notification` без изменения кода | `templates/notification` |
 | E-8 | Чек выплаты | `payout.succeeded` получает `receipt_url` — ссылку на чек «Мой налог» из Рокет Ворк (05 §4.3); формат ссылки неизвестен, в шаблоне выводится как есть | `templates/notification/payout.succeeded.tmpl` |
+| E-9 | Адреса экранов кабинета | Пути по 08 §2 с идентификатором последним сегментом: `/adv/orders/{id}`, `/adv/balance`, `/blg/placements?placement={id}`, `/blg/channels/{id}`, `/blg/payouts`, `/adm/placements/{id}`, `/adm/channels/{id}`, `/adm/orders/{id}`; маршруты фронтенда не сверялись | `notification/domain.Link` |
+| E-10 | Отказ личного сообщения в журнале | `bridge.NotificationMessenger` пишет код ошибки MAX на DEBUG; `platform/outbound` при отказе `4xx` поднимает оповещение `outbound_failed:max:SendUserMessage` (одно, дедуплицируется) — принято как сигнал, что бот не может писать блогерам (Q-38) | `bridge.NotificationMessenger` |
 
 ## Каталог шаблонов
 
@@ -236,7 +238,7 @@ Rationale: план реализует этап целиком: задание `
   - Журнал: проверка сборщиком записей.
   - Файлы: `internal/bootstrap/notification_e2e_test.go`, при необходимости `internal/bootstrap/harness_test.go`.
 
-- [ ] **Task 13: Документы** (depends on 12)
+- [x] **Task 13: Документы** (depends on 12)
   - 04 §8 `notification` (новые поля, R-4), 07 §2 (`send_notification`, `placement_reminder`), §5.5 (метрики), §6 (R-1…R-3, R-7, R-9), §8 (параметры); 02 S-09 (CSV, CPV, ссылки, R-14, R-15); 03 §5 (напоминание T-01, R-8); `docs/open-questions.md` (Q-38 — рабочий ответ: почта блогеру всегда); `docs/frontend-api-gaps.md` (закрытые пункты MAXI-50, CSV MAXI-46); `.ai-factory/ARCHITECTURE.md` (модуль `notification`, переходники); README.
   - Журнал: не применимо.
   - Файлы: `docs/02-scenarios.md`, `docs/03-placement.md`, `docs/04-domain-model.md`, `docs/07-non-functional.md`, `docs/open-questions.md`, `docs/frontend-api-gaps.md`, `.ai-factory/ARCHITECTURE.md`, `README.md`.
