@@ -185,12 +185,13 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
 
 ### Фаза 5. CI
 
-- [ ] **Task 10: Проверки эксплуатации и ручной выпуск в CI** (depends on 3, 6, 7, 9).
+- [x] **Task 10: Проверки эксплуатации и ручной выпуск в CI** (depends on 3, 6, 7, 9).
   - `.github/workflows/ops.yml`: на PR и пуш в `master` по путям `deploy/**`, `migrations/**`, `Dockerfile`, `.env.example`, `.github/workflows/ops.yml`. Шаги: `shellcheck` всех `deploy/**/*.sh`; `deploy/scripts/check-env.sh`; `deploy/scripts/check-migrations.sh origin/master` (на PR); `docker compose config` для обоих шаблонов; `caddy validate` сайта; `hadolint` для `deploy/postgres/Dockerfile`; `maxim config check` для шаблона тестового окружения (собранный образ, секреты-заглушки); `deploy/local/rehearse-backup.sh`; `deploy/local/rehearse-release.sh`.
   - `.github/workflows/release.yml`: только `workflow_dispatch` с входами `environment` (`staging` | `production`) и `ref`. Job `image`: сборка и пуш `ghcr.io/leha-creator/maxim:sha-<7>` и `maxim-postgres:sha-<7>`. Job `deploy` (`environment: ${{ inputs.environment }}`; для `production` в GitHub настраиваются обязательные проверяющие — действие человека): SSH на хост окружения (`vars.<ENV>_HOST`, секреты `<ENV>_SSH_KEY`, `<ENV>_KNOWN_HOSTS` по образцу `deploy.yml`), копирование `deploy/app/compose.yml`, `release.sh`, сайта Caddy, `docker login` временным `GITHUB_TOKEN` → `release.sh --tag sha-<7>` → `docker logout` → проверка `https://<домен>/readyz`; при сбое — журналы. `concurrency: release-<env>`.
   - Проверка: `actionlint` обоих файлов.
   - Логирование: `::group::` на каждый шаг, итог в `$GITHUB_STEP_SUMMARY` (окружение, тег, ячейка, итог проверки); секреты не выводятся.
   - Файлы: `.github/workflows/ops.yml`, `.github/workflows/release.yml`.
+  - Как сделано: переменные и секреты — в GitHub Environments `staging` и `production` с одинаковыми именами (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_DOMAIN`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`), а не `<ENV>_HOST`; вход `rollback` — `release.sh --rollback` без сборки; образ PostgreSQL собирается и публикуется, но на сервере меняется вручную (`MAXIM_POSTGRES_IMAGE`, перезапуск базы — короткий простой). Шаг `maxim config check` в `ops.yml` нашёл ошибку шаблона тестового окружения: путь `MAX_CA_CERT_FILE` при отсутствующем в образе сертификате не даёт запуститься worker — путь в шаблоне пуст до добавления сертификата (действие человека). Проверено: `actionlint` 1.7.9 обоих файлов — без замечаний; шаги `config check` и `shellcheck` повторены локально.
 
 ### Фаза 6. Документация и материалы для людей
 

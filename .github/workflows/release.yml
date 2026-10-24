@@ -1,0 +1,193 @@
+# Выпуск бэкенда на тестовое окружение или продакшен — только вручную (Actions → release →
+# Run workflow). Образы бэкенда и PostgreSQL собираются из выбранного ref и публикуются в GHCR,
+# затем на сервере окружения запускается deploy/app/release.sh: миграции, новая ячейка,
+# переключение edge-прокси, остановка старой. Руководство — deploy/app/README.md.
+#
+# Настройка (действие человека): GitHub Environments staging и production с переменными
+# DEPLOY_HOST, DEPLOY_USER, DEPLOY_DOMAIN и секретами DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS;
+# у production — обязательные проверяющие. Файлы app.env и stack.env на сервере кладут люди
+# (шаблоны — deploy/app/env/), workflow их не трогает.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Окружение"
+        type: choice
+        options: [staging, production]
+        required: true
+      ref:
+        description: "Ветка, тег или коммит (пусто — выбранная ветка запуска)"
+        required: false
+        default: ""
+      rollback:
+        description: "Откат на предыдущую ячейку без сборки (release.sh --rollback)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/leha-creator/maxim
+  POSTGRES_IMAGE: ghcr.io/leha-creator/maxim-postgres
+
+jobs:
+  image:
+    if: ${{ !inputs.rollback }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - id: tag
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "tag=sha-${sha::7}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          provenance: false
+          build-args: VERSION=${{ steps.tag.outputs.sha }}
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+      # Образ PostgreSQL меняется на сервере вручную (MAXIM_POSTGRES_IMAGE в stack.env): его
+      # замена перезапускает базу — это короткий простой, выпуск бэкенда его не делает.
+      - name: PostgreSQL image
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy
+          file: deploy/postgres/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ env.POSTGRES_IMAGE }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,scope=postgres,mode=max
+
+  deploy:
+    needs: image
+    if: ${{ always() && (needs.image.result == 'success' || (inputs.rollback && needs.image.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://${{ vars.DEPLOY_DOMAIN }}/readyz
+    env:
+      HOST: ${{ vars.DEPLOY_HOST }}
+      USER_NAME: ${{ vars.DEPLOY_USER }}
+      DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+      APP_DIR: /opt/maxim-${{ inputs.environment }}
+      TAG: ${{ needs.image.outputs.tag }}
+      ROLLBACK: ${{ inputs.rollback }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set +x
+          if [ -z "${HOST}" ] || [ -z "${USER_NAME}" ] || [ -z "${DOMAIN}" ]; then
+            echo "::error::environment vars DEPLOY_HOST, DEPLOY_USER, DEPLOY_DOMAIN must be set"; exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${SSH_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          printf 'Host target\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_ed25519\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n' "${HOST}" "${USER_NAME}" > ~/.ssh/config
+          ssh target 'echo "connected to $(hostname) as $(whoami)"'
+
+      - name: Upload stack files
+        run: |
+          echo "::group::upload"
+          # shellcheck disable=SC2029
+          ssh target "test -f ${APP_DIR}/app.env && test -f ${APP_DIR}/stack.env" \
+            || { echo "::error::${APP_DIR}/app.env and stack.env must be prepared on the server (deploy/app/README.md)"; exit 1; }
+          scp deploy/app/compose.yml deploy/app/maxim-app.caddy deploy/app/release.sh deploy/scripts/lib.sh "target:${APP_DIR}/"
+          # shellcheck disable=SC2029
+          ssh target "chmod 755 ${APP_DIR}/release.sh"
+          echo "::endgroup::"
+
+      - name: Release
+        id: release
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          echo "::group::release"
+          if [ "${ROLLBACK}" = "true" ]; then args="--rollback"; else args="--tag ${TAG}"; fi
+          # Временный токен GHCR только на время выпуска; после — logout.
+          # shellcheck disable=SC2029
+          printf '%s' "${GHCR_TOKEN}" | ssh target "docker login ghcr.io -u ${GHCR_USER} --password-stdin >/dev/null"
+          set +e
+          # shellcheck disable=SC2029
+          ssh target "${APP_DIR}/release.sh ${args} --dir ${APP_DIR}"
+          rc=$?
+          ssh target "docker logout ghcr.io >/dev/null" || true
+          set -e
+          # shellcheck disable=SC2029
+          ssh target "cat ${APP_DIR}/slots.env" | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo "::endgroup::"
+          exit "$rc"
+
+      - name: Readiness check
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://${DOMAIN}/readyz" || true)
+            echo "attempt ${i}: ${code}"
+            [ "${code}" = "200" ] && exit 0
+            sleep 3
+          done
+          echo "::error::https://${DOMAIN}/readyz did not return 200"
+          exit 1
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          # shellcheck disable=SC2029
+          ssh target "cd ${APP_DIR} && docker compose --env-file stack.env --env-file slots.env --profile slot-a --profile slot-b ps -a" || true
+          # shellcheck disable=SC2029
+          ssh target "cd ${APP_DIR} && docker compose --env-file stack.env --env-file slots.env --profile slot-a --profile slot-b logs --no-color --tail=100" || true
+
+      - name: Summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          ENV_NAME: ${{ inputs.environment }}
+        run: |
+          {
+            echo "### Выпуск бэкенда"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Окружение | ${ENV_NAME} |"
+            echo "| Действие | $([ "${ROLLBACK}" = "true" ] && echo откат || echo выпуск) |"
+            echo "| Тег | ${TAG:-предыдущая ячейка} |"
+            echo "| Итог | ${JOB_STATUS} |"
+          } >> "$GITHUB_STEP_SUMMARY"
