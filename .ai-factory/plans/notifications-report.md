@@ -82,7 +82,7 @@ Rationale: план реализует этап целиком: задание `
 | E-7 | Тексты уведомлений | Тексты написаны для этапа, без согласования с продуктом; правятся в `templates/notification` без изменения кода | `templates/notification` |
 | E-8 | Чек выплаты | `payout.succeeded` получает `receipt_url` — ссылку на чек «Мой налог» из Рокет Ворк (05 §4.3); формат ссылки неизвестен, в шаблоне выводится как есть | `templates/notification/payout.succeeded.tmpl` |
 | E-9 | Адреса экранов кабинета | Пути по 08 §2 с идентификатором последним сегментом: `/adv/orders/{id}`, `/adv/balance`, `/blg/placements?placement={id}`, `/blg/channels/{id}`, `/blg/payouts`, `/adm/placements/{id}`, `/adm/channels/{id}`, `/adm/orders/{id}`; маршруты фронтенда не сверялись | `notification/domain.Link` |
-| E-10 | Отказ личного сообщения в журнале | `bridge.NotificationMessenger` пишет код ошибки MAX на DEBUG; `platform/outbound` при отказе `4xx` поднимает оповещение `outbound_failed:max:SendUserMessage` (одно, дедуплицируется) — принято как сигнал, что бот не может писать блогерам (Q-38) | `bridge.NotificationMessenger` |
+| E-10 | Отказ личного сообщения в журнале | Ожидаемые отказы `403`/`404` на `SendUserMessage` (`outbound.Call.ExpectedRejections`) — WARN `outbound call rejected as expected` без оповещения администратору; прочие `4xx` — как раньше, ERROR и оповещение `outbound_failed:max:SendUserMessage`. `bridge.NotificationMessenger` пишет код ошибки MAX на DEBUG | `integration/max`, `platform/outbound`, `bridge.NotificationMessenger` |
 
 ## Каталог шаблонов
 

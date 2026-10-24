@@ -39,13 +39,19 @@ func (c *Client) GetMe(ctx context.Context) (Bot, error) {
 // SendChatMessage отправляет текст в чат (например, чат дежурных, R-5).
 // Возвращает идентификатор сообщения.
 func (c *Client) SendChatMessage(ctx context.Context, chatID int64, text string) (string, error) {
-	return c.sendMessage(ctx, "SendChatMessage", "chat_id", chatID, c.chatBucket("chat", chatID), text)
+	return c.sendMessage(ctx, "SendChatMessage", "chat_id", chatID, c.chatBucket("chat", chatID), text, nil)
 }
+
+// userMessageRejections — отказы MAX на личное сообщение, ожидаемые без начатого диалога (Q-38):
+// без повторов и без оповещения администратору.
+// ПРЕДПОЛОЖЕНИЕ: бот, которому пользователь не писал, получает 403 (chat.denied) или 404
+// (user.not.found) — E-1 плана уведомлений.
+var userMessageRejections = []int{http.StatusForbidden, http.StatusNotFound}
 
 // SendUserMessage отправляет текст пользователю MAX (блогеру по
 // channel.added_by_max_user_id, A-41). Доставка не гарантирована (Q-38).
 func (c *Client) SendUserMessage(ctx context.Context, userID int64, text string) (string, error) {
-	return c.sendMessage(ctx, "SendUserMessage", "user_id", userID, c.chatBucket("user", userID), text)
+	return c.sendMessage(ctx, "SendUserMessage", "user_id", userID, c.chatBucket("user", userID), text, userMessageRejections)
 }
 
 type newMessage struct {
@@ -61,7 +67,8 @@ type sentMessage struct {
 	} `json:"message"`
 }
 
-func (c *Client) sendMessage(ctx context.Context, op, param string, id int64, bucket ratelimit.Bucket, text string) (string, error) {
+func (c *Client) sendMessage(ctx context.Context, op, param string, id int64, bucket ratelimit.Bucket, text string,
+	expected []int) (string, error) {
 	if text == "" || utf8.RuneCountInString(text) > MaxTextLength {
 		return "", job.Permanent(fmt.Errorf("max %s: text length must be 1..%d characters", op, MaxTextLength))
 	}
@@ -72,6 +79,7 @@ func (c *Client) sendMessage(ctx context.Context, op, param string, id int64, bu
 		body:    newMessage{Text: text, Format: "markdown"},
 		buckets: []ratelimit.Bucket{bucket},
 		object:  param, objectID: idStr,
+		expected: expected,
 	})
 	if err != nil {
 		return "", err

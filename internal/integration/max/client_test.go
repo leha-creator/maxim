@@ -172,3 +172,20 @@ func TestCACertificate(t *testing.T) {
 		t.Fatal("missing CA file accepted")
 	}
 }
+
+// Личное сообщение пользователю без диалога: 403 — отказ без повторов (Q-38, E-1).
+func TestSendUserMessageDeniedIsPermanent(t *testing.T) {
+	var n atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"code":"chat.denied","message":"chat.denied"}`))
+	}))
+	defer srv.Close()
+	c, _ := newClient(t, srv, nil)
+	_, err := c.SendUserMessage(context.Background(), 5, "hi")
+	if !job.IsPermanent(err) || n.Load() != 1 {
+		t.Fatalf("err %v calls %d", err, n.Load())
+	}
+}
