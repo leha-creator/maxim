@@ -14,8 +14,8 @@ import (
 const ReasonDevAccept = "dev_accept"
 
 // DevAccept — приёмка размещения без кабинета (R-4 этапа выплат, только development и test:
-// команда maxim dev placement accept). Одна транзакция, как будет у P-12 этапа «Приёмка, споры и
-// возвраты»: распределение удержания по доле share (03 §7), removed → accepted, расчёт удержания
+// команда maxim dev placement accept). Служебная: настоящие P-12, P-13 и P-15 —
+// AcceptPlacement, autoAccept и ResolveDispute; путь тот же (settle): распределение удержания по доле share (03 §7), removed → accepted, расчёт удержания
 // (settlement) и создание выплаты через порт Payouts. Возвращает идентификатор выплаты или uuid.Nil,
 // если выплачивать нечего.
 func (s *Service) DevAccept(ctx context.Context, placementID uuid.UUID, share int) (uuid.UUID, error) {
