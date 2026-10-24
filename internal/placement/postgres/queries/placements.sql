@@ -110,7 +110,7 @@ ORDER BY p.publish_at LIMIT 1000;
 
 -- name: ListPlacementRefs :many
 -- Заказ, канал и публикация размещений для операций баланса и отчёта агента (модули ledger, billing).
-SELECT p.id, p.order_id, o.number AS order_number, coalesce(c.title, '')::text AS channel_title,
+SELECT p.id, p.order_id, o.number AS order_number, p.channel_id, coalesce(c.title, '')::text AS channel_title,
     pub.published_at, pub.removed_at
 FROM placement p
 JOIN "order" o ON o.id = p.order_id

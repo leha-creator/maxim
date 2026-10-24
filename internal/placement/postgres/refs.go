@@ -11,6 +11,7 @@ import (
 type PlacementRef struct {
 	OrderID      uuid.UUID
 	OrderNumber  int64
+	ChannelID    uuid.UUID
 	ChannelTitle string
 	PublishedAt  *time.Time
 	RemovedAt    *time.Time
@@ -36,7 +37,7 @@ func (r *Placements) Refs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]P
 		return nil, r.s.fail(ctx, op, err)
 	}
 	for _, row := range rows {
-		out[row.ID] = PlacementRef{OrderID: row.OrderID, OrderNumber: row.OrderNumber, ChannelTitle: row.ChannelTitle,
+		out[row.ID] = PlacementRef{OrderID: row.OrderID, OrderNumber: row.OrderNumber, ChannelID: row.ChannelID, ChannelTitle: row.ChannelTitle,
 			PublishedAt: utc(row.PublishedAt), RemovedAt: utc(row.RemovedAt)}
 	}
 	return out, nil

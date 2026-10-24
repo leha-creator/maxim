@@ -206,6 +206,26 @@ func (c *Contractors) CanAccept(_ context.Context, orgID uuid.UUID) (bool, error
 	return !c.deny[orgID], nil
 }
 
+// Payouts — поддельное создание выплаты: запоминает запросы (Created).
+type Payouts struct {
+	mu      sync.Mutex
+	created []domain.PayoutRequest
+}
+
+func (p *Payouts) Create(_ context.Context, r domain.PayoutRequest) (uuid.UUID, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.created = append(p.created, r)
+	return uuid.New(), nil
+}
+
+// Created — запросы на выплату по порядку.
+func (p *Payouts) Created() []domain.PayoutRequest {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]domain.PayoutRequest(nil), p.created...)
+}
+
 var seq atomic.Int64
 
 // Blogger записывает организацию блогера (самозанятый) и её пользователя. Таблицы

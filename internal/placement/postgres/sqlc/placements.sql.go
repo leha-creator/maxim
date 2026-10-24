@@ -598,7 +598,7 @@ func (q *Queries) ListBloggerPlacements(ctx context.Context, arg ListBloggerPlac
 }
 
 const listPlacementRefs = `-- name: ListPlacementRefs :many
-SELECT p.id, p.order_id, o.number AS order_number, coalesce(c.title, '')::text AS channel_title,
+SELECT p.id, p.order_id, o.number AS order_number, p.channel_id, coalesce(c.title, '')::text AS channel_title,
     pub.published_at, pub.removed_at
 FROM placement p
 JOIN "order" o ON o.id = p.order_id
@@ -611,6 +611,7 @@ type ListPlacementRefsRow struct {
 	ID           uuid.UUID
 	OrderID      uuid.UUID
 	OrderNumber  int64
+	ChannelID    uuid.UUID
 	ChannelTitle string
 	PublishedAt  *time.Time
 	RemovedAt    *time.Time
@@ -630,6 +631,7 @@ func (q *Queries) ListPlacementRefs(ctx context.Context, ids []uuid.UUID) ([]Lis
 			&i.ID,
 			&i.OrderID,
 			&i.OrderNumber,
+			&i.ChannelID,
 			&i.ChannelTitle,
 			&i.PublishedAt,
 			&i.RemovedAt,

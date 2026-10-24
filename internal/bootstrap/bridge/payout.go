@@ -6,8 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
+
+	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
+	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
 	"github.com/leha-creator/maxim/internal/integration/rocketwork"
+	ledgerapp "github.com/leha-creator/maxim/internal/ledger/app"
+	ledgerdomain "github.com/leha-creator/maxim/internal/ledger/domain"
+	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
 	"github.com/leha-creator/maxim/internal/payout/domain"
+	placementapp "github.com/leha-creator/maxim/internal/placement/app"
+	placementdomain "github.com/leha-creator/maxim/internal/placement/domain"
+	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/money"
 )
@@ -142,4 +152,114 @@ func (p PayoutProvider) ParseWebhook(header map[string][]string, body []byte) (d
 		return domain.WebhookEvent{}, providerErr(err)
 	}
 	return domain.WebhookEvent{Kind: domain.WebhookKind(ev.Kind), ExternalID: ev.ObjectID, EventID: ev.EventID}, nil
+}
+
+// ---------------------------------------------------------------- placement → payout
+
+// PlacementPayouts — placement/domain.Payouts поверх модуля выплат: переход в accepted
+// создаёт выплату в той же транзакции (R-4).
+type PlacementPayouts struct{ Svc *payoutapp.Service }
+
+var _ placementdomain.Payouts = PlacementPayouts{}
+
+func (p PlacementPayouts) Create(ctx context.Context, r placementdomain.PayoutRequest) (uuid.UUID, error) {
+	return p.Svc.Create(ctx, payoutapp.PayoutRequest{PlacementID: r.PlacementID, BloggerOrgID: r.BloggerOrgID, Amount: r.Amount})
+}
+
+// NoPayouts — заглушка до подключения модуля выплат (I-1): принятие размещения выплату не создаёт.
+type NoPayouts struct{}
+
+var _ placementdomain.Payouts = NoPayouts{}
+
+func (NoPayouts) Create(context.Context, placementdomain.PayoutRequest) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
+// ---------------------------------------------------------------- payout → placement
+
+// PayoutPlacements — payout/domain.Placements поверх модуля размещений.
+type PayoutPlacements struct {
+	Svc        *placementapp.Service
+	Placements *placementpg.Placements
+}
+
+var _ domain.Placements = PayoutPlacements{}
+
+func (p PayoutPlacements) MarkPaid(ctx context.Context, placementID, payoutID uuid.UUID) error {
+	err := p.Svc.MarkPaid(ctx, placementID, payoutID)
+	if errors.Is(err, placementdomain.ErrNotAccepted) {
+		return fmt.Errorf("%w: %v", domain.ErrPlacementState, err)
+	}
+	return err
+}
+
+func (p PayoutPlacements) Info(ctx context.Context, placementID uuid.UUID) (domain.PlacementInfo, error) {
+	pl, err := p.Placements.Get(ctx, placementID)
+	if errors.Is(err, placementdomain.ErrNotFound) {
+		return domain.PlacementInfo{}, fmt.Errorf("%w: placement %s", domain.ErrNotFound, placementID)
+	}
+	if err != nil {
+		return domain.PlacementInfo{}, err
+	}
+	info := domain.PlacementInfo{ID: pl.ID, Status: string(pl.Status), BloggerOrgID: pl.BloggerOrgID}
+	if pl.PayoutAmount != nil {
+		info.PayoutAmount = *pl.PayoutAmount
+	}
+	return info, nil
+}
+
+func (p PayoutPlacements) Brief(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.PlacementBrief, error) {
+	refs, err := p.Placements.Refs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]domain.PlacementBrief, len(refs))
+	for id, r := range refs {
+		out[id] = domain.PlacementBrief{OrderNumber: r.OrderNumber, ChannelID: r.ChannelID, ChannelTitle: r.ChannelTitle}
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- payout → ledger
+
+// PayoutLedger — payout/domain.Ledger поверх журнала проводок (06 §2.3).
+type PayoutLedger struct{ Svc *ledgerapp.Service }
+
+var _ domain.Ledger = PayoutLedger{}
+
+func (l PayoutLedger) Payout(ctx context.Context, p domain.Payout) error {
+	_, err := l.Svc.Post(ctx, ledgerdomain.NewPayout(p.ID, p.PlacementID, p.BloggerOrganizationID, p.Amount, p.ProviderFee))
+	return err
+}
+
+func (l PayoutLedger) LegalPayout(ctx context.Context, p domain.Payout, adminID uuid.UUID, reason string) error {
+	_, err := l.Svc.Post(ctx, ledgerdomain.NewLegalPayout(p.ID, p.PlacementID, p.BloggerOrganizationID, p.Amount, adminID, reason))
+	return err
+}
+
+func (l PayoutLedger) DepositBalance(ctx context.Context) (money.Kopecks, error) {
+	t, err := l.Svc.Totals(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return t[ledgerdomain.AccountRocketworkDeposit], nil
+}
+
+// ---------------------------------------------------------------- payout → account
+
+// PayoutOrganizations — payout/domain.Organizations поверх организаций.
+type PayoutOrganizations struct{ Orgs *accountpg.Organizations }
+
+var _ domain.Organizations = PayoutOrganizations{}
+
+func (o PayoutOrganizations) ForPayout(ctx context.Context, orgID uuid.UUID) (domain.Payee, error) {
+	d, err := o.Orgs.ForPayout(ctx, orgID)
+	if errors.Is(err, accountdomain.ErrNotFound) {
+		return domain.Payee{}, fmt.Errorf("%w: organization %s", domain.ErrNotFound, orgID)
+	}
+	if err != nil {
+		return domain.Payee{}, err
+	}
+	return domain.Payee{OrganizationID: d.ID, LegalType: domain.LegalType(d.LegalType), INN: d.INN,
+		FullName: d.FullName, Phone: d.Phone}, nil
 }

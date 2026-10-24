@@ -164,14 +164,14 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 ### Phase 2: Хранилище и сценарии
 
-- [ ] **Task 4: `payout/postgres` (R-5, R-9)** (depends on 1, 2)
+- [x] **Task 4: `payout/postgres` (R-5, R-9)** (depends on 1, 2)
   - `internal/payout/postgres/queries/{contractors.sql,payouts.sql,reports.sql}` + `sqlc.yaml`: исполнитель по организации и по `external_id` с `FOR UPDATE`, вставка с `ON CONFLICT (organization_id) DO NOTHING` + повторное чтение; выплата по `id`/`external_id`/`idempotency_key` с `FOR UPDATE`, последняя попытка размещения, обновление с проверкой `lock_version`; список выплат организации (курсор `created_at, id`), итоги (`succeeded`, в работе), сумма `succeeded` за год, выборки для `stuck`, сумма `blogger_amount` размещений в `published`/`removed` с исполнителем Рокет Ворк (только чтение `placement`).
   - `internal/payout/postgres/store.go`: реализация `domain.Store` в транзакции вызывающего (`tx.FromContext`).
   - Журнал: DEBUG `payout store` при конфликте `lock_version` (повторное чтение).
   - Тесты (`dbtest`): гонка двух обновлений одной выплаты — одно проходит; курсор без пропусков и повторов; годовая сумма по Москве на границе 31 декабря / 1 января.
   - Файлы: `internal/payout/postgres/{store.go,store_test.go,queries/*.sql,sqlc/*}`, `sqlc.yaml`.
 
-- [ ] **Task 5: Онбординг, гейт и создание выплаты (R-3, R-4, R-13, R-15, R-18)** (depends on 3, 4)
+- [x] **Task 5: Онбординг, гейт и создание выплаты (R-3, R-4, R-13, R-15, R-18)** (depends on 3, 4)
   - `internal/payout/app/service.go`: `Deps{Store, Provider, Ledger, Placements, Organizations, Tx, Queue, Alerts, Audit, Notifier, Metrics, Clock, Log, Config}`.
   - `internal/payout/app/contractors.go`: `Status(ctx, orgID)` (юрлицо → `required=false`, `none`); `Invite(ctx, orgID, userID)` (см. ниже); `Refresh(ctx, orgID)` — ставит `poll_contractor` сейчас; `ApplyContractor(ctx, ProviderContractor)` — общий для опроса и вебхука, уведомления `rocketwork.active`/`rocketwork.blocked`; `CanAccept(ctx, orgID)` — реализация `placement/domain.ContractorGate`.
     - I-13: `Invite` не вызывает Рокет Ворк в запросе. Он создаёт строку `invited` без ссылки и задание `ensure_contractor` (`dedupe_key` `ensure_contractor:{organization_id}`, 5 попыток), отвечает `202` с текущим статусом; ссылка появляется после задания (кабинет повторяет `getRocketworkStatus`). Повторный `Invite` при наличии ссылки — тот же ответ без задания.
@@ -181,7 +181,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты (`dbtest`, `rocketworkfake`, `ledgertest`, `placementtest`): юрлицо — `required=false`, гейт пропускает, `Create` → `bank_transfer` без задания; самозанятый `invited` — гейт не пропускает, после `active` — пропускает; `Create` дважды для одного размещения — вторая живая выплата не создаётся; успех — проводка `payout` из двух строк, `MarkPaid` вызван, сходимость журнала; повтор успеха — no-op.
   - Файлы: `internal/payout/app/{service.go,contractors.go,create.go,succeed.go,*_test.go}`, `internal/payout/payouttest/payouttest.go`.
 
-- [ ] **Task 6: Задания отправки и опроса выплат (R-6, R-7, R-8, R-10)** (depends on 5)
+- [x] **Task 6: Задания отправки и опроса выплат (R-6, R-7, R-8, R-10)** (depends on 5)
   - `internal/payout/app/send.go`: `Send(ctx, payoutID)` — вне транзакции: актуальность исполнителя (R-7), `GetDepositBalance`, `CreatePayout` с ключом, затем в транзакции `MarkSent`, уведомление `payout.sent`, задание `poll_payout:{payout_id}`. Ответ сразу окончательный — `complete`/`fail`. `insufficient_deposit` → `job.Postpone(1h)` + оповещение; `provider_error` → `job.Retry`; `OnExhausted` → `fail(provider_error)`.
   - `internal/payout/app/poll.go`: `PollPayout(ctx, payoutID)` — `GetPayout`, окончательный статус → `complete`/`fail`, иначе `job.Postpone` на `PollDelay` (I-3); `PollContractor(ctx, contractorID)`, `EnsureContractor(ctx, orgID)`.
   - `internal/payout/jobs/jobs.go`: `Register(w, svc, Options)` — `send_payout`, `poll_payout`, `poll_contractor`, `ensure_contractor` с полезной нагрузкой JSON, `ObjectRef`, `job.Permanent` при ошибке разбора (образец — `marking/jobs`).
@@ -189,7 +189,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты: успех; ответ «выполнено» сразу; таймаут создания — `FindPayout` находит, второй выплаты в сервисе нет; таймаут и не найдена — повтор с тем же ключом; нехватка депозита — выплата `created`, попытка не потрачена, после `SetDeposit` — отправлена; исполнитель заблокирован — `failed contractor_not_active`; 10 ошибок — `failed provider_error`; опрос на 5-й и 65-й минуте; `disabled` — откладывание без смены статуса.
   - Файлы: `internal/payout/app/{send.go,poll.go,*_test.go}`, `internal/payout/jobs/{jobs.go,jobs_test.go}`.
 
-- [ ] **Task 7: Порт выплат в размещениях и P-16 (R-4, R-5)** (depends on 5)
+- [x] **Task 7: Порт выплат в размещениях и P-16 (R-4, R-5)** (depends on 5)
   - `internal/placement/domain/ports.go`: `Payouts{Create(ctx, PayoutRequest) (uuid.UUID, error)}` с комментарием «вызывается из P-12, P-13, P-15 на этапе приёмки».
   - `internal/placement/app/service.go`: `SetPayoutPorts(gate, payouts)` (I-1); `bridge.NoPayouts` до подключения.
   - `internal/placement/app/paid.go`: `MarkPaid(ctx, placementID, payoutID)` — P-16 (`ActorSystem`) через `apply` в транзакции вызывающего, история с `payout_id`; размещение не `accepted` — `ErrInvalidTransition`.

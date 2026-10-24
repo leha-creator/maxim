@@ -336,3 +336,17 @@ func CallPriorityFrom(ctx context.Context) CallPriority {
 	}
 	return CallReconcile
 }
+
+// PayoutRequest — создать выплату блогеру по принятому размещению (R-4).
+type PayoutRequest struct {
+	PlacementID  uuid.UUID
+	BloggerOrgID uuid.UUID
+	Amount       money.Kopecks
+}
+
+// Payouts — создание выплаты (модуль payout, bootstrap/bridge.PlacementPayouts). Вызывается
+// в транзакции перехода в accepted из P-12, P-13, P-15 на этапе «Приёмка, споры и возвраты»
+// (I-10): строка payout и задание send_payout фиксируются вместе с переходом.
+type Payouts interface {
+	Create(ctx context.Context, r PayoutRequest) (uuid.UUID, error)
+}

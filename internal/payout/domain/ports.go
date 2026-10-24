@@ -189,11 +189,11 @@ type Notice struct {
 
 // Шаблоны уведомлений (R-15).
 const (
-	NoticePayoutSent       = "payout.sent"
-	NoticePayoutSucceeded  = "payout.succeeded"
-	NoticePayoutFailed     = "payout.failed"
-	NoticeRocketworkActive = "rocketwork.active"
-	NoticeRocketworkBlock  = "rocketwork.blocked"
+	NoticePayoutSent        = "payout.sent"
+	NoticePayoutSucceeded   = "payout.succeeded"
+	NoticePayoutFailed      = "payout.failed"
+	NoticeRocketworkActive  = "rocketwork.active"
+	NoticeRocketworkBlocked = "rocketwork.blocked"
 )
 
 // Notifier — уведомления. До этапа «Уведомления» — пустая реализация.

@@ -57,6 +57,8 @@ var (
 	ErrNothingToCancel       = &ConflictError{Reason: "nothing_to_cancel"}
 	// ErrCampaignNotDraft — кампания уже оформлена (R-6): 409 conflict.
 	ErrCampaignNotDraft = &ConflictError{Reason: "campaign_not_draft"}
+	// ErrNotAccepted — P-16 возможен только из accepted (R-5 этапа выплат).
+	ErrNotAccepted = &ConflictError{Reason: "placement_not_accepted"}
 )
 
 // ErrVersionNotReady — P-02 без версии поста в ready (I-01 в части этапа).
