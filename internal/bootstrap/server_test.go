@@ -153,7 +153,7 @@ func TestServerSecurityHeaders(t *testing.T) {
 func TestMetricsServer(t *testing.T) {
 	reg := metrics.New()
 	reg.ObserveHTTP("getCart", "GET", 501, 10*time.Millisecond)
-	s := metricsServer(":0", reg)
+	s := metricsServer(":0", reg, nil, nil)
 	rec := httptest.NewRecorder()
 	s.srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if !strings.Contains(rec.Body.String(), `maxim_http_requests_total{code="501",method="GET",route="getCart"} 1`) {

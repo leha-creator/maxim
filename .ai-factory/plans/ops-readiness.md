@@ -89,7 +89,7 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
 
 ### Фаза 1. Бэкенд для эксплуатации
 
-- [ ] **Task 1: Команды `maxim probe` и `maxim config check`** (depends on —).
+- [x] **Task 1: Команды `maxim probe` и `maxim config check`** (depends on —).
   - `internal/bootstrap/ops.go`: `runProbe(ctx, args, stdout, stderr) int` — один аргумент URL (`http://` или `https://`), GET с тайм-аутом 2 с, код 0 при статусе `200`, 1 при другом статусе или ошибке, 2 при неверных аргументах; конфигурация не загружается, журнал не пишется (вызов каждые 5 с засорил бы журнал), на ошибке — одна строка в stderr. `runConfigCheck` — `config check --for <mode>`: `LoadConfig(environ, mode)`; при успехе INFO `config valid` с `mode`, `env` и `version`, при ошибке ERROR `config invalid` со списком полей (как в `Run`), код 1.
   - `internal/bootstrap/run.go`: режимы `ModeProbe = "probe"` (обрабатывается до загрузки конфигурации) и `ModeConfig = "config"` (загружает конфигурацию целевого режима, а не своего); компонент журнала `cli`.
   - `cmd/maxim/main.go`: строки usage и комментарий пакета.
@@ -97,7 +97,7 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
   - Логирование: `config check` — INFO `config valid` (`op=Bootstrap.ConfigCheck`, `mode`, `env`), ERROR `config invalid` с полями; `probe` — без журнала, причина отказа в stderr.
   - Файлы: `internal/bootstrap/ops.go`, `internal/bootstrap/ops_test.go`, `internal/bootstrap/run.go`, `cmd/maxim/main.go`.
 
-- [ ] **Task 2: Готовность `worker` и пауза перед остановкой `api`** (depends on 1).
+- [x] **Task 2: Готовность `worker` и пауза перед остановкой `api`** (depends on 1).
   - `worker`: на порту метрик — `GET /livez` (всегда `200`) и `GET /readyz` (`200`, если обработчик заданий запущен и база отвечает за 1 с; `503` во время остановки). Флаг «запущен/останавливается» выставляет `runWorker`; если в `job.Worker` нет нужной точки, достаточно атомарного флага в `bootstrap`.
   - `api`: переменная `HTTP_SHUTDOWN_DRAIN` (`time.Duration`, по умолчанию `0s`, допустимо от 0 до 60 с, проверка в `Validate`). После отмены контекста `serve` переводит `/readyz` в `503` (`status: draining`), ждёт паузу и только потом вызывает `Shutdown`. Флаг передаётся в `Ready` из `runAPI`.
   - `.env.example`: `HTTP_SHUTDOWN_DRAIN=0s` с комментарием (в шаблонах окружений — `5s`); 07 §8, абзац «Выпуск»: пауза, `/readyz` у `worker`, команды `probe` и `config check`.

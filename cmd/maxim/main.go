@@ -9,6 +9,8 @@
 //	maxim admin grant|revoke        — роль администратора (до API администратора)
 //	maxim admin ord errors|retry    — ошибки Яндекс ОРД и повтор (S-20, до API администратора)
 //	maxim dev post-version          — двинуть версию поста заказа (только development и test, R-23)
+//	maxim config check --for <mode>  — проверить конфигурацию режима до выпуска
+//	maxim probe <url>                — проверка здоровья для HEALTHCHECK (код 0 при 200)
 //
 // Конфигурация — переменные окружения, см. .env.example.
 package main
@@ -42,6 +44,8 @@ commands:
                            ready only with ORD_ENABLED=false)
   dev balance deposit      --email <user> --amount <rub.kop>: invoice and paying statement (development and test only)
   dev statement            --invoice MX-… [--amount <rub.kop>] [--out <path>]: statement file paying an invoice
+  config check --for <mode>  validate configuration of a mode (api, worker, migrate, legal, admin, dev) and exit
+  probe <url>              GET the url with a 2 s timeout: exit 0 on 200 (container health check)
 `
 
 func main() {

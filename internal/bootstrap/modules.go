@@ -68,6 +68,8 @@ type infra struct {
 	// reg — реестр метрик процесса; nil в служебных командах.
 	reg *metrics.Registry
 	box *secretbox.Box
+	// life — признак остановки процесса для /readyz (выпуск без простоя).
+	life lifecycle
 }
 
 // newInfra подключает адаптеры, нужные режиму.
@@ -273,7 +275,7 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Routes: map[string]http.Handler{
 			maxWebhookPattern: newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
 		},
-		Ready:         readiness(in.pool),
+		Ready:         in.life.ready(readiness(in.pool)),
 		Authenticated: httpx.Authenticated,
 		Before: []httpx.Middleware{
 			httpx.ClientInfo(trusted),
