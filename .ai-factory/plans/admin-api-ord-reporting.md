@@ -154,7 +154,7 @@ Rationale: план реализует этап целиком: операции
 
 ### Phase 2: Данные и общие правила
 
-- [ ] **Task 3: Миграция `00014_admin.sql` (R-2, R-7, R-9, R-12)**
+- [x] **Task 3: Миграция `00014_admin.sql` (R-2, R-7, R-9, R-12)**
   - `dispute_message` (`id`, `dispute_id → dispute`, `author_type check in (admin, advertiser, blogger)`, `author_user_id → user`, `recipient check in (advertiser, blogger, both)` — обязателен у `admin`, пуст у сторон, `text` 1…2000, `created_at`); индекс `(dispute_id, created_at)`; `REVOKE UPDATE, DELETE, TRUNCATE`.
   - `admin_approval` (`id`, `kind check in (ledger_manual, deposit_topup, payout_mark_paid)`, `payload jsonb`, `amount bigint > 0`, `reason` 1…1000, `idempotency_key unique`, `requested_by → user`, `status check in (pending, approved, rejected, expired)`, `decided_by`, `decided_at`, `decision_reason`, `result_id uuid`, `expires_at`, `created_at`, `updated_at`); проверки: решение ⇒ `decided_by`/`decided_at`, `decided_by <> requested_by`; индекс `(status, created_at)`; `REVOKE DELETE, TRUNCATE`.
   - `channel_category.archived_at timestamptz`.
@@ -163,7 +163,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты (`migrations` рядом с существующими): `up` → `down` → `up`; решение тем же администратором — отказ; сообщение администратора без адресата — отказ; роль приложения не может `UPDATE dispute_message`.
   - Файлы: `migrations/00014_admin.sql`, тест миграций.
 
-- [ ] **Task 4: Роли и общие помощники (R-1, R-14)** (depends on 1)
+- [x] **Task 4: Роли и общие помощники (R-1, R-14)** (depends on 1)
   - `internal/platform/httpx/auth.go`: `AdminAny = []string{"moderator","senior"}`, `AdminSeniorOnly = []string{"senior"}`, `IsSenior(p)`; `channel/httpapi` переходит на константы.
   - `platform/logx`: `MaskINN` уже есть; помощник `INNFor(p *Principal, inn)` — полный для `senior`, маска для `moderator` (R-14).
   - Журнал: отказ — WARN `admin access denied` (как сейчас).

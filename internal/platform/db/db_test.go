@@ -278,3 +278,37 @@ func TestCatalogTablesForAppRole(t *testing.T) {
 		t.Error("unknown anomaly flag accepted")
 	}
 }
+
+// TestAdminTables — переписка по спору неизменяема; подтверждение — другим администратором (00014).
+func TestAdminTables(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	for _, stmt := range []string{
+		`UPDATE dispute_message SET text = 'x' WHERE false`,
+		`DELETE FROM dispute_message WHERE false`,
+		`DELETE FROM admin_approval WHERE false`,
+	} {
+		if _, err := d.Pool.Exec(ctx, stmt); err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("%s: want permission denied, got %v", stmt, err)
+		}
+	}
+	admin := ids.New()
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO "user" (id, email, status, admin_role, created_at, updated_at)
+		VALUES ($1, 'senior@example.ru', 'active', 'senior', now(), now())`, admin); err != nil {
+		t.Fatal(err)
+	}
+	insert := `INSERT INTO admin_approval (id, kind, payload, amount, summary, reason, idempotency_key, requested_by,
+		status, decided_by, decided_at, result_id, expires_at, created_at, updated_at)
+		VALUES ($1, 'ledger_manual', '{}', 100, 'bank → platform_revenue', 'test', $2, $3, $4, $5, $6, $7, now(), now(), now())`
+	if _, err := d.Pool.Exec(ctx, insert, ids.New(), "k1", admin, "pending", nil, nil, nil); err != nil {
+		t.Fatalf("pending approval: %v", err)
+	}
+	now := time.Now()
+	_, err := d.Pool.Exec(ctx, insert, ids.New(), "k2", admin, "approved", admin, now, ids.New())
+	if err == nil || !strings.Contains(err.Error(), "admin_approval_other_admin") {
+		t.Errorf("approval by the same admin: want check violation, got %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, insert, ids.New(), "k1", admin, "pending", nil, nil, nil); !db.UniqueViolation(err, "admin_approval_idempotency_key_key") {
+		t.Errorf("duplicate idempotency key: %v", err)
+	}
+}

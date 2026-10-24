@@ -119,3 +119,43 @@ func RequireAdmin(ctx context.Context, log *slog.Logger, op string, roles ...str
 	}
 	return p, nil
 }
+
+// Роли администратора (07 §4) и матрица операций (R-1 этапа «API администратора»).
+const (
+	AdminRoleModerator = "moderator"
+	AdminRoleSenior    = "senior"
+)
+
+var (
+	// AdminAny — операция доступна обеим ролям: модерация, споры, чтение, ошибки ОРД.
+	AdminAny = []string{AdminRoleModerator, AdminRoleSenior}
+	// AdminSeniorOnly — только senior: деньги, блокировки, справочники, журнал действий.
+	AdminSeniorOnly = []string{AdminRoleSenior}
+)
+
+// IsSenior — у пользователя роль senior.
+func IsSenior(p *Principal) bool { return p != nil && p.AdminRole == AdminRoleSenior }
+
+// INNFor — ИНН для ответа администратору: полный у senior, с маской у moderator (R-14).
+func INNFor(p *Principal, inn string) string {
+	if IsSenior(p) {
+		return inn
+	}
+	return logx.MaskINN(inn)
+}
+
+// EmailFor — почта для ответа администратору: полная у senior, с маской у moderator.
+func EmailFor(p *Principal, email string) string {
+	if IsSenior(p) {
+		return email
+	}
+	return logx.MaskEmail(email)
+}
+
+// PhoneFor — телефон для ответа администратору: полный у senior, с маской у moderator.
+func PhoneFor(p *Principal, phone string) string {
+	if IsSenior(p) {
+		return phone
+	}
+	return logx.MaskPhone(phone)
+}

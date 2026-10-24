@@ -12,11 +12,8 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
-// adminRoles — роли, которым доступны операции администратора для каналов (07 §4, R-1).
-var adminRoles = []string{"moderator", "senior"}
-
 func (h *Handlers) admin(ctx context.Context, op string) (uuid.UUID, error) {
-	p, err := httpx.RequireAdmin(ctx, h.log, op, adminRoles...)
+	p, err := httpx.RequireAdmin(ctx, h.log, op, httpx.AdminAny...)
 	if err != nil {
 		return uuid.Nil, err
 	}
