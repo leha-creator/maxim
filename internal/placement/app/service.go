@@ -92,8 +92,8 @@ type Deps struct {
 	Holds       domain.Holds
 	Contractors domain.ContractorGate
 	// Payouts — создание выплаты при переходе в accepted (этап «Приёмка, споры и возвраты»).
-	Payouts domain.Payouts
-	Notifier    domain.Notifier
+	Payouts  domain.Payouts
+	Notifier domain.Notifier
 	// Публикации, нарушения, споры и внешние вызовы (этап «Автопостинг и контроль»). Publisher
 	// и Content нужны только в режиме worker.
 	Publications domain.Publications

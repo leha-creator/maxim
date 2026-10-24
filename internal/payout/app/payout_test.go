@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -468,5 +469,65 @@ func TestStuckChecks(t *testing.T) {
 	}
 	if find(app.StuckSentNoOutcome, start.Add(time.Second)) != 1 || find(app.StuckCreatedNotSent, start.Add(time.Second)) != 0 {
 		t.Fatal("sent payout not found")
+	}
+}
+
+// Ревью: прошлый запуск создал выплату с неизвестным исходом — следующий находит её по ключу
+// до проверок исполнителя и депозита и не помечает failed (иначе повтор заплатил бы дважды).
+func TestSendFindsPayoutBeforeChecks(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	org := e.blogger(accountdomain.SelfEmployed)
+	_ = e.rw.SetDeposit(100_000)
+	_, id := e.accepted(org, 50_000)
+	p := e.payout(id)
+	if _, err := e.rw.CreatePayout(ctx, rocketwork.PaymentRequest{IdempotencyKey: p.IdempotencyKey, ExternalID: id.String(),
+		ContractorID: e.contractor(org).ExternalID, AmountKopecks: 50_000}); err != nil {
+		t.Fatal(err)
+	}
+	_ = e.rw.BlockContractor(e.contractor(org).ExternalID, rocketwork.FailureTaxStatusLost)
+	_ = e.rw.SetDeposit(0)
+	if err := e.svc.Send(ctx, id, 2); err != nil {
+		t.Fatal(err)
+	}
+	if p := e.payout(id); p.Status != domain.StatusSent || p.ExternalID == "" {
+		t.Fatalf("payout %s %s", p.Status, p.FailureCode)
+	}
+	if n := e.rw.CountCalls("CreatePayout"); n != 1 {
+		t.Fatalf("create calls %d", n)
+	}
+}
+
+// Ревью: исчерпание send_payout — найденная в сервисе выплата становится sent, ненайденная —
+// failed provider_error, при неизвестном исходе failed не ставится.
+func TestSendExhaustedChecksProvider(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	org := e.blogger(accountdomain.SelfEmployed)
+	_ = e.rw.SetDeposit(1_000_000)
+	_, found := e.accepted(org, 50_000)
+	p := e.payout(found)
+	if _, err := e.rw.CreatePayout(ctx, rocketwork.PaymentRequest{IdempotencyKey: p.IdempotencyKey, ExternalID: found.String(),
+		ContractorID: e.contractor(org).ExternalID, AmountKopecks: 50_000}); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.SendExhausted(ctx, found, errors.New("boom"))
+	if p := e.payout(found); p.Status != domain.StatusSent {
+		t.Fatalf("found: %s", p.Status)
+	}
+
+	org2 := e.blogger(accountdomain.SelfEmployed)
+	_, unknown := e.accepted(org2, 40_000)
+	e.rw.FailNext("FindPayout", rocketwork.ErrUnavailable)
+	e.svc.SendExhausted(ctx, unknown, errors.New("boom"))
+	if p := e.payout(unknown); p.Status != domain.StatusCreated {
+		t.Fatalf("unknown: %s", p.Status)
+	}
+	if !e.alerts.isOpen(app.AlertStateMismatch, "payout:"+unknown.String()) {
+		t.Fatal("mismatch alert for unknown outcome")
+	}
+	e.svc.SendExhausted(ctx, unknown, errors.New("boom"))
+	if p := e.payout(unknown); p.Status != domain.StatusFailed || p.FailureCode != domain.FailureProviderError {
+		t.Fatalf("not found: %s %s", p.Status, p.FailureCode)
 	}
 }

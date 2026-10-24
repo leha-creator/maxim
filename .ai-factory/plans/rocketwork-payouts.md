@@ -113,6 +113,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 10. **Q-11, комиссия.** Комиссия сервиса списывается с депозита сверх суммы и приходит в `fee_kopecks` успешной выплаты (отдельная проводка `payout_fees`, 06 §2.3).
 11. **Q-10, лимит запросов.** 5 запросов в секунду на заказчика (`ROCKETWORK_RATE`, корзина `rocketwork:global`).
 12. **Данные `rocketworkfake`.** Комиссия — 3% суммы, не меньше 1 ₽; начальный депозит 0 (задаётся `maxim dev rocketwork deposit`); ссылка онбординга `https://rocketwork.example.test/onboarding/<id>`; чек `https://rocketwork.example.test/receipts/<payment_id>`.
+13. **Q-10, конфликт ключа.** `409` без делового кода на создание — запрос с тем же `Idempotency-Key` ещё выполняется: исход неизвестен (поиск по ключу и повтор), а не отказ.
 
 ## Решения при реализации (aif-implement, 2026-10-24)
 
@@ -129,6 +130,21 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 | D-7 | Новый код ошибки API `service_unavailable` (`503`) с `details.reason = rocketwork_unavailable`; ограничение частоты `invite` и `refresh` — 10 запросов пользователя в час по `audit_log` (как у счетов), ответ `429` | `platform/apperr`, `payout/app/cabinet.go` |
 | D-8 | Команды `maxim admin` и `maxim dev` в тестах получают часы собранного приложения через `withCommandClock` (только внутри пакета `bootstrap`): иначе задания, поставленные командой, получали бы реальное время | `bootstrap/modules.go` |
 | D-9 | Подделка в тестовом приложении использует файл состояния, если задан `ROCKETWORK_FAKE_STATE_PATH`: так сквозной тест проверяет команды `maxim dev rocketwork` на общем состоянии | `bootstrap/harness_test.go` |
+
+Проверка (aif-verify, 2026-10-24): задачи выполнены; принятые замечания — `go test -race` локально не запускался (нет cgo и gcc, только CI); отдельных `payout/jobs/jobs_test.go` и `payout/httpapi/handlers_test.go` нет — обработчики заданий проверяют `payout/app` и сквозной тест через `worker`, операции кабинета — `bootstrap/payout_http_test.go` с проверкой по OpenAPI.
+
+Ревью (aif-review, 2026-10-24), исправлено:
+
+| # | Находка | Исправление |
+|---|---|---|
+| V-1 | После `sent` ошибка переноса ответа (размещение уже не `accepted`) возвращалась заданию `send_payout`: `Permanent` → `OnExhausted` → `failed provider_error` у выплаты, деньги по которой ушли; повтор администратора заплатил бы дважды | После отметки `sent` исход принадлежит `poll_payout`: `Send` ошибку переноса только пишет в журнал; `SendExhausted` действует только на `created` |
+| V-2 | Повтор `send_payout` после неизвестного исхода снова проходил проверки исполнителя и депозита до поиска по ключу и мог пометить `failed` уже созданную выплату | `Send` сначала ищет выплату по ключу (`FindPayout`); `SendExhausted` тоже: найдена — `sent`, исход неизвестен — `failed` не ставится, оповещение `payout_state_mismatch` |
+| V-3 | Сервис сообщил об успехе выплаты, отмеченной у нас `failed`, — без оповещения | `complete`: ERROR `payout state mismatch`, оповещение `payout_state_mismatch:{payout_id}`, `job.Permanent` |
+| V-4 | Ответы клиента `live` сохранялись в `outbound_request` без маскирования ссылок онбординга и чека | `outbound.Options.Redact = rocketwork.RedactFields` (`inn`, `phone`, `full_name`, `onboarding_url`, `receipt_url`) |
+| V-5 | Отказ сервиса `insufficient_deposit` после `sent` — без оповещения | Код входит в `NeedsAdmin`: ERROR и `payout_failed` |
+| V-6 | `409` без делового кода на создание считался окончательным отказом | Неизвестный исход (допущение 13) |
+
+Не исправлено (замечания): проверка депозита перед отправкой сравнивает с суммой без комиссии сервиса — недостача на комиссию видна в `check_rocketwork_deposit` (тариф не известен, Q-12); подпись вебхука без метки времени — повтор старого события лишь вызывает лишний `GET` (формат подписи — Q-12).
 
 ## Commit Plan
 - **Commit 1** (после задач 1–3a): `feat(payout): payout schema, domain rules and rocket work adapter contract`

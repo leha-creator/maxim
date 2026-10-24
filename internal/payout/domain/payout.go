@@ -70,7 +70,8 @@ func (c FailureCode) AutoRetried() bool {
 
 // NeedsAdmin — отказ требует оповещения администратора (05 §4.3).
 func (c FailureCode) NeedsAdmin() bool {
-	return c == FailureTaxStatusLost || c == FailureIncomeLimitExceeded || c == FailureProviderError
+	return c == FailureTaxStatusLost || c == FailureIncomeLimitExceeded || c == FailureProviderError ||
+		c == FailureInsufficientDeposit
 }
 
 // Payout — одна попытка выплаты по размещению.

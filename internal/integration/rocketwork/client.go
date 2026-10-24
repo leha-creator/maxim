@@ -228,6 +228,11 @@ func classify(resp outbound.Response, err error) error {
 	if msg == "" {
 		msg = fmt.Sprintf("status %d", resp.Status)
 	}
+	// ПРЕДПОЛОЖЕНИЕ (Q-10): 409 без делового кода — запрос с тем же ключом ещё выполняется; исход
+	// неизвестен, а не отказ: задание ищет выплату по ключу и повторяет (R-6).
+	if resp.Status == http.StatusConflict && code == FailureProviderError {
+		return fmt.Errorf("%w: conflict: %s", ErrUnavailable, msg)
+	}
 	return &RejectedError{Code: code, Message: msg}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -30,6 +31,18 @@ func (s *Service) Send(ctx context.Context, payoutID uuid.UUID, attempt int) err
 	}
 	log := s.log.With(logx.KeyOp, op, KeyPayoutID, p.ID, KeyPlacementID, p.PlacementID, KeyAttempt, p.Attempt,
 		"job_attempt", attempt, KeyIdempotencyKey, p.IdempotencyKey)
+
+	// R-6: прошлый запуск мог создать выплату с неизвестным исходом (таймаут, сбой разбора).
+	// Сначала ищем её по нашему ключу: найдена — проверки перед отправкой уже не нужны, иначе
+	// отказ проверки пометил бы failed выплату, деньги по которой ушли, и повтор заплатил бы дважды.
+	found, ok, err := s.Provider.FindPayout(ctx, p.IdempotencyKey)
+	if err != nil {
+		return s.providerWait(ctx, op, err)
+	}
+	if ok {
+		log.InfoContext(ctx, "payout found before send", KeyExternalID, found.ExternalID)
+		return s.sent(ctx, log, p, found)
+	}
 
 	// R-7: исполнитель active по свежему статусу.
 	c, err := s.Store.ContractorByID(ctx, p.ContractorID, false)
@@ -89,6 +102,13 @@ func (s *Service) Send(ctx context.Context, payoutID uuid.UUID, attempt int) err
 		log.InfoContext(ctx, "payout found after unknown outcome", KeyExternalID, found.ExternalID)
 		pp = found
 	}
+	return s.sent(ctx, log, p, pp)
+}
+
+// sent — выплата создана в сервисе: отметка sent и опрос, затем перенос ответа. После отметки
+// исход принадлежит poll_payout: ошибка переноса не возвращается заданию, иначе исчерпание
+// send_payout пометило бы failed выплату, деньги по которой уже ушли.
+func (s *Service) sent(ctx context.Context, log *slog.Logger, p domain.Payout, pp domain.ProviderPayout) error {
 	if err := s.markSent(ctx, p.ID, pp.ExternalID); err != nil {
 		return err
 	}
@@ -96,8 +116,10 @@ func (s *Service) Send(ctx context.Context, payoutID uuid.UUID, attempt int) err
 	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSent, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID,
 		Data: map[string]any{"amount": int64(p.Amount)}})
 	s.resolve(ctx, AlertDepositInsufficient, payoutObject(p.ID))
-	_, err = s.apply(ctx, p.ID, pp)
-	return err
+	if _, err := s.apply(ctx, p.ID, pp); err != nil {
+		log.WarnContext(ctx, "payout outcome left to poll", KeyExternalID, pp.ExternalID, logx.KeyError, err.Error())
+	}
+	return nil
 }
 
 func purpose(b domain.PlacementBrief) string {
@@ -137,12 +159,35 @@ func (s *Service) markSent(ctx context.Context, id uuid.UUID, externalID string)
 	})
 }
 
-// SendExhausted — попытки send_payout исчерпаны (R-8): failed provider_error и оповещение.
+// SendExhausted — попытки send_payout исчерпаны (R-8). Только выплата, оставшаяся created:
+// сначала поиск по ключу — найдена в сервисе — sent и опрос; не найдена — failed provider_error
+// и оповещение; исход неизвестен — failed не ставится (деньги могли уйти), оповещение о расхождении.
 func (s *Service) SendExhausted(ctx context.Context, payoutID uuid.UUID, cause error) {
-	s.log.ErrorContext(ctx, "payout send exhausted", logx.KeyOp, "Payout.SendExhausted", KeyPayoutID, payoutID,
-		logx.KeyError, cause.Error())
+	const op = "Payout.SendExhausted"
+	log := s.log.With(logx.KeyOp, op, KeyPayoutID, payoutID)
+	log.ErrorContext(ctx, "payout send exhausted", logx.KeyError, cause.Error())
+	p, err := s.Store.PayoutByID(ctx, payoutID, false)
+	if err != nil {
+		log.ErrorContext(ctx, "payout fail after exhaustion failed", logx.KeyError, err.Error())
+		return
+	}
+	if p.Status != domain.StatusCreated || p.Method != domain.MethodRocketwork {
+		return
+	}
+	found, ok, ferr := s.Provider.FindPayout(ctx, p.IdempotencyKey)
+	switch {
+	case ferr != nil:
+		log.ErrorContext(ctx, "payout outcome unknown after exhaustion", KeyIdempotencyKey, p.IdempotencyKey, logx.KeyError, ferr.Error())
+		s.raise(ctx, alert.LevelError, AlertStateMismatch, payoutObject(p.ID), "payout outcome is unknown: check it in rocketwork",
+			map[string]any{"payout_id": p.ID.String(), "placement_id": p.PlacementID.String()})
+		return
+	case ok:
+		if err := s.sent(ctx, log, p, found); err != nil {
+			log.ErrorContext(ctx, "payout fail after exhaustion failed", logx.KeyError, err.Error())
+		}
+		return
+	}
 	if err := s.fail(ctx, payoutID, domain.FailureProviderError, cause.Error()); err != nil && !errors.Is(err, domain.ErrInvalidPayoutState) {
-		s.log.ErrorContext(ctx, "payout fail after exhaustion failed", logx.KeyOp, "Payout.SendExhausted", KeyPayoutID, payoutID,
-			logx.KeyError, err.Error())
+		log.ErrorContext(ctx, "payout fail after exhaustion failed", logx.KeyError, err.Error())
 	}
 }

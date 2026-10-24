@@ -59,6 +59,14 @@ func (s *Service) complete(ctx context.Context, id uuid.UUID, pp domain.Provider
 			map[string]any{"payout_id": id.String(), "placement_id": p.PlacementID.String()})
 		return job.Permanent(err)
 	}
+	if errors.Is(err, domain.ErrInvalidPayoutState) && p.Status == domain.StatusFailed {
+		// Сервис выплатил то, что у нас отмечено failed: деньги ушли без проводки (R-5).
+		s.log.ErrorContext(ctx, "payout state mismatch", logx.KeyOp, op, KeyPayoutID, id, KeyPlacementID, p.PlacementID,
+			KeyFailureCode, p.FailureCode, KeyExternalID, p.ExternalID)
+		s.raise(ctx, alert.LevelError, AlertStateMismatch, payoutObject(id), "rocketwork paid a payout marked failed",
+			map[string]any{"payout_id": id.String(), "placement_id": p.PlacementID.String()})
+		return job.Permanent(err)
+	}
 	if err != nil {
 		return err
 	}

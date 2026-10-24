@@ -151,7 +151,7 @@ func TestFailureCodes(t *testing.T) {
 		{FailureContractorNotActive, false, false},
 		{FailureTaxStatusLost, false, true},
 		{FailureIncomeLimitExceeded, false, true},
-		{FailureInsufficientDeposit, true, false},
+		{FailureInsufficientDeposit, true, true}, // отказ сервиса после sent: деньги ждут пополнения
 		{FailureProviderError, true, true},
 	}
 	for _, c := range cases {

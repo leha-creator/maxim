@@ -6,6 +6,10 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
+// RedactFields — поля, скрываемые outbound в сохранённых запросах и ответах Рокет Ворк (R-18):
+// ПДн исполнителя и ссылки онбординга и чека (они для блогера, не для журнала).
+var RedactFields = []string{"inn", "phone", "full_name", "onboarding_url", "receipt_url"}
+
 // recordBody — тело запроса для outbound_request (06 §8, 07 §5.4): ИНН, телефон и ФИО
 // маскированы, остальные поля нужны для разбора ошибок.
 func recordBody(body any) []byte {

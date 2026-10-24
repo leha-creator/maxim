@@ -178,6 +178,8 @@ func (in *infra) connectRocketWork(ctx context.Context, cfg Config) error {
 		outMetrics, limitMetrics := in.integrationMetrics()
 		out := outbound.New(in.pool, in.clock, log, outbound.Options{
 			System: outbound.SystemRocketWork, Alerter: in.alerter, Metrics: outMetrics,
+			// R-18: ПДн и ссылки онбординга и чека не сохраняются в outbound_request (запрос и ответ).
+			Redact: rocketwork.RedactFields,
 		})
 		limiter := ratelimit.New(in.pool, in.clock, log, ratelimit.Options{Metrics: limitMetrics})
 		in.rocketwork = rocketwork.New(out, limiter, rocketwork.Options{BaseURL: cfg.RocketWork.BaseURL,
