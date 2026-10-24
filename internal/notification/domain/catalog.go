@@ -1,0 +1,69 @@
+package domain
+
+import (
+	"fmt"
+	"slices"
+)
+
+// Template — шаблон уведомления: код, кому предназначен и чей модуль его вызывает (R-5).
+type Template struct {
+	Code  string
+	Roles []Role
+	// AwaitsModule — модуль-вызывающий ещё не в master (R-11): код и текст есть, вызовов нет.
+	AwaitsModule string
+}
+
+// Allows — шаблон предназначен этой стороне.
+func (t Template) Allows(r Role) bool { return slices.Contains(t.Roles, r) }
+
+var (
+	advertiser = []Role{RoleAdvertiser}
+	blogger    = []Role{RoleBlogger}
+	both       = []Role{RoleAdvertiser, RoleBlogger}
+	bothAdmin  = []Role{RoleAdvertiser, RoleBlogger, RoleAdmin}
+)
+
+// catalog — все шаблоны уведомлений (07 §6). Тексты — templates/notification/{код}.tmpl.
+var catalog = []Template{
+	{Code: "balance.deposited", Roles: advertiser},
+	{Code: "closing_acts.ready", Roles: advertiser},
+	{Code: "order.post_approved", Roles: advertiser},
+	{Code: "order.post_rejected", Roles: advertiser},
+	{Code: "order.erir_rejected", Roles: advertiser},
+	{Code: "placement.request", Roles: blogger},
+	{Code: "placement.accept_reminder", Roles: blogger},
+	{Code: "placement.accepted", Roles: advertiser},
+	{Code: "placement.scheduled", Roles: advertiser},
+	{Code: "placement.rescheduled", Roles: advertiser},
+	{Code: "placement.declined", Roles: advertiser},
+	{Code: "placement.expired", Roles: both},
+	{Code: "placement.cancelled", Roles: both},
+	{Code: "placement.returned", Roles: blogger},
+	{Code: "placement.published", Roles: both},
+	{Code: "placement.failed", Roles: bothAdmin},
+	{Code: "placement.removed", Roles: both},
+	{Code: "placement.removal_overdue", Roles: blogger},
+	{Code: "placement.disputed", Roles: bothAdmin},
+	{Code: "placement.dispute_resolved", Roles: both, AwaitsModule: "dispute"},
+	{Code: "payout.sent", Roles: blogger, AwaitsModule: "payout"},
+	{Code: "payout.paid", Roles: blogger, AwaitsModule: "payout"},
+	{Code: "payout.failed", Roles: blogger, AwaitsModule: "payout"},
+	{Code: "channel.approved", Roles: blogger},
+	{Code: "channel.rejected", Roles: blogger},
+	{Code: "channel.suspended", Roles: blogger},
+	{Code: "channel.disconnected", Roles: blogger},
+	{Code: "channel.restored", Roles: blogger},
+}
+
+// Lookup — шаблон по коду.
+func Lookup(code string) (Template, error) {
+	for _, t := range catalog {
+		if t.Code == code {
+			return t, nil
+		}
+	}
+	return Template{}, fmt.Errorf("%w: %q", ErrUnknownTemplate, code)
+}
+
+// Catalog — копия каталога (тексты, тесты, mockapi).
+func Catalog() []Template { return slices.Clone(catalog) }

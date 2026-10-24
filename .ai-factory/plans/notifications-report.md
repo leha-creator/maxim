@@ -132,14 +132,14 @@ Rationale: план реализует этап целиком: задание `
 
 ### Phase 1: Данные, каталог, тексты
 
-- [ ] **Task 1: Миграция `notification` (R-4, R-10, R-16)**
+- [x] **Task 1: Миграция `notification` (R-4, R-10, R-16)**
   - Новая миграция (следующий свободный номер; в коде и документах номер не упоминается): `notification` (`id`, `user_id` → `user`, `organization_id` → `organization` (может быть пуст), `channel check in (max_bot, email, cabinet)`, `template`, `payload jsonb`, `status check in (pending, sent, failed, read)`, `object_type`, `object_id`, `dedupe_key`, `max_user_id bigint` (только `max_bot`), `attempts int`, `last_error text`, `sent_at`, `read_at`, `created_at`, `updated_at`); проверки: `read` только у `cabinet`, `read` ⇔ `read_at`, `max_bot` ⇔ `max_user_id`; индексы `(user_id, created_at DESC, id DESC) WHERE channel = 'cabinet'`, частичный `(user_id) WHERE channel = 'cabinet' AND read_at IS NULL`, `(status, created_at)`, уникальный `(user_id, channel, dedupe_key) WHERE dedupe_key IS NOT NULL`.
   - Права роли приложения: `SELECT, INSERT, UPDATE, DELETE` (удаление — очистка).
   - Журнал: не применимо.
   - Тесты: `up → down → up`; `read` у `email` не вставляется; повтор ключа не вставляется.
   - Файлы: `migrations/000NN_notifications.sql`, `internal/platform/dbtest` при необходимости.
 
-- [ ] **Task 2: `notification/domain` — каталог, адресаты, каналы (R-1, R-2, R-3, R-5, R-6, R-9, R-11)** (depends on 1)
+- [x] **Task 2: `notification/domain` — каталог, адресаты, каналы (R-1, R-2, R-3, R-5, R-6, R-9, R-11)** (depends on 1)
   - `internal/notification/domain/notification.go`: `Channel`, `Status`, `Notification`, `Role` (`advertiser`, `blogger`, `admin`), `Notice{Template, OrganizationID, Role, ObjectType, ObjectID, Data, Key}`.
   - `catalog.go`: `Template{Code, Roles, Link func(data) string}`; список кодов из таблицы «Каталог шаблонов»; `Lookup(code)`; неизвестный код — `ErrUnknownTemplate` (ошибка программы).
   - `plan.go`: `Plan(notice, Recipients) []Notification` — строки по R-1…R-3, `payload` = данные + `link`; `MarkRead`, `MarkSent`, `MarkFailed`.
@@ -148,7 +148,7 @@ Rationale: план реализует этап целиком: задание `
   - Тесты: каждому коду — роли; блогер получает cabinet+max_bot+email, без `added_by_max_user_id` — без max_bot; рекламодатель — cabinet+email; администратор — cabinet; пустые адресаты — нет строк; ключ переносится.
   - Файлы: `internal/notification/domain/{notification.go,catalog.go,plan.go,ports.go,errors.go,*_test.go}`.
 
-- [ ] **Task 3: Тексты и `notification/render` (R-5, R-17, E-2, E-3, E-7, E-8)** (depends on 2)
+- [x] **Task 3: Тексты и `notification/render` (R-5, R-17, E-2, E-3, E-7, E-8)** (depends on 2)
   - `templates/notification/{код}.tmpl` для каждого кода (блоки `title`, `text`, необязательный `email_text`); `templates/email/notification.{subject,txt,html}.tmpl`; `templates/embed.go` — шаблоны уведомлений в `FS`.
   - `internal/notification/render`: реализация `domain.Renderer`: `Cabinet(n) (title, text)`, `MAX(n) string` (Markdown, экранирование E-2, предел E-3, ссылка `CABINET_BASE_URL + link`), `Email(n) (subject, text, html)`. Функции шаблонов: `money` (рубли с пробелами), `msk` (время по Москве), `plural`.
   - Журнал: DEBUG `notification rendered` (`template`, `channel`, `length`).

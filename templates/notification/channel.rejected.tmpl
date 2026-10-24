@@ -1,0 +1,3 @@
+{{define "title"}}Канал {{channel .}} не прошёл модерацию{{end}}
+{{define "text"}}Модератор отклонил {{channel .}}.{{if has . "reason"}}
+Причина: {{.reason}}{{end}}{{end}}
