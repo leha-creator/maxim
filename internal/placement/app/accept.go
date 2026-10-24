@@ -123,6 +123,11 @@ func (s *Service) autoAccept(ctx context.Context, op string, p0 domain.Placement
 func (s *Service) checkSettleable(ctx context.Context, op string, p domain.Placement, code domain.TransitionCode,
 	pub *domain.Publication) error {
 	if err := p.CheckSettleable(code, pub); err != nil {
+		if code == domain.P15ResolveDispute {
+			// В споре пост может быть ещё в канале: это ожидаемый отказ администратору (R-9), не
+			// нарушение инварианта — только WARN отклонённого перехода.
+			return s.rejected(ctx, op, p, code, err)
+		}
 		s.log.ErrorContext(ctx, "placement invariant violated", logx.KeyOp, op, KeyPlacementID, p.ID, "transition", code,
 			"invariant", "I-02", "status", p.Status)
 		return s.rejected(ctx, op, p, code, err)

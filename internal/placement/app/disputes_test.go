@@ -134,6 +134,9 @@ func TestResolveFullRefundRemovesLivePost(t *testing.T) {
 	// accepted при живой публикации — отказ.
 	_, err := e.resolve(pid, domain.ResolutionFullPayout, nil)
 	wantReason(t, err, apperr.CodeInvalidTransition, domain.ReasonPublicationLive)
+	if len(e.logged("placement invariant violated")) != 0 {
+		t.Fatal("expected refusal logged as invariant violation")
+	}
 
 	r, err := e.resolve(pid, domain.ResolutionFullRefund, nil)
 	if err != nil || !r.RemovalScheduled || r.PayoutID != uuid.Nil {

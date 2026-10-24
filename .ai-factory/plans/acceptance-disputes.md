@@ -223,7 +223,7 @@ Rationale: план реализует этап целиком: приёмку �
 ## Решения при реализации
 
 - `settleAccepted` из R-5 реализован как `placement/app.settle`: общий для P-12, P-13, P-15 и `DevAccept`; для `refunded` он только записывает распределение и переход (удержание снимает `ReleaseHold`).
-- Сначала проверяется допустимость перехода, затем I-02: ошибка пользователя (`accept` из `published`) — обычный `409 invalid_transition` без ERROR; `publication_live` и ERROR `placement invariant violated` — только при рассогласовании (`removed` с живой публикацией) и для P-15 с исходом `accepted`.
+- Сначала проверяется допустимость перехода, затем I-02: ошибка пользователя (`accept` из `published`) — обычный `409 invalid_transition` без ERROR; `publication_live` и ERROR `placement invariant violated` — только при рассогласовании (`removed` с живой публикацией); для P-15 живой пост — ожидаемый отказ (WARN, R-9).
 - `hold_release` при `full_refund` получает причину `full_refund` (код исхода, как `reason_code` истории P-15), а не `dispute_full_refund` из R-6.
 - Претензия: `claim_exists` проверяется до правил перехода, чтобы повторная претензия без ключа получала понятную причину; при споре системы без претензии — `invalid_transition`.
 - Снятие с причиной `refund`/`admin` подтверждается и в `disputed`/`refunded` (I-4); незавершённое намерение определяется по `placement.removed_at IS NULL`. Причина передаётся заданию через `PlacementPayload.Reason` → `app.JobRef.Reason`.
