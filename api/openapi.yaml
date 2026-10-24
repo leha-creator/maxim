@@ -1036,9 +1036,13 @@ paths:
       tags: [orders]
       operationId: acceptPlacement
       summary: Принять размещение (P-12)
-      description: Допустимо из `removed`. Удержание распределяется, создаётся выплата блогеру.
+      description: |
+        Допустимо из `removed`. Удержание распределяется с полной долей, создаётся выплата блогеру —
+        в одной транзакции. Повтор с тем же `Idempotency-Key` возвращает размещение без нового перехода.
+        `409 invalid_transition`: не из `removed`; `details.reason = publication_live` — пост ещё в канале.
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Размещение
@@ -1057,8 +1061,13 @@ paths:
       description: |
         Допустимо из `published` и из `removed` до `claim_deadline_at`. По размещению — одна претензия.
         Размещение переходит в `disputed`.
+        Повтор с тем же `Idempotency-Key` возвращает размещение без новой претензии.
+        `409 invalid_transition` с `details.reason = claim_window_closed` — окно претензий закрыто;
+        `409 conflict` с `details.reason = claim_exists` — претензия уже подана; без `reason` — переход
+        недопустим (например, спор уже открыт системой).
       parameters:
         - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -2765,8 +2774,8 @@ components:
             available_actions:
               type: array
               description: |
-                Действия, допустимые сейчас: `cancel` — из `created` и `awaiting_blogger`.
-                `accept` и `claim` появятся с этапом приёмки.
+                Действия, допустимые сейчас: `cancel` — из `created` и `awaiting_blogger`; `accept` — из
+                `removed`; `claim` — из `published` и из `removed` до `claim_deadline_at`, если претензии нет.
               items: { $ref: '#/components/schemas/AdvertiserPlacementAction' }
     PlacementClaim:
       type: object
@@ -2788,6 +2797,11 @@ components:
         opened_by_type: { type: string, enum: [advertiser, system, admin] }
         opened_at: { type: string, format: date-time }
         deadline_at: { type: string, format: date-time, description: T-06 }
+        resolution:
+          type: string
+          enum: [full_payout, proportional, full_refund]
+          description: Решение администратора (P-15); нет — спор открыт. Основание решения сторонам не показывается.
+        resolved_at: { type: string, format: date-time }
     PlacementHistoryEntry:
       type: object
       required: [transition, to_status, actor_type, created_at]

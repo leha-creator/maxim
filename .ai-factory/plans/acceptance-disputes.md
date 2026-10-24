@@ -177,7 +177,7 @@ Rationale: план реализует этап целиком: приёмку �
 
 ### Phase 3: Контракт, подключение, команды
 
-- [ ] **Task 8: OpenAPI, кабинет и `mockapi` (R-2, R-4, R-15)** (depends on 5, 6)
+- [x] **Task 8: OpenAPI, кабинет и `mockapi` (R-2, R-4, R-15)** (depends on 5, 6)
   - `api/openapi.yaml`: `IdempotencyKey` в `acceptPlacement` и `createPlacementClaim`; описания `409` (`claim_window_closed`, `claim_exists`, `publication_live`); `available_actions` без «появятся с этапом приёмки»; `PlacementDisputeSummary.resolution`, `resolved_at`.
   - `go generate ./internal/apigen/...` и `./mockapi/internal/api/...` (`internal/apigen/api.gen.go`, `internal/bootstrap/unimplemented.go` — целиком генерируется `genstub`, I-1; `mockapi/internal/api/api.gen.go`).
   - `internal/placement/httpapi/orders.go`, `convert.go`: `AcceptPlacement`, `CreatePlacementClaim` (`201`), претензия и решение в ответах.
@@ -186,7 +186,7 @@ Rationale: план реализует этап целиком: приёмку �
   - Тесты (`placement_http_test.go`): ответы по OpenAPI; чужое размещение — `404`; `422` на пустой текст; `409` с причинами.
   - Файлы: `api/openapi.yaml`, `internal/apigen/api.gen.go`, `internal/bootstrap/unimplemented.go`, `internal/placement/httpapi/{orders.go,convert.go}`, `internal/bootstrap/placement_http_test.go`, `mockapi/internal/{api/api.gen.go,store/*.go,handlers/*.go,server/*_test.go}`.
 
-- [ ] **Task 9: Подключение, конфигурация, уведомления, метрики (R-6, R-13, R-14, R-16)** (depends on 6, 7)
+- [x] **Task 9: Подключение, конфигурация, уведомления, метрики (R-6, R-13, R-14, R-16)** (depends on 6, 7)
   - `internal/bootstrap/config.go`: `DISPUTE_RATING_PENALTY_REFUND` (10), `DISPUTE_RATING_PENALTY_PROPORTIONAL` (5), границы 0…100; `placement.go` — `Claims`, `Ratings` (`bridge.PlacementChannelRatings`), `Alerts` с `Resolve`.
   - `internal/notification/domain/catalog.go`: `placement.dispute_resolved` без `AwaitsModule`; `catalog_callers_test.go` — код обычный; текст шаблона — исход и суммы.
   - Метрики R-16 (`placement/postgres/metrics.go` или наблюдатель в `bootstrap`).
@@ -195,7 +195,7 @@ Rationale: план реализует этап целиком: приёмку �
   - Тесты: проверки конфигурации; `wiring_test.go` — порты подключены; `TestCatalogCodesHaveCallers`.
   - Файлы: `internal/bootstrap/{config.go,config_test.go,placement.go,wiring_test.go}`, `internal/bootstrap/bridge/{placement.go,ledger.go}`, `internal/notification/domain/{catalog.go,catalog_callers_test.go}`, `templates/notification/placement.dispute_resolved.tmpl`, `.env.example`, `deploy/app/env/*/app.env.example`.
 
-- [ ] **Task 10: Команды `maxim admin dispute …` (R-17)** (depends on 6, 9)
+- [x] **Task 10: Команды `maxim admin dispute …` (R-17)** (depends on 6, 9)
   - `internal/bootstrap/admin_dispute.go`: `list`, `show`, `open`, `resolve`, `remove-post` по образцу `admin_payout.go`; администратор `moderator` или `senior` по `--email` (помощник `admin`, I-5); таблица списка (срок, размещение, причина, кто открыл, предложение, решение); `show` — сводка спора, претензия (текст выводится, только для администратора), нарушения, публикация, история, предпросмотр сумм; `admin.go` — ветка `dispute`.
   - Журнал: WARN `admin dispute resolve`/`open`/`remove-post` + `audit_log` с актором `admin`.
   - Тесты (`admin_dispute_test.go`): не администратор — отказ; `resolve proportional` печатает суммы и сходится с журналом; `list --overdue`.
@@ -228,6 +228,10 @@ Rationale: план реализует этап целиком: приёмку �
 - Претензия: `claim_exists` проверяется до правил перехода, чтобы повторная претензия без ключа получала понятную причину; при споре системы без претензии — `invalid_transition`.
 - Снятие с причиной `refund`/`admin` подтверждается и в `disputed`/`refunded` (I-4); незавершённое намерение определяется по `placement.removed_at IS NULL`. Причина передаётся заданию через `PlacementPayload.Reason` → `app.JobRef.Reason`.
 - Порт рейтинга: `bridge.PlacementChannelRatings` поверх `channel/app.Service.LowerRating`; штрафы по умолчанию задаёт конфигурация (`WithDefaults` их не подставляет, 0 — без санкции).
+- P-13 пишет причину `auto_acceptance` (существующая константа `ReasonAutoAcceptance`), а не `auto_accept` из R-7.
+- `mockapi` не хранит ключи идемпотентности (как и для `cancelPlacement`): заголовок принимается и не влияет на ответ; причины `claim_exists` и `claim_window_closed` совпадают с бэкендом.
+- Команды `maxim admin dispute …` идут по системным часам процесса (как `maxim admin payout …`): в сквозных тестах после решения часы теста переводятся на системное «сейчас».
+- HTTP-проверки задачи 8 вошли в `internal/bootstrap/acceptance_e2e_test.go` и `placement_http_test.go` (`409` до публикации), отдельный файл не понадобился.
 
 ## Критерии готовности этапа
 

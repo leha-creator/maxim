@@ -277,10 +277,11 @@ func (tx *Tx) AcceptPlacement(p *Placement) error {
 
 func (tx *Tx) ClaimPlacement(p *Placement, reason, text string) error {
 	if p.Claim != nil {
-		return Conflict("conflict", "claim already exists for this placement", nil)
+		return ConflictReason("claim_exists", "claim already exists for this placement", nil)
 	}
 	if p.Status == "removed" && p.ClaimDeadlineAt != nil && !tx.Now.Before(*p.ClaimDeadlineAt) {
-		return Conflict("invalid_transition", "claim window is over", map[string]any{"transition": "P-14", "status": p.Status})
+		return Conflict("invalid_transition", "claim window is over",
+			map[string]any{"transition": "P-14", "status": p.Status, "reason": "claim_window_closed"})
 	}
 	if err := tx.apply(p, "P-14", "claim_"+reason); err != nil {
 		return err

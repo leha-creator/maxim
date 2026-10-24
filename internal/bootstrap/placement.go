@@ -45,6 +45,7 @@ func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sc
 	deps := placementapp.Deps{
 		Carts: store.Carts(), Orders: store.Orders(), Placements: store.Placements(), History: store.History(),
 		Publications: store.Publications(), Violations: store.Violations(), Disputes: store.Disputes(),
+		Claims: store.Claims(), Ratings: bridge.PlacementChannelRatings{Svc: channels},
 		Content:  bridge.PlacementContent{Svc: posts},
 		Channels: bridge.PlacementChannels{Svc: channels}, Campaigns: bridge.PlacementCampaigns{Svc: posts},
 		Versions:    bridge.PlacementVersions{Svc: posts},
@@ -87,6 +88,7 @@ func controlRules(c PlacementControlConfig) domain.ControlRules {
 		PublishRetryWindow: c.PublishRetryWindow, PublishRetryInterval: c.PublishRetryInterval,
 		PublishFindLookback: c.PublishFindLookback, MaxImages: c.PublishMaxImages, RemoveRetryWindow: c.RemoveRetryWindow,
 		ClaimWindow: c.ClaimWindow, DisputeDeadline: c.DisputeDeadline, TopViolationShare: c.TopViolationShare,
+		RatingPenaltyRefund: c.RatingPenaltyRefund, RatingPenaltyProportional: c.RatingPenaltyProportional,
 		ReconcileInterval: c.ReconcileInterval, ScheduledGrace: c.ScheduledGrace, ViewsRefresh: c.ViewsRefresh,
 	}
 }

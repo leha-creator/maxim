@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/leha-creator/maxim/internal/apigen"
+	"github.com/leha-creator/maxim/internal/placement/app"
 	"github.com/leha-creator/maxim/internal/placement/domain"
 )
 
@@ -79,6 +80,32 @@ func (h *Handlers) CancelPlacement(ctx context.Context, req apigen.CancelPlaceme
 		return nil, err
 	}
 	return apigen.CancelPlacement200JSONResponse(toAdvertiserPlacement(v)), nil
+}
+
+func (h *Handlers) AcceptPlacement(ctx context.Context, req apigen.AcceptPlacementRequestObject) (apigen.AcceptPlacementResponseObject, error) {
+	org, user, err := advertiser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.svc.AcceptPlacement(ctx, org, user, req.Id, deref(req.Params.IdempotencyKey))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.AcceptPlacement200JSONResponse(toAdvertiserPlacement(v)), nil
+}
+
+func (h *Handlers) CreatePlacementClaim(ctx context.Context, req apigen.CreatePlacementClaimRequestObject) (apigen.CreatePlacementClaimResponseObject, error) {
+	org, user, err := advertiser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.svc.CreateClaim(ctx, org, user, req.Id, app.ClaimInput{
+		Reason: domain.ClaimReason(req.Body.Reason), Text: req.Body.Text, IdemKey: deref(req.Params.IdempotencyKey),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return apigen.CreatePlacementClaim201JSONResponse(toAdvertiserPlacement(v)), nil
 }
 
 func (h *Handlers) CreateOrderPostVersion(ctx context.Context, req apigen.CreateOrderPostVersionRequestObject) (apigen.CreateOrderPostVersionResponseObject, error) {

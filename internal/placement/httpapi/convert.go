@@ -117,7 +117,7 @@ func toAdvertiserPlacement(v app.PlacementView) apigen.AdvertiserPlacement {
 		StatusReason: opt(p.StatusReason), StatusChangedAt: utc(p.StatusChangedAt), TotalAmount: int64(p.TotalAmount),
 		RefundAmount: moneyPtr(p.RefundAmount), PerformanceShare: p.PerformanceShare,
 		PublicationUrl: publicationURL(v.Publication), Views: views(p, v.Publication), Dispute: disputeSummary(v.Dispute),
-		History: toHistory(v.History), AvailableActions: actions,
+		Claim: claim(v.Claim), History: toHistory(v.History), AvailableActions: actions,
 		FormatId: p.FormatID, TopHours: p.TopHours, DurationHours: p.DurationHours,
 		WindowStart: utc(p.WindowStart), WindowEnd: utc(p.WindowEnd), TimeFrom: p.TimeFrom.String(), TimeTo: p.TimeTo.String(),
 		AcceptDeadlineAt: utcPtr(p.AcceptDeadlineAt), ScheduleDeadlineAt: utcPtr(p.ScheduleDeadlineAt),
@@ -179,8 +179,21 @@ func disputeSummary(d *domain.Dispute) *apigen.PlacementDisputeSummary {
 	if d == nil {
 		return nil
 	}
-	return &apigen.PlacementDisputeSummary{
+	out := &apigen.PlacementDisputeSummary{
 		Reason: apigen.PlacementDisputeSummaryReason(d.Reason), OpenedByType: apigen.PlacementDisputeSummaryOpenedByType(d.OpenedBy),
-		OpenedAt: utc(d.CreatedAt), DeadlineAt: utc(d.DeadlineAt),
+		OpenedAt: utc(d.CreatedAt), DeadlineAt: utc(d.DeadlineAt), ResolvedAt: utcPtr(d.ResolvedAt),
 	}
+	if d.Resolved() {
+		r := apigen.PlacementDisputeSummaryResolution(d.Resolution)
+		out.Resolution = &r
+	}
+	return out
+}
+
+// claim — претензия рекламодателя в его кабинете (R-15 этапа приёмки).
+func claim(c *domain.Claim) *apigen.PlacementClaim {
+	if c == nil {
+		return nil
+	}
+	return &apigen.PlacementClaim{Reason: apigen.ClaimReason(c.Reason), Text: c.Text, CreatedAt: utc(c.CreatedAt)}
 }
