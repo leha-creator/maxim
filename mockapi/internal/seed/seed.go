@@ -23,11 +23,14 @@ var (
 	UserAdvertiser = ID(1)
 	UserBlogger    = ID(2)
 	UserAdmin      = ID(3)
+	UserModerator  = ID(4)
+	UserAdmin2     = ID(5)
 
 	OrgAdvertiser = ID(11)
 	OrgBlogger    = ID(12)
 	OrgPlatform   = ID(13)
 	OrgBlogger2   = ID(14)
+	OrgMedia      = ID(15) // юрлицо-блогер: выплаты переводом (A-36)
 
 	CampaignDraft   = ID(601)
 	CampaignActive  = ID(602)
@@ -53,6 +56,15 @@ var (
 	PlacementDisputed         = ID(805)
 	PlacementPaid             = ID(806)
 	PlacementAwaitingSchedule = ID(807)
+	PlacementPayoutFailed     = ID(808) // принято, выплата не прошла
+	PlacementBankTransfer     = ID(809) // принято, выплата юрлицу переводом ждёт отметки
+
+	DisputeOpen        = ID(1601) // спор по размещению 805
+	PayoutFailed       = ID(1202)
+	PayoutBankTransfer = ID(1203)
+	BankStatementFirst = ID(1301)
+	BankTxUnmatched    = ID(1312)
+	OrdContractError   = ID(1402)
 )
 
 // Emails готовых пользователей; код входа — 000000.
@@ -60,6 +72,8 @@ const (
 	EmailAdvertiser = "adv@example.test"
 	EmailBlogger    = "blg@example.test"
 	EmailAdmin      = "adm@example.test"
+	EmailModerator  = "mod@example.test"
+	EmailAdmin2     = "adm2@example.test"
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -103,6 +117,13 @@ func Load(d *store.Data, now time.Time) {
 	d.Users[UserAdvertiser] = &store.User{ID: UserAdvertiser, Email: EmailAdvertiser, OrgID: ptr(OrgAdvertiser), CreatedAt: day(-40)}
 	d.Users[UserBlogger] = &store.User{ID: UserBlogger, Email: EmailBlogger, OrgID: ptr(OrgBlogger), CreatedAt: day(-60)}
 	d.Users[UserAdmin] = &store.User{ID: UserAdmin, Email: EmailAdmin, AdminRole: "senior", CreatedAt: day(-90)}
+	d.Users[UserModerator] = &store.User{ID: UserModerator, Email: EmailModerator, AdminRole: "moderator", CreatedAt: day(-80)}
+	d.Users[UserAdmin2] = &store.User{ID: UserAdmin2, Email: EmailAdmin2, AdminRole: "senior", CreatedAt: day(-80)}
+	d.Orgs[OrgMedia] = &store.Organization{
+		ID: OrgMedia, LegalType: "legal_entity", INN: "7700000005", Name: "ООО «Тестовые медиа»",
+		ContactName: "Анна Медиа", Phone: "+79990000005", KPP: ptr("770001005"), TaxRegime: ptr("osno"), VatRate: ptr("vat_22"),
+		Status: "active", IsBlogger: true, CreatedAt: day(-45),
+	}
 	d.Rocketwork[OrgBlogger] = &store.RocketworkContractor{Status: "active", OnboardingURL: "https://rocketwork.example.test/onboarding/12"}
 
 	// ------------------------------------------------ документы
@@ -164,6 +185,8 @@ func Load(d *store.Data, now time.Time) {
 		{112, OrgBlogger2, "Пример: код и кофе", 202, 9900, 3300, "active", 320000, "", nil, "", true},
 		// Ждёт модератора: всё заполнено, но номер РКН ещё не сверен — одобрение после rkn-check.
 		{113, OrgBlogger2, "Пример: очередь модерации", 203, 14000, 3500, "moderation", 450000, "4900000004", nil, "rkn_required", true},
+		// Канал юрлица: приостановлен, в каталоге не виден; по нему — выплата переводом.
+		{114, OrgMedia, "Пример: медиа компании", 204, 11000, 2500, "suspended", 500000, "4900000005", nil, "missing_rights", true},
 	}
 	for i, c := range channels {
 		org := c.org
@@ -351,6 +374,9 @@ func Load(d *store.Data, now time.Time) {
 	p805.Views, p805.PublicationURL = ptr(800), "https://max.ru/c/70000000108/12002"
 	p805.Claim = &store.Claim{Reason: "removed_early", Text: "Пост удалён через 10 часов после публикации", CreatedAt: ago(90)}
 	p805.Dispute = &store.Dispute{Reason: "removed_early", OpenedByType: "advertiser", OpenedAt: ago(90), DeadlineAt: ago(90).Add(store.DisputeDeadline)}
+	p805.Dispute.ID, p805.Dispute.SuggestedShare = DisputeOpen, ptr(4200)
+	p805.RemovedAt, p805.RemovalReason = ptr(ago(90)), "external"
+	p805.Violations = []store.Violation{{Kind: "removed_early", OccurredAt: ago(90), Source: "event"}}
 
 	p806 := placement(PlacementPaid, oPast, 102, "f_1_24", append(past, step{"P-10", "removed", 76}, step{"P-12", "accepted", 70}, step{"P-16", "paid", 60}))
 	p806.PublishAt, p806.PublishedAt, p806.RemoveAt, p806.RemovedAt = ptr(ago(100)), ptr(ago(100)), ptr(ago(76)), ptr(ago(76))
@@ -360,6 +386,27 @@ func Load(d *store.Data, now time.Time) {
 	d.Payouts = append(d.Payouts, &store.Payout{ID: ID(1201), PlacementID: p806.ID, OrgID: OrgBlogger, Amount: payout,
 		Status: "succeeded", Attempt: 1, ReceiptURL: "https://rocketwork.example.test/receipts/1201",
 		CreatedAt: ago(70), CompletedAt: ptr(ago(60))})
+
+	// Принятые размещения с выплатами для реестра администратора.
+	accepted := append(past, step{"P-10", "removed", 76}, step{"P-12", "accepted", 70})
+	for _, x := range []struct {
+		id      uuid.UUID
+		channel int
+		payout  *store.Payout
+	}{
+		{PlacementPayoutFailed, 109, &store.Payout{ID: PayoutFailed, OrgID: OrgBlogger2, Status: "failed", Attempt: 1, Method: "rocketwork",
+			FailureCode: "tax_status_lost", FailureMessage: "Исполнитель утратил статус самозанятого", CreatedAt: ago(69)}},
+		{PlacementBankTransfer, 114, &store.Payout{ID: PayoutBankTransfer, OrgID: OrgMedia, Status: "created", Attempt: 1, Method: "bank_transfer", CreatedAt: ago(69)}},
+	} {
+		p := placement(x.id, oPast, x.channel, "f_1_24", accepted)
+		p.PublishAt, p.PublishedAt, p.RemoveAt, p.RemovedAt = ptr(ago(100)), ptr(ago(100)), ptr(ago(76)), ptr(ago(76))
+		p.RemovalReason, p.Views, p.HoldActive = "schedule", ptr(1200), false
+		share, payout, fee, refund := 10000, p.BloggerAmount, p.FeeAmount, int64(0)
+		p.PerformanceShare, p.PayoutAmount, p.FeeCharged, p.RefundAmount = &share, &payout, &fee, &refund
+		x.payout.PlacementID, x.payout.Amount = p.ID, payout
+		d.Payouts = append(d.Payouts, x.payout)
+	}
+	loadAdmin(d, now, ago)
 
 	// ------------------------------------------------ уведомления
 	// Коды и ссылки — как у бэкенда (каталог уведомлений, 04 §8; notification/domain.Link).

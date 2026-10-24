@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -20,6 +21,62 @@ func (q *Queries) CategoryExistsActive(ctx context.Context, id uuid.UUID) (bool,
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const countChannelsInModeration = `-- name: CountChannelsInModeration :one
+SELECT count(*)::int FROM channel WHERE status = 'moderation'
+`
+
+// Счётчик раздела модерации каналов (R-16).
+func (q *Queries) CountChannelsInModeration(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, countChannelsInModeration)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const getCategoryForUpdate = `-- name: GetCategoryForUpdate :one
+SELECT id, slug, name, position, is_active, created_at, updated_at FROM channel_category WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetCategoryForUpdate(ctx context.Context, id uuid.UUID) (ChannelCategory, error) {
+	row := q.db.QueryRow(ctx, getCategoryForUpdate, id)
+	var i ChannelCategory
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Position,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertCategory = `-- name: InsertCategory :exec
+INSERT INTO channel_category (id, slug, name, position, is_active, created_at, updated_at)
+VALUES ($1, $2, $3, $4, true, $5, $5)
+`
+
+type InsertCategoryParams struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	Position  int32
+	CreatedAt time.Time
+}
+
+// Справочник ведёт senior (R-8 этапа «API администратора»).
+func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) error {
+	_, err := q.db.Exec(ctx, insertCategory,
+		arg.ID,
+		arg.Slug,
+		arg.Name,
+		arg.Position,
+		arg.CreatedAt,
+	)
+	return err
 }
 
 const listActiveCategories = `-- name: ListActiveCategories :many
@@ -58,4 +115,39 @@ func (q *Queries) ListActiveCategories(ctx context.Context) ([]ListActiveCategor
 		return nil, err
 	}
 	return items, nil
+}
+
+const nextCategoryPosition = `-- name: NextCategoryPosition :one
+SELECT (coalesce(max(position), 0) + 10)::int FROM channel_category
+`
+
+func (q *Queries) NextCategoryPosition(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, nextCategoryPosition)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const updateCategory = `-- name: UpdateCategory :exec
+UPDATE channel_category SET name = $1, position = $2, is_active = $3, updated_at = $4
+WHERE id = $5
+`
+
+type UpdateCategoryParams struct {
+	Name      string
+	Position  int32
+	IsActive  bool
+	UpdatedAt time.Time
+	ID        uuid.UUID
+}
+
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) error {
+	_, err := q.db.Exec(ctx, updateCategory,
+		arg.Name,
+		arg.Position,
+		arg.IsActive,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
 }

@@ -31,7 +31,15 @@ type ErrorPage struct {
 // ListErrors — объекты ОРД в error по (updated_at, id) для S-20 (до API администратора —
 // команда maxim admin ord errors). Роль проверяет вызывающий.
 func (s *Service) ListErrors(ctx context.Context, cursor string, limit int) (ErrorPage, error) {
+	return s.ListErrorsOfType(ctx, "", cursor, limit)
+}
+
+// ListErrorsOfType — список ошибок одного вида (пусто — всех); API администратора, R-17.
+func (s *Service) ListErrorsOfType(ctx context.Context, typ domain.ObjectType, cursor string, limit int) (ErrorPage, error) {
 	const op = "Marking.ListErrors"
+	if typ != "" && !typ.Valid() {
+		return ErrorPage{}, apperr.Validation("type", "invalid")
+	}
 	if limit <= 0 {
 		limit = errorsDefaultLimit
 	}
@@ -45,7 +53,7 @@ func (s *Service) ListErrors(ctx context.Context, cursor string, limit int) (Err
 		}
 		after = &c
 	}
-	items, err := s.Overview.ListErrors(ctx, after, limit+1)
+	items, err := s.Overview.ListErrors(ctx, typ, after, limit+1)
 	if err != nil {
 		return ErrorPage{}, err
 	}

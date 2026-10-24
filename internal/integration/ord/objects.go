@@ -44,3 +44,21 @@ func (c *Client) GetStatus(ctx context.Context, requestID string) (Receipt, erro
 		"ord_status", rec.Status, "errors", len(rec.ErrorMessage))
 	return rec, nil
 }
+
+// UpsertStatistics подаёт статистику месяца по паре «креатив + площадка» (R-20).
+// ПРЕДПОЛОЖЕНИЕ (Q-42): путь /statistics.
+func (c *Client) UpsertStatistics(ctx context.Context, s Statistics) (Receipt, error) {
+	return c.submit(ctx, OpStatistics, s.ID, s)
+}
+
+// UpsertInvoice регистрирует или обновляет акт (R-22).
+// ПРЕДПОЛОЖЕНИЕ (Q-42): путь /invoice.
+func (c *Client) UpsertInvoice(ctx context.Context, inv Invoice) (Receipt, error) {
+	return c.submit(ctx, OpInvoice, inv.ID, inv)
+}
+
+// UpsertInvoiceCreatives подаёт разбивку акта по креативам и площадкам (R-22).
+// ПРЕДПОЛОЖЕНИЕ (Q-42): путь /invoice/creatives; идентификатор — id акта.
+func (c *Client) UpsertInvoiceCreatives(ctx context.Context, ic InvoiceCreatives) (Receipt, error) {
+	return c.submit(ctx, OpInvoiceCreatives, ic.InvoiceID, ic)
+}

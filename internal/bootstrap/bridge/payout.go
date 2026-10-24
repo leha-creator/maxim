@@ -263,3 +263,12 @@ func (o PayoutOrganizations) ForPayout(ctx context.Context, orgID uuid.UUID) (do
 	return domain.Payee{OrganizationID: d.ID, LegalType: domain.LegalType(d.LegalType), INN: d.INN,
 		FullName: d.FullName, Phone: d.Phone}, nil
 }
+
+// PayableBalance — остаток blogger_payable (сводка реестра выплат администратора).
+func (l PayoutLedger) PayableBalance(ctx context.Context) (money.Kopecks, error) {
+	t, err := l.Svc.Totals(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return t[ledgerdomain.AccountBloggerPayable], nil
+}

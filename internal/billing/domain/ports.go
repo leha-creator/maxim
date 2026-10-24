@@ -34,6 +34,10 @@ type Invoices interface {
 	// IssuedByINNAndAmountForUpdate — выставленные счета плательщика с суммой (05 §5 шаг 3).
 	IssuedByINNAndAmountForUpdate(ctx context.Context, inn string, amount money.Kopecks) ([]Invoice, error)
 	List(ctx context.Context, orgID uuid.UUID, after *Cursor, limit int) ([]Invoice, error)
+	// AdminPage — счета всех организаций для администратора со смещением и общим числом.
+	AdminPage(ctx context.Context, f AdminInvoiceFilter) ([]Invoice, int, error)
+	// ByIDs — счета по идентификаторам (номера в списке поступлений).
+	ByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]Invoice, error)
 	// DueForExpiry — выставленные счета со сроком не позже now, под блокировкой с пропуском занятых.
 	DueForExpiry(ctx context.Context, now time.Time, limit int) ([]Invoice, error)
 	// Update сохраняет состояние, оплату и причину отмены.
@@ -48,6 +52,9 @@ type Statements interface {
 	UpdateCounts(ctx context.Context, s BankStatement) error
 	// Latest — последняя выписка по дате конца периода и времени загрузки; нет — ErrNotFound.
 	Latest(ctx context.Context) (BankStatement, error)
+	// Get — выписка по идентификатору; LatestUploaded — последняя по времени загрузки.
+	Get(ctx context.Context, id uuid.UUID) (BankStatement, error)
+	LatestUploaded(ctx context.Context) (BankStatement, error)
 }
 
 // BankTransactions — поступления из выписок.
@@ -57,6 +64,8 @@ type BankTransactions interface {
 	GetForUpdate(ctx context.Context, id uuid.UUID) (BankTransaction, error)
 	Update(ctx context.Context, t BankTransaction) error
 	List(ctx context.Context, status MatchStatus, after *Cursor, limit int) ([]BankTransaction, error)
+	// AdminPage — поступления для администратора со смещением и общим числом.
+	AdminPage(ctx context.Context, status MatchStatus, offset, limit int) ([]BankTransaction, int, error)
 	// UnmatchedTotal — число и сумма несопоставленных поступлений (сверка с банком, 06 §2.4).
 	UnmatchedTotal(ctx context.Context) (int, money.Kopecks, error)
 }
@@ -237,4 +246,12 @@ func DecodeCursor(s string) (*Cursor, error) {
 		return nil, ErrInvalidCursor
 	}
 	return &Cursor{At: c.T, ID: c.I}, nil
+}
+
+// AdminInvoiceFilter — отбор счетов администратора (adm/payments); пустые поля — без отбора.
+type AdminInvoiceFilter struct {
+	Status         InvoiceStatus
+	OrganizationID *uuid.UUID
+	Number         string
+	Offset, Limit  int
 }

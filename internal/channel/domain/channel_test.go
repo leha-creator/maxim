@@ -372,7 +372,7 @@ func TestStatusChangeNoticeTemplate(t *testing.T) {
 		{StatusUnclaimed, StatusDisconnected, ReasonUnclaimedExpired, ""},
 		{StatusPendingRights, StatusModeration, "", ""},
 		{StatusActive, StatusActive, "", ""},
-		{StatusActive, StatusBlocked, "", ""},
+		{StatusActive, StatusBlocked, ReasonBlockedByAdmin, NoticeBlocked},
 	} {
 		got, ok := StatusChange{From: tc.from, To: tc.to, Reason: tc.reason}.NoticeTemplate()
 		if got != tc.want || ok != (tc.want != "") {

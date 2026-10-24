@@ -30,3 +30,25 @@ func TestRequireAdmin(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminSeniorOnly(t *testing.T) {
+	log := logx.Discard()
+	for role, ok := range map[string]bool{"moderator": false, "senior": true} {
+		p := &httpx.Principal{UserID: uuid.New(), AdminRole: role}
+		ctx := httpx.WithPrincipal(context.Background(), p)
+		_, err := httpx.RequireAdmin(ctx, log, "Test", httpx.AdminSeniorOnly...)
+		if ok != (err == nil) {
+			t.Errorf("%s on senior-only: %v", role, err)
+		}
+		if _, err := httpx.RequireAdmin(ctx, log, "Test", httpx.AdminAny...); err != nil {
+			t.Errorf("%s on any: %v", role, err)
+		}
+		inn, email := httpx.INNFor(p, "7712345678"), httpx.EmailFor(p, "ivan@example.ru")
+		if ok && (inn != "7712345678" || email != "ivan@example.ru") {
+			t.Errorf("senior sees %s %s", inn, email)
+		}
+		if !ok && (inn != "77****5678" || email != "i***@example.ru") {
+			t.Errorf("moderator sees %s %s", inn, email)
+		}
+	}
+}

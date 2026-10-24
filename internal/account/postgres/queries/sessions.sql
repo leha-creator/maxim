@@ -12,3 +12,8 @@ UPDATE session SET expires_at = @expires_at, updated_at = @now::timestamptz WHER
 
 -- name: RevokeSession :exec
 UPDATE session SET revoked_at = @now::timestamptz, updated_at = @now::timestamptz WHERE id = @id AND revoked_at IS NULL;
+
+-- name: RevokeUserSessions :execrows
+-- Все действующие сессии пользователя (блокировка администратором, обезличивание).
+UPDATE session SET revoked_at = @now::timestamptz, updated_at = @now::timestamptz
+WHERE user_id = @user_id AND revoked_at IS NULL;

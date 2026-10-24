@@ -128,7 +128,7 @@ func TestObjectRef(t *testing.T) {
 	if err != nil || got != ref {
 		t.Fatalf("ParseObjectRef(%s) = %v, %v", ref, got, err)
 	}
-	for _, bad := range []string{"contract", "invoice:" + id.String(), "creative:xyz"} {
+	for _, bad := range []string{"contract", "act:" + id.String(), "creative:xyz"} {
 		if _, err := ParseObjectRef(bad); err == nil {
 			t.Errorf("ParseObjectRef(%q) accepted", bad)
 		}

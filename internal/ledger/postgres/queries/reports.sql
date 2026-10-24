@@ -76,3 +76,36 @@ WHERE (NOT @has_org::bool OR d.organization_id = @org_id::uuid OR c.organization
   AND t.created_at >= @since::timestamptz
 ORDER BY t.created_at DESC, t.id DESC, e.position
 LIMIT @lim;
+
+-- name: ListAdminEntries :many
+-- Журнал денег администратора (adm/ledger): проводки с основаниями и вторым администратором
+-- из журнала действий, новые сверху; смещение и общее число — CountAdminEntries.
+SELECT t.id AS transaction_id, t.kind, t.created_at, t.reason, t.actor_type, t.actor_user_id,
+    t.placement_id, t.invoice_id, t.payout_id, e.amount,
+    d.kind AS debit_kind, d.organization_id AS debit_org, d.placement_id AS debit_placement,
+    c.kind AS credit_kind, c.organization_id AS credit_org, c.placement_id AS credit_placement,
+    -- Нулевой идентификатор — второго администратора не было.
+    COALESCE((a.data ->> 'approver_id')::uuid, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS approver_user_id
+FROM ledger_entry e
+JOIN ledger_transaction t ON t.id = e.ledger_transaction_id
+JOIN ledger_account d ON d.id = e.debit_account_id
+JOIN ledger_account c ON c.id = e.credit_account_id
+-- Ручные операции пишут одну запись журнала действий на проводку (ledger/app.adminPost).
+LEFT JOIN audit_log a ON a.object_type = 'ledger_transaction' AND a.object_id = t.id::text AND a.data ? 'approver_id'
+WHERE (sqlc.narg('org_id')::uuid IS NULL OR d.organization_id = sqlc.narg('org_id') OR c.organization_id = sqlc.narg('org_id'))
+  AND (sqlc.narg('kind')::text IS NULL OR t.kind = sqlc.narg('kind'))
+  AND (sqlc.narg('created_from')::timestamptz IS NULL OR t.created_at >= sqlc.narg('created_from'))
+  AND (sqlc.narg('created_to')::timestamptz IS NULL OR t.created_at < sqlc.narg('created_to'))
+ORDER BY t.created_at DESC, t.id DESC, e.position
+LIMIT @lim OFFSET @off;
+
+-- name: CountAdminEntries :one
+SELECT count(*)::int
+FROM ledger_entry e
+JOIN ledger_transaction t ON t.id = e.ledger_transaction_id
+JOIN ledger_account d ON d.id = e.debit_account_id
+JOIN ledger_account c ON c.id = e.credit_account_id
+WHERE (sqlc.narg('org_id')::uuid IS NULL OR d.organization_id = sqlc.narg('org_id') OR c.organization_id = sqlc.narg('org_id'))
+  AND (sqlc.narg('kind')::text IS NULL OR t.kind = sqlc.narg('kind'))
+  AND (sqlc.narg('created_from')::timestamptz IS NULL OR t.created_at >= sqlc.narg('created_from'))
+  AND (sqlc.narg('created_to')::timestamptz IS NULL OR t.created_at < sqlc.narg('created_to'));

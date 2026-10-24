@@ -120,3 +120,74 @@ func (c *Channel) RknChecked(result RknCheckResult, adminID uuid.UUID, rknThresh
 func (c *Channel) RknRecheckDue(now time.Time, interval time.Duration) bool {
 	return c.RknStatus == RknConfirmed && c.RknCheckedAt != nil && now.Sub(*c.RknCheckedAt) > interval
 }
+
+// Блокировка канала администратором (R-7 этапа «API администратора»).
+var (
+	// ErrAlreadyBlocked — канал уже заблокирован: 409.
+	ErrAlreadyBlocked = errors.New("channel: already blocked")
+	// ErrNotBlocked — снять блокировку можно только с заблокированного канала: 409.
+	ErrNotBlocked = errors.New("channel: not blocked")
+)
+
+// ReasonBlockedByAdmin — причина состояния blocked для блогера; основание — в audit_log.
+const ReasonBlockedByAdmin = "blocked_by_admin"
+
+// Block — администратор блокирует канал (R-7): канал уходит из каталога и не принимает новые
+// размещения; начатые продолжаются (смена не считается потерей доступности, S-25 не применяется).
+func (c *Channel) Block(now time.Time) (StatusChange, error) {
+	if c.Status == StatusBlocked {
+		return StatusChange{}, ErrAlreadyBlocked
+	}
+	change := StatusChange{ChannelID: c.ID, From: c.Status, To: StatusBlocked, Reason: ReasonBlockedByAdmin}
+	c.Status, c.StatusReason, c.StatusBeforeDisconnect = StatusBlocked, ReasonBlockedByAdmin, nil
+	c.touch(now)
+	return change, nil
+}
+
+// Unblock — снятие блокировки (R-7): канал снова проходит модерацию; без прав — pending_rights.
+func (c *Channel) Unblock(rknThreshold int, now time.Time) (StatusChange, error) {
+	if c.Status != StatusBlocked {
+		return StatusChange{}, ErrNotBlocked
+	}
+	c.Status, c.StatusReason = StatusModeration, ""
+	change := c.resolve(rknThreshold, now)
+	change.From = StatusBlocked
+	return change, nil
+}
+
+// Справочник категорий (R-8 этапа «API администратора»).
+var (
+	ErrCategorySlug = &RuleError{Field: "slug", Reason: "invalid"}
+	ErrCategoryName = &RuleError{Field: "name", Reason: "length"}
+	// ErrCategoryExists — slug уже занят: 409.
+	ErrCategoryExists = errors.New("channel: category slug already exists")
+)
+
+// CategoryInput — новая категория или правка.
+type CategoryInput struct {
+	Slug     string
+	Name     string
+	Position *int
+	Archived *bool
+}
+
+// CheckSlug — латиница в нижнем регистре, цифры, «-» и «_», до 50 символов.
+func CheckSlug(slug string) error {
+	if n := len(slug); n == 0 || n > 50 {
+		return ErrCategorySlug
+	}
+	for _, r := range slug {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return ErrCategorySlug
+		}
+	}
+	return nil
+}
+
+// CheckCategoryName — название категории 1…100 символов.
+func CheckCategoryName(name string) error {
+	if n := utf8.RuneCountInString(strings.TrimSpace(name)); n == 0 || n > 100 {
+		return ErrCategoryName
+	}
+	return nil
+}

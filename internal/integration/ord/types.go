@@ -101,3 +101,54 @@ func messages(raw []json.RawMessage) []string {
 	}
 	return out
 }
+
+// Statistics — тело POST /statistics: показы и сумма месяца по паре «креатив + площадка»
+// (этап «API администратора и отчётность ОРД», R-20).
+// ПРЕДПОЛОЖЕНИЕ (Q-42): одна запись на вызов, поля и формат дат (YYYY-MM-DD) — по образцу других
+// методов API v8; сумма — рубли строкой с точкой (amount.incl). Проверяется на тестовом контуре.
+type Statistics struct {
+	ID            string `json:"id"`
+	CreativeID    string `json:"creativeId"`
+	PlatformID    string `json:"platformId"`
+	ImpsFact      int64  `json:"impsFact"`
+	ImpsPlan      int64  `json:"impsPlan"`
+	StartDateFact string `json:"startDateFact"`
+	EndDateFact   string `json:"endDateFact"`
+	StartDatePlan string `json:"startDatePlan"`
+	EndDatePlan   string `json:"endDatePlan"`
+	Amount        Amount `json:"amount"`
+}
+
+// Amount — сумма в рублях строкой.
+type Amount struct {
+	Incl string `json:"incl"`
+}
+
+// Invoice — тело POST /invoice: акт месяца по договору (R-22).
+// ПРЕДПОЛОЖЕНИЕ (Q-42, Q-43): поля по образцу API v8; тип — из конфигурации
+// (ORD_INVOICE_TYPE_INITIAL, ORD_INVOICE_TYPE_PUBLISHER); повтор с тем же id — обновление.
+type Invoice struct {
+	ID         string `json:"id"`
+	ContractID string `json:"contractId"`
+	Type       string `json:"type"`
+	Number     string `json:"number"`
+	Date       string `json:"date"`
+	StartDate  string `json:"startDate"`
+	EndDate    string `json:"endDate"`
+	Amount     Amount `json:"amount"`
+	IsVat      bool   `json:"isVat"`
+}
+
+// InvoiceCreatives — тело POST /invoice/creatives: разбивка акта по креативам и площадкам.
+// ПРЕДПОЛОЖЕНИЕ (Q-42): второй вызов после /invoice; опрос — по reqid этого вызова.
+type InvoiceCreatives struct {
+	InvoiceID string        `json:"invoiceId"`
+	Items     []InvoiceItem `json:"items"`
+}
+
+// InvoiceItem — строка разбивки акта.
+type InvoiceItem struct {
+	CreativeID string `json:"creativeId"`
+	PlatformID string `json:"platformId"`
+	Amount     Amount `json:"amount"`
+}

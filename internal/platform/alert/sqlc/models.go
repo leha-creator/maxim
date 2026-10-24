@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AdminApproval struct {
+	ID             uuid.UUID
+	Kind           string
+	Payload        []byte
+	Amount         int64
+	Summary        string
+	Reason         string
+	IdempotencyKey string
+	RequestedBy    uuid.UUID
+	Status         string
+	DecidedBy      *uuid.UUID
+	DecidedAt      *time.Time
+	DecisionReason *string
+	ResultID       *uuid.UUID
+	ExpiresAt      time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type AdvertiserProfile struct {
 	OrganizationID uuid.UUID
 	CreatedAt      time.Time
@@ -264,6 +283,16 @@ type Dispute struct {
 	UpdatedAt         time.Time
 }
 
+type DisputeMessage struct {
+	ID           uuid.UUID
+	DisputeID    uuid.UUID
+	AuthorType   string
+	AuthorUserID uuid.UUID
+	Recipient    *string
+	Text         string
+	CreatedAt    time.Time
+}
+
 type Hold struct {
 	ID             uuid.UUID
 	PlacementID    uuid.UUID
@@ -457,6 +486,34 @@ type OrdContract struct {
 	UpdatedAt                time.Time
 }
 
+type OrdInvoice struct {
+	ID            uuid.UUID
+	OrdContractID uuid.UUID
+	Period        pgtype.Date
+	Type          string
+	Number        string
+	InvoiceDate   pgtype.Date
+	Amount        int64
+	OrdExternalID *string
+	SyncStatus    string
+	SyncRequestID *string
+	SyncError     *string
+	SyncAttempts  int32
+	SyncedAt      *time.Time
+	PayloadHash   *string
+	OrdStatus     *string
+	SentAt        *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type OrdInvoiceItem struct {
+	OrdInvoiceID  uuid.UUID
+	CreativeID    uuid.UUID
+	OrdPlatformID uuid.UUID
+	Amount        int64
+}
+
 type OrdOrganization struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
@@ -491,6 +548,38 @@ type OrdPlatform struct {
 	SentAt         *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type OrdReport struct {
+	Period          pgtype.Date
+	BuiltAt         time.Time
+	BuiltBy         *uuid.UUID
+	SendRequestedAt *time.Time
+	SendRequestedBy *uuid.UUID
+	UpdatedAt       time.Time
+}
+
+type OrdStatistic struct {
+	ID            uuid.UUID
+	CreativeID    uuid.UUID
+	OrdPlatformID uuid.UUID
+	PlacementID   uuid.UUID
+	Period        pgtype.Date
+	Impressions   int64
+	ShownFrom     pgtype.Date
+	ShownTo       pgtype.Date
+	Amount        int64
+	OrdExternalID *string
+	SyncStatus    string
+	SyncRequestID *string
+	SyncError     *string
+	SyncAttempts  int32
+	SyncedAt      *time.Time
+	PayloadHash   *string
+	OrdStatus     *string
+	SentAt        *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type Order struct {
@@ -715,6 +804,14 @@ type Publication struct {
 	UpdatedAt      time.Time
 }
 
+type PublicationViewsSnapshot struct {
+	PublicationID  uuid.UUID
+	Period         pgtype.Date
+	Views          int32
+	ViewsCheckedAt *time.Time
+	CreatedAt      time.Time
+}
+
 type RateLimitBucket struct {
 	Key        string
 	Tokens     float64
@@ -747,13 +844,16 @@ type Session struct {
 }
 
 type User struct {
-	ID          uuid.UUID
-	Email       string
-	AdminRole   *string
-	Status      string
-	LastLoginAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            uuid.UUID
+	Email         string
+	AdminRole     *string
+	Status        string
+	LastLoginAt   *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	BlockedAt     *time.Time
+	BlockedReason *string
+	AnonymizedAt  *time.Time
 }
 
 type Violation struct {

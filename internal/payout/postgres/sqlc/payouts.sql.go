@@ -12,6 +12,39 @@ import (
 	"github.com/google/uuid"
 )
 
+const adminCountPayouts = `-- name: AdminCountPayouts :one
+SELECT count(*)::int FROM payout
+WHERE ($1::text = '' OR status = $1)
+  AND (NOT $2::bool OR blogger_organization_id = $3)
+  AND (NOT $4::bool OR created_at >= $5)
+  AND (NOT $6::bool OR created_at < $7)
+`
+
+type AdminCountPayoutsParams struct {
+	Status         string
+	HasOrg         bool
+	OrganizationID uuid.UUID
+	HasFrom        bool
+	FromAt         time.Time
+	HasTo          bool
+	ToAt           time.Time
+}
+
+func (q *Queries) AdminCountPayouts(ctx context.Context, arg AdminCountPayoutsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, adminCountPayouts,
+		arg.Status,
+		arg.HasOrg,
+		arg.OrganizationID,
+		arg.HasFrom,
+		arg.FromAt,
+		arg.HasTo,
+		arg.ToAt,
+	)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const adminListPayouts = `-- name: AdminListPayouts :many
 SELECT id, placement_id, blogger_organization_id, method, rocketwork_contractor_id, amount, attempt, status, external_id, provider_fee, receipt_url, bank_reference, failure_code, failure_message, sent_at, completed_at, idempotency_key, lock_version, created_by, created_at, updated_at FROM payout
 WHERE ($1::text = '' OR status = $1)
@@ -74,6 +107,113 @@ func (q *Queries) AdminListPayouts(ctx context.Context, arg AdminListPayoutsPara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminPagePayouts = `-- name: AdminPagePayouts :many
+SELECT id, placement_id, blogger_organization_id, method, rocketwork_contractor_id, amount, attempt, status, external_id, provider_fee, receipt_url, bank_reference, failure_code, failure_message, sent_at, completed_at, idempotency_key, lock_version, created_by, created_at, updated_at FROM payout
+WHERE ($1::text = '' OR status = $1)
+  AND (NOT $2::bool OR blogger_organization_id = $3)
+  AND (NOT $4::bool OR created_at >= $5)
+  AND (NOT $6::bool OR created_at < $7)
+ORDER BY created_at DESC, id DESC
+LIMIT $9 OFFSET $8
+`
+
+type AdminPagePayoutsParams struct {
+	Status         string
+	HasOrg         bool
+	OrganizationID uuid.UUID
+	HasFrom        bool
+	FromAt         time.Time
+	HasTo          bool
+	ToAt           time.Time
+	Off            int32
+	Lim            int32
+}
+
+// Реестр выплат администратора (adm/payouts): страница со смещением; общее число — AdminCountPayouts.
+func (q *Queries) AdminPagePayouts(ctx context.Context, arg AdminPagePayoutsParams) ([]Payout, error) {
+	rows, err := q.db.Query(ctx, adminPagePayouts,
+		arg.Status,
+		arg.HasOrg,
+		arg.OrganizationID,
+		arg.HasFrom,
+		arg.FromAt,
+		arg.HasTo,
+		arg.ToAt,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Payout{}
+	for rows.Next() {
+		var i Payout
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlacementID,
+			&i.BloggerOrganizationID,
+			&i.Method,
+			&i.RocketworkContractorID,
+			&i.Amount,
+			&i.Attempt,
+			&i.Status,
+			&i.ExternalID,
+			&i.ProviderFee,
+			&i.ReceiptUrl,
+			&i.BankReference,
+			&i.FailureCode,
+			&i.FailureMessage,
+			&i.SentAt,
+			&i.CompletedAt,
+			&i.IdempotencyKey,
+			&i.LockVersion,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminPayoutTotals = `-- name: AdminPayoutTotals :many
+SELECT status, count(*)::int AS n, coalesce(sum(amount), 0)::bigint AS amount
+FROM payout GROUP BY status ORDER BY status
+`
+
+type AdminPayoutTotalsRow struct {
+	Status string
+	N      int32
+	Amount int64
+}
+
+// Сводка реестра: число и сумма по состояниям.
+func (q *Queries) AdminPayoutTotals(ctx context.Context) ([]AdminPayoutTotalsRow, error) {
+	rows, err := q.db.Query(ctx, adminPayoutTotals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminPayoutTotalsRow{}
+	for rows.Next() {
+		var i AdminPayoutTotalsRow
+		if err := rows.Scan(&i.Status, &i.N, &i.Amount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -366,6 +506,53 @@ func (q *Queries) ListPayouts(ctx context.Context, arg ListPayoutsParams) ([]Pay
 		arg.CursorID,
 		arg.Lim,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Payout{}
+	for rows.Next() {
+		var i Payout
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlacementID,
+			&i.BloggerOrganizationID,
+			&i.Method,
+			&i.RocketworkContractorID,
+			&i.Amount,
+			&i.Attempt,
+			&i.Status,
+			&i.ExternalID,
+			&i.ProviderFee,
+			&i.ReceiptUrl,
+			&i.BankReference,
+			&i.FailureCode,
+			&i.FailureMessage,
+			&i.SentAt,
+			&i.CompletedAt,
+			&i.IdempotencyKey,
+			&i.LockVersion,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlacementPayouts = `-- name: ListPlacementPayouts :many
+SELECT id, placement_id, blogger_organization_id, method, rocketwork_contractor_id, amount, attempt, status, external_id, provider_fee, receipt_url, bank_reference, failure_code, failure_message, sent_at, completed_at, idempotency_key, lock_version, created_by, created_at, updated_at FROM payout WHERE placement_id = $1 ORDER BY attempt DESC
+`
+
+// Попытки выплаты размещения для карточки администратора, новые сверху.
+func (q *Queries) ListPlacementPayouts(ctx context.Context, placementID uuid.UUID) ([]Payout, error) {
+	rows, err := q.db.Query(ctx, listPlacementPayouts, placementID)
 	if err != nil {
 		return nil, err
 	}

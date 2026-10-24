@@ -27,12 +27,16 @@ type opCase struct {
 	prepare func(e *env) (params map[string]string, body any)
 	// status — ожидаемый статус вместо 2xx: операции, которых нет в тестовом сервере.
 	status int
+	// header — заголовки запроса (Idempotency-Key).
+	header map[string]string
 }
 
 const (
-	adv = seed.EmailAdvertiser
-	blg = seed.EmailBlogger
-	adm = seed.EmailAdmin
+	adv  = seed.EmailAdvertiser
+	blg  = seed.EmailBlogger
+	adm  = seed.EmailAdmin
+	mod  = seed.EmailModerator
+	adm2 = seed.EmailAdmin2
 )
 
 // approvableQueue сверяет номер РКН канала из очереди, чтобы его можно было одобрить.
@@ -178,6 +182,81 @@ var cases = map[string]opCase{
 	"approveChannel":     {user: adm, prepare: approvableQueue},
 	"rejectChannel":      {user: adm, params: id(seed.ChannelModerate)},
 	"setChannelRknCheck": {user: adm, params: id(seed.ChannelQueue)},
+	"blockChannel":       {user: adm, params: id(seed.ChannelFree)},
+	"unblockChannel": {user: adm, prepare: func(e *env) (map[string]string, any) {
+		e.post(adm, "/admin/channels/"+seed.ChannelFree.String()+"/block", map[string]any{"reason": "Проверка"}, nil)
+		return id(seed.ChannelFree), nil
+	}},
+	"createChannelCategory": {user: adm},
+	"updateChannelCategory": {user: adm, params: id(seed.CategoryFood)},
+	"listAdminOrders":       {user: adm, query: "status=all"},
+	"getAdminOrder":         {user: adm, params: id(seed.OrderActive)},
+	"approveOrderPost": {user: adm, prepare: func(e *env) (map[string]string, any) {
+		return map[string]string{"id": checkoutDraft(e)}, noBodyMarker
+	}},
+	"rejectOrderPost": {user: adm, prepare: func(e *env) (map[string]string, any) {
+		return map[string]string{"id": checkoutDraft(e)}, nil
+	}},
+	"listAdminPlacements":  {user: adm, query: "status=disputed"},
+	"getAdminPlacement":    {user: adm, params: id(seed.PlacementDisputed)},
+	"adminCancelPlacement": {user: adm, params: id(seed.PlacementScheduled)},
+	"adminRemovePost":      {user: adm, params: id(seed.PlacementPublished)},
+	"adminMarkRemoved": {user: adm, params: id(seed.PlacementPublished),
+		body: map[string]any{"removed_at": at(-time.Hour), "reason": "Блогер удалил пост вручную"}},
+	"adminOpenDispute":              {user: adm, params: id(seed.PlacementRemoved)},
+	"listAdminDisputes":             {user: adm},
+	"getAdminDispute":               {user: adm, params: id(seed.DisputeOpen)},
+	"previewDisputeResolution":      {user: adm, params: id(seed.DisputeOpen), query: "resolution=proportional&share=7500"},
+	"resolveDispute":                {user: adm, params: id(seed.DisputeOpen)},
+	"listAdminDisputeMessages":      {user: adm, params: id(seed.DisputeOpen)},
+	"createAdminDisputeMessage":     {user: adm, params: id(seed.DisputeOpen)},
+	"listPlacementDisputeMessages":  {user: adv, params: id(seed.PlacementDisputed)},
+	"createPlacementDisputeMessage": {user: adv, params: id(seed.PlacementDisputed)},
+	"listBloggerDisputeMessages":    {user: blg, prepare: bloggerDispute},
+	"createBloggerDisputeMessage": {user: blg, prepare: func(e *env) (map[string]string, any) {
+		p, _ := bloggerDispute(e)
+		return p, nil
+	}},
+	"listAdminPayouts":        {user: adm, query: "status=failed"},
+	"getAdminPayoutSummary":   {user: adm},
+	"exportAdminPayouts":      {user: adm},
+	"retryPayout":             {user: adm, params: id(seed.PayoutFailed)},
+	"markPayoutPaid":          {user: adm, params: id(seed.PayoutBankTransfer), header: idem("mark-paid-1")},
+	"uploadBankStatement":     {user: adm},
+	"getLatestBankStatement":  {user: adm},
+	"listBankTransactions":    {user: adm, query: "match_status=unmatched"},
+	"matchBankTransaction":    {user: adm, params: id(seed.BankTxUnmatched)},
+	"ignoreBankTransaction":   {user: adm, params: id(seed.BankTxUnmatched)},
+	"listAdminInvoices":       {user: adm},
+	"cancelAdminInvoice":      {user: adm, params: id(seed.InvoiceIssued)},
+	"getLedgerSummary":        {user: adm},
+	"listLedgerEntries":       {user: adm},
+	"createManualLedgerEntry": {user: adm, header: idem("manual-1")},
+	"createDepositTopup":      {user: adm, header: idem("topup-1")},
+	"createBalanceReturn":     {user: adm, params: id(seed.OrgAdvertiser), header: idem("return-1")},
+	"listAdminApprovals":      {user: adm},
+	"approveAdminApproval":    {user: adm2, prepare: pendingApproval},
+	"rejectAdminApproval": {user: adm, prepare: func(e *env) (map[string]string, any) {
+		p, _ := pendingApproval(e)
+		return p, nil
+	}},
+	"listAdminOrganizations":  {user: adm, query: "query=7700"},
+	"getAdminOrganization":    {user: adm, params: id(seed.OrgAdvertiser)},
+	"updateAdminOrganization": {user: adm, params: id(seed.OrgAdvertiser)},
+	"blockUser":               {user: adm, params: id(seed.UserBlogger)},
+	"unblockUser": {user: adm, prepare: func(e *env) (map[string]string, any) {
+		e.post(adm, "/admin/users/"+seed.UserBlogger.String()+"/block", map[string]any{"reason": "Проверка"}, nil)
+		return id(seed.UserBlogger), nil
+	}},
+	"listAuditLog":     {user: adm, query: "manual_only=true"},
+	"listOrdErrors":    {user: adm},
+	"getOrdObject":     {user: adm, params: map[string]string{"type": "contract", "id": seed.OrdContractError.String()}},
+	"retryOrdObject":   {user: adm, params: map[string]string{"type": "contract", "id": seed.OrdContractError.String()}},
+	"listOrdReports":   {user: adm},
+	"getOrdReport":     {user: adm, params: prevPeriod()},
+	"rebuildOrdReport": {user: adm, params: prevPeriod()},
+	"sendOrdReport":    {user: adm, params: prevPeriod()},
+	"getAdminCounters": {user: adm},
 
 	// webhooks
 	"maxWebhook":        {params: map[string]string{"secret": "test-secret"}},
@@ -253,7 +332,7 @@ func TestEveryOperation(t *testing.T) {
 			if c.query != "" {
 				path += "?" + c.query
 			}
-			r := e.do(e.client(c.user), o.method, path, body, contentType)
+			r := e.doH(e.client(c.user), o.method, path, body, contentType, c.header)
 			if c.status != 0 {
 				if r.status != c.status {
 					t.Errorf("%s %s: status %d, want %d\nbody=%s", o.method, path, r.status, c.status, truncate(r.body))

@@ -149,7 +149,7 @@ func (s *Service) ResolveDispute(ctx context.Context, in ResolveInput) (ResolveR
 	if err != nil {
 		return ResolveResult{}, err
 	}
-	s.Metrics.DisputeResolved(in.Resolution)
+	s.Metrics.DisputeResolved(in.Resolution, res.Dispute.ResolvedAt.Sub(res.Dispute.CreatedAt))
 	s.resolveAlert(ctx, op, "placement_disputed", in.PlacementID.String())
 	s.resolveAlert(ctx, op, "dispute_overdue", in.PlacementID.String())
 	return res, nil

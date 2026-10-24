@@ -15,24 +15,29 @@ type Transition struct {
 	Actor string // advertiser, blogger, system
 }
 
-// Переходы администратора (admin_cancel, P-15) заглушка пока не реализует.
+// Ключ с суффиксом «:admin» или «:итог» — вариант перехода с другим актором или исходом; в истории пишется Code.
 var transitions = map[string]Transition{
-	"P-01": {"P-01", nil, "created", "advertiser"},
-	"P-02": {"P-02", []string{"created"}, "awaiting_blogger", "system"},
-	"P-03": {"P-03", []string{"awaiting_blogger"}, "awaiting_schedule", "blogger"},
-	"P-04": {"P-04", []string{"awaiting_blogger"}, "declined", "blogger"},
-	"P-05": {"P-05", []string{"awaiting_blogger"}, "expired", "system"},
-	"P-06": {"P-06", []string{"created", "awaiting_blogger"}, "cancelled", "advertiser"},
-	"P-07": {"P-07", []string{"scheduled"}, "scheduled", "blogger"},
-	"P-08": {"P-08", []string{"scheduled"}, "published", "system"},
-	"P-10": {"P-10", []string{"published"}, "removed", "system"},
-	"P-11": {"P-11", []string{"awaiting_blogger", "awaiting_schedule", "scheduled"}, "created", "advertiser"},
-	"P-12": {"P-12", []string{"removed"}, "accepted", "advertiser"},
-	"P-13": {"P-13", []string{"removed"}, "accepted", "system"},
-	"P-14": {"P-14", []string{"published", "removed"}, "disputed", "advertiser"},
-	"P-16": {"P-16", []string{"accepted"}, "paid", "system"},
-	"P-17": {"P-17", []string{"awaiting_schedule"}, "scheduled", "blogger"},
-	"P-18": {"P-18", []string{"awaiting_schedule"}, "expired", "system"},
+	"P-01":          {"P-01", nil, "created", "advertiser"},
+	"P-02":          {"P-02", []string{"created"}, "awaiting_blogger", "system"},
+	"P-03":          {"P-03", []string{"awaiting_blogger"}, "awaiting_schedule", "blogger"},
+	"P-04":          {"P-04", []string{"awaiting_blogger"}, "declined", "blogger"},
+	"P-05":          {"P-05", []string{"awaiting_blogger"}, "expired", "system"},
+	"P-06":          {"P-06", []string{"created", "awaiting_blogger"}, "cancelled", "advertiser"},
+	"P-07":          {"P-07", []string{"scheduled"}, "scheduled", "blogger"},
+	"P-08":          {"P-08", []string{"scheduled"}, "published", "system"},
+	"P-10":          {"P-10", []string{"published"}, "removed", "system"},
+	"P-11":          {"P-11", []string{"awaiting_blogger", "awaiting_schedule", "scheduled"}, "created", "advertiser"},
+	"P-12":          {"P-12", []string{"removed"}, "accepted", "advertiser"},
+	"P-13":          {"P-13", []string{"removed"}, "accepted", "system"},
+	"P-14":          {"P-14", []string{"published", "removed"}, "disputed", "advertiser"},
+	"P-16":          {"P-16", []string{"accepted"}, "paid", "system"},
+	"P-17":          {"P-17", []string{"awaiting_schedule"}, "scheduled", "blogger"},
+	"P-18":          {"P-18", []string{"awaiting_schedule"}, "expired", "system"},
+	"P-06:admin":    {"P-06", []string{"created", "awaiting_blogger", "awaiting_schedule", "scheduled"}, "cancelled", "admin"},
+	"P-10:admin":    {"P-10", []string{"published"}, "removed", "admin"},
+	"P-14:admin":    {"P-14", []string{"published", "removed"}, "disputed", "admin"},
+	"P-15:accepted": {"P-15", []string{"disputed"}, "accepted", "admin"},
+	"P-15:refunded": {"P-15", []string{"disputed"}, "refunded", "admin"},
 }
 
 // terminal — конечные состояния размещения (03 §3).
@@ -58,23 +63,23 @@ func (tx *Tx) apply(p *Placement, code, reason string) error {
 		tx.log.Warn("placement transition rejected", "op", "Placement.Transition",
 			"placement_id", p.ID, "transition", code, "status", p.Status)
 		return Conflict("invalid_transition", "transition is not allowed from current status",
-			map[string]any{"transition": code, "status": p.Status, "allowed_from": t.From})
+			map[string]any{"transition": t.Code, "status": p.Status, "allowed_from": t.From})
 	}
 	from := p.Status
 	p.Status = t.To
 	p.StatusReason = reason
 	p.StatusChangedAt = tx.Now
 	p.History = append(p.History, HistoryEntry{
-		Transition: code, From: from, To: t.To, ActorType: t.Actor, ReasonCode: reason, CreatedAt: tx.Now,
+		Transition: t.Code, From: from, To: t.To, ActorType: t.Actor, ReasonCode: reason, CreatedAt: tx.Now,
 	})
 	tx.log.Info("placement transition applied", "op", "Placement.Transition",
-		"placement_id", p.ID, "order_id", p.OrderID, "transition", code, "from", from, "to", t.To, "actor_type", t.Actor)
+		"placement_id", p.ID, "order_id", p.OrderID, "transition", t.Code, "from", from, "to", t.To, "actor_type", t.Actor)
 
 	switch t.To {
 	case "declined", "expired", "cancelled", "failed":
 		tx.releaseHold(p)
 	}
-	tx.notifyTransition(p, code)
+	tx.notifyTransition(p, t.Code)
 	if o, err := tx.Order(p.OrderID); err == nil {
 		tx.recalcOrder(o)
 	}

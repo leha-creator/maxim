@@ -121,6 +121,10 @@ func (s *Service) build(ctx context.Context, r record) (*outgoing, error, error)
 		return s.buildPlatform(ctx, v)
 	case *creativeRecord:
 		return s.buildCreative(ctx, v)
+	case *statisticsRecord:
+		return s.buildStatistics(ctx, v)
+	case *invoiceRecord:
+		return s.buildInvoice(ctx, v)
 	}
 	return nil, nil, fmt.Errorf("marking: unknown record %T", r)
 }

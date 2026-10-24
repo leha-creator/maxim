@@ -58,6 +58,8 @@ type Deps struct {
 	Metrics    Observer
 	Clock      clock.Clock
 	Log        *slog.Logger
+	// Admin — журнал денег администратора (adm/ledger); nil — только команды.
+	Admin domain.AdminJournal
 	// ManualSecondApproval — сумма ручной проводки, выше которой нужен второй администратор (R-14).
 	ManualSecondApproval money.Kopecks
 }

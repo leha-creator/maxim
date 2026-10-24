@@ -20,6 +20,10 @@ UNION ALL
 SELECT 'platform'::text, p.sync_status, count(*)::int FROM ord_platform p GROUP BY p.sync_status
 UNION ALL
 SELECT 'creative'::text, cr.sync_status, count(*)::int FROM creative cr GROUP BY cr.sync_status
+UNION ALL
+SELECT 'statistics'::text, st.sync_status, count(*)::int FROM ord_statistics st GROUP BY st.sync_status
+UNION ALL
+SELECT 'invoice'::text, iv.sync_status, count(*)::int FROM ord_invoice iv GROUP BY iv.sync_status
 `
 
 type CountOrdObjectsByStatusRow struct {
@@ -46,6 +50,47 @@ func (q *Queries) CountOrdObjectsByStatus(ctx context.Context) ([]CountOrdObject
 		return nil, err
 	}
 	return items, nil
+}
+
+const lastOrdRequest = `-- name: LastOrdRequest :one
+SELECT r.id, r.operation, r.attempt, r.request, r.response_status, r.response_body, r.error, r.created_at
+FROM outbound_request r
+WHERE r.system = 'yandex_ord' AND r.object_type = $1 AND r.object_id = $2
+ORDER BY r.created_at DESC
+LIMIT 1
+`
+
+type LastOrdRequestParams struct {
+	ObjectType *string
+	ObjectID   *string
+}
+
+type LastOrdRequestRow struct {
+	ID             uuid.UUID
+	Operation      string
+	Attempt        int32
+	Request        []byte
+	ResponseStatus *int32
+	ResponseBody   []byte
+	Error          *string
+	CreatedAt      time.Time
+}
+
+// Последний вызов ОРД по объекту (этап «API администратора», R-17): тела — как сохранены адаптером.
+func (q *Queries) LastOrdRequest(ctx context.Context, arg LastOrdRequestParams) (LastOrdRequestRow, error) {
+	row := q.db.QueryRow(ctx, lastOrdRequest, arg.ObjectType, arg.ObjectID)
+	var i LastOrdRequestRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.Attempt,
+		&i.Request,
+		&i.ResponseStatus,
+		&i.ResponseBody,
+		&i.Error,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const listCreativesWithoutErid = `-- name: ListCreativesWithoutErid :many
@@ -120,17 +165,25 @@ FROM (
     UNION ALL
     SELECT 'creative'::text, cr.id, cr.ord_external_id, cr.ord_status, cr.sync_error, cr.sync_attempts, cr.updated_at
     FROM creative cr WHERE cr.sync_status = 'error'
+    UNION ALL
+    SELECT 'statistics'::text, st.id, st.ord_external_id, st.ord_status, st.sync_error, st.sync_attempts, st.updated_at
+    FROM ord_statistics st WHERE st.sync_status = 'error'
+    UNION ALL
+    SELECT 'invoice'::text, iv.id, iv.ord_external_id, iv.ord_status, iv.sync_error, iv.sync_attempts, iv.updated_at
+    FROM ord_invoice iv WHERE iv.sync_status = 'error'
 ) e
-WHERE $1::timestamptz IS NULL
-   OR (e.updated_at, e.id) > ($1::timestamptz, $2::uuid)
+WHERE ($1::text = '' OR e.object_type = $1)
+  AND ($2::timestamptz IS NULL
+   OR (e.updated_at, e.id) > ($2::timestamptz, $3::uuid))
 ORDER BY e.updated_at, e.id
-LIMIT $3
+LIMIT $4
 `
 
 type ListOrdErrorsParams struct {
-	AfterAt *time.Time
-	AfterID *uuid.UUID
-	Lim     int32
+	ObjectType string
+	AfterAt    *time.Time
+	AfterID    *uuid.UUID
+	Lim        int32
 }
 
 type ListOrdErrorsRow struct {
@@ -147,7 +200,12 @@ type ListOrdErrorsRow struct {
 // Выборки по всем видам объектов ОРД: список ошибок S-20, зависшие (07 §3), метрика (07 §5.5).
 // Ключевой курсор (updated_at, id) по объединению видов; пустой курсор — с начала.
 func (q *Queries) ListOrdErrors(ctx context.Context, arg ListOrdErrorsParams) ([]ListOrdErrorsRow, error) {
-	rows, err := q.db.Query(ctx, listOrdErrors, arg.AfterAt, arg.AfterID, arg.Lim)
+	rows, err := q.db.Query(ctx, listOrdErrors,
+		arg.ObjectType,
+		arg.AfterAt,
+		arg.AfterID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +242,10 @@ SELECT s.object_type, s.id, s.sent_at FROM (
     SELECT 'platform'::text, p.id, p.sent_at FROM ord_platform p WHERE p.sync_status = 'sent'
     UNION ALL
     SELECT 'creative'::text, cr.id, cr.sent_at FROM creative cr WHERE cr.sync_status = 'sent'
+    UNION ALL
+    SELECT 'statistics'::text, st.id, st.sent_at FROM ord_statistics st WHERE st.sync_status = 'sent'
+    UNION ALL
+    SELECT 'invoice'::text, iv.id, iv.sent_at FROM ord_invoice iv WHERE iv.sync_status = 'sent'
 ) s
 WHERE s.sent_at < $1::timestamptz
 ORDER BY s.sent_at, s.id

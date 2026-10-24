@@ -324,7 +324,7 @@ func (s *Store) SucceededSum(ctx context.Context, orgID uuid.UUID, from, to time
 
 func (s *Store) AdminList(ctx context.Context, f domain.AdminFilter) ([]domain.Payout, error) {
 	limit := f.Limit
-	if limit <= 0 || limit > 1000 {
+	if limit <= 0 || limit > 10000 { // выгрузка CSV — до 10 000 строк
 		limit = 100
 	}
 	arg := sqlc.AdminListPayoutsParams{Status: string(f.Status), Lim: int32(limit)}
@@ -385,4 +385,53 @@ func (s *Store) PayoutsInStatusBefore(ctx context.Context, status domain.Status,
 		out = append(out, domain.StuckItem{ObjectKey: "payout:" + r.ID.String(), Since: r.UpdatedAt.UTC()})
 	}
 	return out, nil
+}
+
+// ---------------------------------------------------------------- реестр администратора
+
+func (s *Store) AdminPage(ctx context.Context, f domain.AdminFilter) ([]domain.Payout, int, error) {
+	arg := sqlc.AdminPagePayoutsParams{Status: string(f.Status), Lim: int32(f.Limit), Off: int32(f.Offset)}
+	cnt := sqlc.AdminCountPayoutsParams{Status: string(f.Status)}
+	if f.OrganizationID != uuid.Nil {
+		arg.HasOrg, arg.OrganizationID = true, f.OrganizationID
+		cnt.HasOrg, cnt.OrganizationID = true, f.OrganizationID
+	}
+	if !f.From.IsZero() {
+		arg.HasFrom, arg.FromAt = true, f.From
+		cnt.HasFrom, cnt.FromAt = true, f.From
+	}
+	if !f.To.IsZero() {
+		arg.HasTo, arg.ToAt = true, f.To
+		cnt.HasTo, cnt.ToAt = true, f.To
+	}
+	q := s.q(ctx)
+	rows, err := q.AdminPagePayouts(ctx, arg)
+	if err != nil {
+		return nil, 0, s.fail(ctx, "Payout.AdminPage", err)
+	}
+	total, err := q.AdminCountPayouts(ctx, cnt)
+	if err != nil {
+		return nil, 0, s.fail(ctx, "Payout.AdminCount", err)
+	}
+	return payoutsOf(rows), int(total), nil
+}
+
+func (s *Store) AdminTotals(ctx context.Context) ([]domain.StatusTotal, error) {
+	rows, err := s.q(ctx).AdminPayoutTotals(ctx)
+	if err != nil {
+		return nil, s.fail(ctx, "Payout.AdminTotals", err)
+	}
+	out := make([]domain.StatusTotal, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.StatusTotal{Status: domain.Status(r.Status), Count: int(r.N), Amount: money.Kopecks(r.Amount)})
+	}
+	return out, nil
+}
+
+func (s *Store) PlacementPayouts(ctx context.Context, placementID uuid.UUID) ([]domain.Payout, error) {
+	rows, err := s.q(ctx).ListPlacementPayouts(ctx, placementID)
+	if err != nil {
+		return nil, s.fail(ctx, "Payout.PlacementPayouts", err)
+	}
+	return payoutsOf(rows), nil
 }

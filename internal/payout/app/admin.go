@@ -89,6 +89,11 @@ func (s *Service) MarkLegalPaid(ctx context.Context, payoutID, adminID, approver
 		if p.Method != domain.MethodBankTransfer {
 			return fmt.Errorf("%w: %s payout is paid by rocketwork", domain.ErrInvalidPayoutState, p.Method)
 		}
+		if s.NeedsApproval(p.Amount) && (approverID == uuid.Nil || approverID == adminID) {
+			s.log.WarnContext(ctx, "admin payout mark paid refused", logx.KeyOp, op, KeyPayoutID, p.ID, KeyAmount, int64(p.Amount),
+				"admin_user_id", adminID, "reason", "second_approval")
+			return domain.ErrSecondApproval
+		}
 		if changed, err = p.MarkSucceeded(0, "", bankRef, s.Clock.Now()); err != nil || !changed {
 			return err
 		}

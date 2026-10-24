@@ -78,6 +78,25 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) er
 	return err
 }
 
+const revokeUserSessions = `-- name: RevokeUserSessions :execrows
+UPDATE session SET revoked_at = $1::timestamptz, updated_at = $1::timestamptz
+WHERE user_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeUserSessionsParams struct {
+	Now    time.Time
+	UserID uuid.UUID
+}
+
+// Все действующие сессии пользователя (блокировка администратором, обезличивание).
+func (q *Queries) RevokeUserSessions(ctx context.Context, arg RevokeUserSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserSessions, arg.Now, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setSessionExpiresAt = `-- name: SetSessionExpiresAt :exec
 UPDATE session SET expires_at = $1, updated_at = $2::timestamptz WHERE id = $3 AND revoked_at IS NULL
 `

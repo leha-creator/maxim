@@ -140,3 +140,43 @@ func (s *Store) Journal(ctx context.Context, f domain.JournalFilter) ([]domain.J
 	}
 	return out, nil
 }
+
+var _ domain.AdminJournal = (*Store)(nil)
+
+// AdminEntries — журнал денег администратора (adm/ledger) со смещением и общим числом.
+func (s *Store) AdminEntries(ctx context.Context, f domain.AdminEntryFilter) ([]domain.AdminEntry, int, error) {
+	var kind *string
+	if f.Kind != nil {
+		k := string(*f.Kind)
+		kind = &k
+	}
+	q := s.q(ctx)
+	rows, err := q.ListAdminEntries(ctx, sqlc.ListAdminEntriesParams{OrgID: f.OrganizationID, Kind: kind,
+		CreatedFrom: f.From, CreatedTo: f.To, Off: int32(f.Offset), Lim: int32(f.Limit)})
+	if err != nil {
+		return nil, 0, s.fail(ctx, "Ledger.AdminEntries", err)
+	}
+	total, err := q.CountAdminEntries(ctx, sqlc.CountAdminEntriesParams{OrgID: f.OrganizationID, Kind: kind,
+		CreatedFrom: f.From, CreatedTo: f.To})
+	if err != nil {
+		return nil, 0, s.fail(ctx, "Ledger.CountAdminEntries", err)
+	}
+	out := make([]domain.AdminEntry, 0, len(rows))
+	for _, r := range rows {
+		e := domain.AdminEntry{
+			JournalLine: domain.JournalLine{TransactionID: r.TransactionID, Kind: domain.Kind(r.Kind), CreatedAt: r.CreatedAt.UTC(),
+				Amount: money.Kopecks(r.Amount),
+				Debit: domain.AccountRef{Kind: domain.AccountKind(r.DebitKind), OrganizationID: uuidOf(r.DebitOrg),
+					PlacementID: uuidOf(r.DebitPlacement)},
+				Credit: domain.AccountRef{Kind: domain.AccountKind(r.CreditKind), OrganizationID: uuidOf(r.CreditOrg),
+					PlacementID: uuidOf(r.CreditPlacement)}},
+			ActorType: domain.ActorType(r.ActorType), ActorUserID: r.ActorUserID, ApproverID: r.ApproverUserID,
+			PlacementID: r.PlacementID, InvoiceID: r.InvoiceID, PayoutID: r.PayoutID,
+		}
+		if r.Reason != nil {
+			e.Reason = *r.Reason
+		}
+		out = append(out, e)
+	}
+	return out, int(total), nil
+}

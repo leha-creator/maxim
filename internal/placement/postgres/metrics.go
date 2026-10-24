@@ -46,6 +46,8 @@ type ControlMetrics struct {
 	accepted     *prometheus.CounterVec
 	opened       *prometheus.CounterVec
 	resolved     *prometheus.CounterVec
+	// resolution — время от открытия спора до решения (maxim_dispute_resolution_seconds, этап «API администратора»).
+	resolution *prometheus.HistogramVec
 }
 
 // delayBuckets — от секунды до часа: требование точности — 10 с (07 §2).
@@ -66,8 +68,10 @@ func NewControlMetrics(reg interface{ MustRegister(...prometheus.Collector) }) *
 			Help: "Placement disputes opened."}, []string{"opened_by", "reason"}),
 		resolved: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "maxim_disputes_resolved_total",
 			Help: "Placement disputes resolved."}, []string{"resolution"}),
+		resolution: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "maxim_dispute_resolution_seconds",
+			Help: "Time from dispute opening to resolution.", Buckets: resolutionBuckets}, []string{"resolution"}),
 	}
-	reg.MustRegister(m.publishDelay, m.removeDelay, m.violations, m.accepted, m.opened, m.resolved)
+	reg.MustRegister(m.publishDelay, m.removeDelay, m.violations, m.accepted, m.opened, m.resolved, m.resolution)
 	return m
 }
 
@@ -86,6 +90,10 @@ func (m *ControlMetrics) DisputeOpened(openedBy domain.OpenedBy, reason string) 
 	m.opened.WithLabelValues(string(openedBy), reason).Inc()
 }
 
-func (m *ControlMetrics) DisputeResolved(res domain.Resolution) {
+func (m *ControlMetrics) DisputeResolved(res domain.Resolution, took time.Duration) {
 	m.resolved.WithLabelValues(string(res)).Inc()
+	m.resolution.WithLabelValues(string(res)).Observe(max(took.Seconds(), 0))
 }
+
+// resolutionBuckets — от часа до двух сроков T-06 (72 ч).
+var resolutionBuckets = []float64{3600, 4 * 3600, 12 * 3600, 24 * 3600, 48 * 3600, 72 * 3600, 144 * 3600}

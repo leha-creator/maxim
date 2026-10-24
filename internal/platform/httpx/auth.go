@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -118,4 +119,74 @@ func RequireAdmin(ctx context.Context, log *slog.Logger, op string, roles ...str
 		return nil, apperr.Forbidden(ReasonAdminRequired)
 	}
 	return p, nil
+}
+
+// Роли администратора (07 §4) и матрица операций (R-1 этапа «API администратора»).
+const (
+	AdminRoleModerator = "moderator"
+	AdminRoleSenior    = "senior"
+)
+
+var (
+	// AdminAny — операция доступна обеим ролям: модерация, споры, чтение, ошибки ОРД.
+	AdminAny = []string{AdminRoleModerator, AdminRoleSenior}
+	// AdminSeniorOnly — только senior: деньги, блокировки, справочники, журнал действий.
+	AdminSeniorOnly = []string{AdminRoleSenior}
+)
+
+// IsSenior — у пользователя роль senior.
+func IsSenior(p *Principal) bool { return p != nil && p.AdminRole == AdminRoleSenior }
+
+// INNFor — ИНН для ответа администратору: полный у senior, с маской у moderator (R-14).
+func INNFor(p *Principal, inn string) string {
+	if IsSenior(p) {
+		return inn
+	}
+	return logx.MaskINN(inn)
+}
+
+// EmailFor — почта для ответа администратору: полная у senior, с маской у moderator.
+func EmailFor(p *Principal, email string) string {
+	if IsSenior(p) {
+		return email
+	}
+	return logx.MaskEmail(email)
+}
+
+// PhoneFor — телефон для ответа администратору: полный у senior, с маской у moderator.
+func PhoneFor(p *Principal, phone string) string {
+	if IsSenior(p) {
+		return phone
+	}
+	return logx.MaskPhone(phone)
+}
+
+// AdminContext — RequireAdmin и context с действующим лицом admin для audit_log: операции
+// администратора через HTTP пишут журнал действий так же, как команды maxim admin.
+func AdminContext(ctx context.Context, log *slog.Logger, op string, roles ...string) (context.Context, *Principal, error) {
+	p, err := RequireAdmin(ctx, log, op, roles...)
+	if err != nil {
+		return ctx, nil, err
+	}
+	actor := audit.ActorFrom(ctx)
+	actor.Type, actor.UserID, actor.OrganizationID = audit.ActorAdmin, &p.UserID, nil
+	return audit.WithActor(ctx, actor), p, nil
+}
+
+// AdminGate отказывает пользователю без роли администратора на путях prefix до проверки по
+// спецификации (этап «API администратора», R-1): иначе ответ 422 о полях тела раскрывал бы
+// контракт операций администратора. Без сессии запрос идёт дальше — 401 даёт спецификация;
+// роль moderator или senior для конкретной операции проверяет обработчик.
+func AdminGate(prefix string, log *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if p, ok := PrincipalFrom(r.Context()); ok && p.AdminRole == "" &&
+				(r.URL.Path == prefix || strings.HasPrefix(r.URL.Path, prefix+"/")) {
+				log.WarnContext(r.Context(), "admin access denied", logx.KeyOp, "HTTP.AdminGate", logx.KeyUserID, p.UserID)
+				WriteError(w, r, log, apperr.Forbidden(ReasonAdminRequired))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -54,6 +54,10 @@ type Deps struct {
 	AuthCodes     domain.AuthCodes
 	Sessions      domain.Sessions
 	Organizations domain.Organizations
+	// Admin — организации для администратора (этап «API администратора»); nil — API не подключён.
+	Admin domain.AdminOrganizations
+	// PersonalData — выгрузка и обезличивание субъекта (R-26); nil — команды не подключены.
+	PersonalData domain.PersonalData
 	// Platform — строка организации-платформы (этап «Маркировка», R-5); nil — не нужна.
 	Platform domain.PlatformOrganizations
 	Legal    domain.LegalDocuments

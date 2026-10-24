@@ -420,9 +420,11 @@ func nextRknStatus(cur RknStatus, numberChanged bool, subscribers, threshold int
 
 // Шаблоны уведомлений блогеру о канале (каталог модуля notification).
 const (
-	NoticeApproved     = "channel.approved"
-	NoticeRejected     = "channel.rejected"
-	NoticeSuspended    = "channel.suspended"
+	NoticeApproved  = "channel.approved"
+	NoticeRejected  = "channel.rejected"
+	NoticeSuspended = "channel.suspended"
+	// NoticeBlocked — канал заблокирован администратором (R-7 этапа «API администратора»).
+	NoticeBlocked      = "channel.blocked"
 	NoticeDisconnected = "channel.disconnected"
 	NoticeRestored     = "channel.restored"
 )
@@ -444,6 +446,8 @@ func (c StatusChange) NoticeTemplate() (string, bool) {
 		}
 	case StatusRejected:
 		return NoticeRejected, true
+	case StatusBlocked:
+		return NoticeBlocked, true
 	case StatusSuspended:
 		if c.From == StatusActive {
 			return NoticeSuspended, true

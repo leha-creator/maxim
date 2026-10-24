@@ -44,6 +44,8 @@ erDiagram
 | `admin_role` | `text` | нет | `moderator`, `senior`. Пусто — не администратор |
 | `status` | `text` | да | `active`, `blocked` |
 | `last_login_at` | `timestamptz` | нет | |
+| `blocked_at`, `blocked_reason` | `timestamptz`, `text` | нет | Блокировка администратором (`POST /admin/users/{id}/block`) или при обезличивании (`personal_data_request`). Есть только у `blocked`; администратора заблокировать нельзя |
+| `anonymized_at` | `timestamptz` | нет | Данные обезличены по запросу субъекта (`maxim admin pd anonymize`): почта заменена на `anonymized-<id>@anonymized.invalid`, снять блокировку нельзя |
 
 Идентификатора пользователя MAX у `user` нет: привязки аккаунта MAX нет (D-25). Бот пишет блогеру по `channel.added_by_max_user_id` (A-41, Q-38).
 
@@ -468,7 +470,7 @@ erDiagram
 
 ### dispute_message
 
-`dispute_id uuid`, `author_type text`, `author_user_id uuid`, `text text`. Переписка по спору.
+`dispute_id uuid`, `author_type text` (`admin`, `advertiser`, `blogger`), `author_user_id uuid`, `recipient text` (только у сообщения администратора: `advertiser`, `blogger`, `both`), `text text` (до 2000 символов), `created_at`. Переписка по спору (`POST /admin/disputes/{id}/messages`); неизменяема, в `audit_log` не дублируется. Текст в журнал приложения не пишется.
 
 ## 6. Маркировка
 
@@ -512,11 +514,18 @@ erDiagram
 | `ord_contract` | `kind text` (`initial`, `publisher`); `client_organization_id`, `contractor_organization_id uuid`; `number text`; `signed_date date` | `(kind, client_organization_id, contractor_organization_id)` |
 | `ord_platform` (A-32) | `channel_id uuid`; `organization_id uuid` (блогер); `name text`; `url text` | `channel_id` |
 | `creative` (D-07) | `post_version_id uuid`; `ord_contract_id uuid` (изначальный, задаётся при отправке); `erid text`; `erid_received_at timestamptz`; `erir_status text` (`pending`, `success`, `error`); `erir_error text` | `post_version_id`; `erid` |
-
-Строки объектов ОРД не удаляются — кроме креатива, который не отправлялся: если версия стала `ready` в обход маркировки, задание креатива удаляет его запись.
 | `ord_statistics` | `creative_id`, `ord_platform_id`, `placement_id uuid`; `period date` (первое число месяца); `impressions integer`; `shown_from`, `shown_to date`; `amount bigint` | `(creative_id, ord_platform_id, period)` |
-| `ord_invoice` | `ord_contract_id uuid`; `period date`; `number text`; `invoice_date date`; `amount bigint` | `(ord_contract_id, period)` |
+| `ord_invoice` | `ord_contract_id uuid`; `period date`; `type text` (тип акта ОРД, конфигурация); `number text` (`MX-ГГГГММ-N`); `invoice_date date` (последний день месяца); `amount bigint` (> 0) | `(ord_contract_id, period)`; `number` |
 | `ord_invoice_item` | `ord_invoice_id`, `creative_id`, `ord_platform_id uuid`; `amount bigint` | `(ord_invoice_id, creative_id, ord_platform_id)` |
+
+Строки объектов ОРД не удаляются — кроме креатива, который не отправлялся (версия стала `ready` в обход маркировки — задание креатива удаляет его запись), и неотправленной строки статистики, пропавшей при повторном формировании отчёта (отправленная обнуляется). Разбивка акта `ord_invoice_item` заменяется целиком при изменении.
+
+Ежемесячная отчётность (05 §3.6, §3.7):
+
+| Таблица | Поля | Уникальность |
+|---|---|---|
+| `publication_views_snapshot` | `publication_id uuid`; `period date` (месяц, на начало которого снимок); `views integer`; `views_checked_at`; `created_at`. Неизменяема (нет `UPDATE`, `DELETE`) | `(publication_id, period)` |
+| `ord_report` | `period date`; `built_at`, `built_by uuid` (пусто — задание); `send_requested_at`, `send_requested_by uuid`; `updated_at`. Состояние для экрана считается по строкам: `not_built`, `built`, `sending`, `sent`, `has_errors`. Без `DELETE` | `period` |
 
 Договор `initial`: клиент — рекламодатель, исполнитель — платформа. Договор `publisher`: клиент — платформа, исполнитель — блогер (A-31). Параметры договоров для ОРД — A-33.
 
@@ -790,6 +799,23 @@ erDiagram
 Обязаны попадать в журнал действий: вход и выход; создание и изменение организации и реквизитов; принятие юридических документов; подключение, модерация, блокировка канала и изменение цен; оформление заказа; создание версии поста; решения модерации; действия блогера по размещению; претензии и решения по спорам; все ручные операции S-19; загрузка выписки и ручное сопоставление; все операции с деньгами, запущенные человеком; изменение справочников.
 
 Переходы размещения в журнал действий не дублируются: их источник — `placement_state_history`.
+
+### admin_approval
+
+Запрос второго подтверждения денежной операции администратора выше порога (этап «API администратора», 07 §4).
+
+| Поле | Тип | Об. | Пояснение |
+|---|---|---|---|
+| `kind` | `text` | да | `ledger_manual`, `deposit_topup`, `payout_mark_paid` |
+| `payload` | `jsonb` | да | Что исполнить после подтверждения |
+| `amount` | `bigint` | да | Сумма операции, копейки |
+| `summary`, `reason` | `text` | да | Описание для экрана и основание автора |
+| `idempotency_key` | `text` | да | Ключ операции: повтор после сбоя не создаёт второй проводки |
+| `requested_by` | `uuid` | да | Автор (`senior`) |
+| `status` | `text` | да | `pending`, `approved`, `rejected`, `expired` (`ADMIN_APPROVAL_TTL`, по умолчанию 72 ч) |
+| `decided_by`, `decided_at`, `decision_reason` | | нет | Решение другого `senior`; отклонение автором — отзыв |
+| `result_id` | `uuid` | нет | Исполненная операция (проводка, выплата) |
+| `expires_at` | `timestamptz` | да | |
 
 ## 9. Перечисления
 

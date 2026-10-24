@@ -12,6 +12,37 @@ import (
 	"github.com/google/uuid"
 )
 
+const countAdminEntries = `-- name: CountAdminEntries :one
+SELECT count(*)::int
+FROM ledger_entry e
+JOIN ledger_transaction t ON t.id = e.ledger_transaction_id
+JOIN ledger_account d ON d.id = e.debit_account_id
+JOIN ledger_account c ON c.id = e.credit_account_id
+WHERE ($1::uuid IS NULL OR d.organization_id = $1 OR c.organization_id = $1)
+  AND ($2::text IS NULL OR t.kind = $2)
+  AND ($3::timestamptz IS NULL OR t.created_at >= $3)
+  AND ($4::timestamptz IS NULL OR t.created_at < $4)
+`
+
+type CountAdminEntriesParams struct {
+	OrgID       *uuid.UUID
+	Kind        *string
+	CreatedFrom *time.Time
+	CreatedTo   *time.Time
+}
+
+func (q *Queries) CountAdminEntries(ctx context.Context, arg CountAdminEntriesParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countAdminEntries,
+		arg.OrgID,
+		arg.Kind,
+		arg.CreatedFrom,
+		arg.CreatedTo,
+	)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listAccountEntries = `-- name: ListAccountEntries :many
 
 SELECT e.id, e.amount, (e.credit_account_id = $1::uuid)::bool AS is_credit,
@@ -69,6 +100,103 @@ func (q *Queries) ListAccountEntries(ctx context.Context, arg ListAccountEntries
 			&i.PlacementID,
 			&i.InvoiceID,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAdminEntries = `-- name: ListAdminEntries :many
+SELECT t.id AS transaction_id, t.kind, t.created_at, t.reason, t.actor_type, t.actor_user_id,
+    t.placement_id, t.invoice_id, t.payout_id, e.amount,
+    d.kind AS debit_kind, d.organization_id AS debit_org, d.placement_id AS debit_placement,
+    c.kind AS credit_kind, c.organization_id AS credit_org, c.placement_id AS credit_placement,
+    -- Нулевой идентификатор — второго администратора не было.
+    COALESCE((a.data ->> 'approver_id')::uuid, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS approver_user_id
+FROM ledger_entry e
+JOIN ledger_transaction t ON t.id = e.ledger_transaction_id
+JOIN ledger_account d ON d.id = e.debit_account_id
+JOIN ledger_account c ON c.id = e.credit_account_id
+LEFT JOIN audit_log a ON a.object_type = 'ledger_transaction' AND a.object_id = t.id::text AND a.data ? 'approver_id'
+WHERE ($1::uuid IS NULL OR d.organization_id = $1 OR c.organization_id = $1)
+  AND ($2::text IS NULL OR t.kind = $2)
+  AND ($3::timestamptz IS NULL OR t.created_at >= $3)
+  AND ($4::timestamptz IS NULL OR t.created_at < $4)
+ORDER BY t.created_at DESC, t.id DESC, e.position
+LIMIT $6 OFFSET $5
+`
+
+type ListAdminEntriesParams struct {
+	OrgID       *uuid.UUID
+	Kind        *string
+	CreatedFrom *time.Time
+	CreatedTo   *time.Time
+	Off         int32
+	Lim         int32
+}
+
+type ListAdminEntriesRow struct {
+	TransactionID   uuid.UUID
+	Kind            string
+	CreatedAt       time.Time
+	Reason          *string
+	ActorType       string
+	ActorUserID     *uuid.UUID
+	PlacementID     *uuid.UUID
+	InvoiceID       *uuid.UUID
+	PayoutID        *uuid.UUID
+	Amount          int64
+	DebitKind       string
+	DebitOrg        *uuid.UUID
+	DebitPlacement  *uuid.UUID
+	CreditKind      string
+	CreditOrg       *uuid.UUID
+	CreditPlacement *uuid.UUID
+	ApproverUserID  uuid.UUID
+}
+
+// Журнал денег администратора (adm/ledger): проводки с основаниями и вторым администратором
+// из журнала действий, новые сверху; смещение и общее число — CountAdminEntries.
+// Ручные операции пишут одну запись журнала действий на проводку (ledger/app.adminPost).
+func (q *Queries) ListAdminEntries(ctx context.Context, arg ListAdminEntriesParams) ([]ListAdminEntriesRow, error) {
+	rows, err := q.db.Query(ctx, listAdminEntries,
+		arg.OrgID,
+		arg.Kind,
+		arg.CreatedFrom,
+		arg.CreatedTo,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAdminEntriesRow{}
+	for rows.Next() {
+		var i ListAdminEntriesRow
+		if err := rows.Scan(
+			&i.TransactionID,
+			&i.Kind,
+			&i.CreatedAt,
+			&i.Reason,
+			&i.ActorType,
+			&i.ActorUserID,
+			&i.PlacementID,
+			&i.InvoiceID,
+			&i.PayoutID,
+			&i.Amount,
+			&i.DebitKind,
+			&i.DebitOrg,
+			&i.DebitPlacement,
+			&i.CreditKind,
+			&i.CreditOrg,
+			&i.CreditPlacement,
+			&i.ApproverUserID,
 		); err != nil {
 			return nil, err
 		}

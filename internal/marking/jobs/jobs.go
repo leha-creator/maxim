@@ -63,3 +63,16 @@ func decode(r job.Running) (domain.ObjectRef, error) {
 	}
 	return ref, nil
 }
+
+// RegisterReports регистрирует периодические задания отчётности (этап «API администратора и
+// отчётность ОРД», 07 §2): ord_monthly_report 1-го числа в 00:05 по Москве — снимок, формирование,
+// отправка при ORD_REPORT_AUTO_SEND (одна попытка; после простоя — один запуск, снимок позже);
+// ord_report_check ежедневно в 10:00 — срок сдачи (R-23).
+func RegisterReports(w *job.Worker, svc *app.Service) {
+	w.RegisterPeriodic(app.KindMonthlyReport, job.MonthlyAt(1, 0, 5), func(ctx context.Context, _ job.Running) error {
+		return svc.MonthlyReport(ctx)
+	}, job.HandlerOptions{})
+	w.RegisterPeriodic(app.KindReportCheck, job.DailyAt(10, 0), func(ctx context.Context, _ job.Running) error {
+		return svc.CheckReport(ctx)
+	}, job.HandlerOptions{})
+}

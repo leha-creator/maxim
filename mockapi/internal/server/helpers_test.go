@@ -94,6 +94,12 @@ func (r response) json(t *testing.T, v any) {
 // do выполняет запрос к API и проверяет ответ по спецификации.
 func (e *env) do(c *http.Client, method, path string, body any, contentType string) response {
 	e.t.Helper()
+	return e.doH(c, method, path, body, contentType, nil)
+}
+
+// doH — как do, с дополнительными заголовками запроса.
+func (e *env) doH(c *http.Client, method, path string, body any, contentType string, header map[string]string) response {
+	e.t.Helper()
 	var rd io.Reader
 	switch b := body.(type) {
 	case nil:
@@ -115,6 +121,9 @@ func (e *env) do(c *http.Client, method, path string, body any, contentType stri
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	for k, v := range header {
+		req.Header.Set(k, v)
 	}
 	resp, err := c.Do(req)
 	if err != nil {

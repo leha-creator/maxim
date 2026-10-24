@@ -134,3 +134,13 @@ func (r *Sessions) Revoke(ctx context.Context, id uuid.UUID, now time.Time) erro
 	}
 	return nil
 }
+
+func (r *Sessions) RevokeAllForUser(ctx context.Context, userID uuid.UUID, now time.Time) (int64, error) {
+	const op = "Account.Sessions.RevokeAllForUser"
+	r.s.debug(ctx, op, "user_id", userID)
+	n, err := r.s.q(ctx).RevokeUserSessions(ctx, sqlc.RevokeUserSessionsParams{UserID: userID, Now: now})
+	if err != nil {
+		return 0, r.s.fail(ctx, op, err)
+	}
+	return n, nil
+}

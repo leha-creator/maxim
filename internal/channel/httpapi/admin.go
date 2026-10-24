@@ -12,11 +12,8 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
-// adminRoles — роли, которым доступны операции администратора для каналов (07 §4, R-1).
-var adminRoles = []string{"moderator", "senior"}
-
 func (h *Handlers) admin(ctx context.Context, op string) (uuid.UUID, error) {
-	p, err := httpx.RequireAdmin(ctx, h.log, op, adminRoles...)
+	p, err := httpx.RequireAdmin(ctx, h.log, op, httpx.AdminAny...)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -155,4 +152,70 @@ func moderationHistory(list []domain.ModerationEntry) []apigen.ChannelModeration
 		out = append(out, item)
 	}
 	return out
+}
+
+// senior — операции только для senior (матрица R-1 этапа «API администратора»).
+func (h *Handlers) senior(ctx context.Context, op string) (uuid.UUID, error) {
+	p, err := httpx.RequireAdmin(ctx, h.log, op, httpx.AdminSeniorOnly...)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return p.UserID, nil
+}
+
+func (h *Handlers) BlockChannel(ctx context.Context, req apigen.BlockChannelRequestObject) (apigen.BlockChannelResponseObject, error) {
+	adminID, err := h.senior(ctx, "Admin.BlockChannel")
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.svc.Block(ctx, adminID, req.Id, req.Body.Reason)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.BlockChannel200JSONResponse(h.adminChannel(v)), nil
+}
+
+func (h *Handlers) UnblockChannel(ctx context.Context, req apigen.UnblockChannelRequestObject) (apigen.UnblockChannelResponseObject, error) {
+	adminID, err := h.senior(ctx, "Admin.UnblockChannel")
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.svc.Unblock(ctx, adminID, req.Id, req.Body.Reason)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.UnblockChannel200JSONResponse(h.adminChannel(v)), nil
+}
+
+func adminCategory(c domain.Category) apigen.AdminChannelCategory {
+	return apigen.AdminChannelCategory{Id: c.ID, Slug: c.Slug, Name: c.Name, Position: c.Position, Archived: c.Archived}
+}
+
+func (h *Handlers) CreateChannelCategory(ctx context.Context, req apigen.CreateChannelCategoryRequestObject) (apigen.CreateChannelCategoryResponseObject, error) {
+	adminID, err := h.senior(ctx, "Admin.CreateChannelCategory")
+	if err != nil {
+		return nil, err
+	}
+	c, err := h.svc.CreateCategory(ctx, adminID, domain.CategoryInput{Slug: req.Body.Slug, Name: req.Body.Name,
+		Position: req.Body.Position})
+	if err != nil {
+		return nil, err
+	}
+	return apigen.CreateChannelCategory201JSONResponse(adminCategory(c)), nil
+}
+
+func (h *Handlers) UpdateChannelCategory(ctx context.Context, req apigen.UpdateChannelCategoryRequestObject) (apigen.UpdateChannelCategoryResponseObject, error) {
+	adminID, err := h.senior(ctx, "Admin.UpdateChannelCategory")
+	if err != nil {
+		return nil, err
+	}
+	in := domain.CategoryInput{Position: req.Body.Position, Archived: req.Body.Archived}
+	if req.Body.Name != nil {
+		in.Name = *req.Body.Name
+	}
+	c, err := h.svc.UpdateCategory(ctx, adminID, req.Id, in)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.UpdateChannelCategory200JSONResponse(adminCategory(c)), nil
 }

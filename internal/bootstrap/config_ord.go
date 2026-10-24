@@ -52,6 +52,14 @@ type ORDConfig struct {
 	EridWait time.Duration `env:"ORD_ERID_WAIT" envDefault:"1h"`
 	// StuckSentAge — объект ОРД в sent дольше считается зависшим (07 §3).
 	StuckSentAge time.Duration `env:"STUCK_ORD_SENT_AGE" envDefault:"24h"`
+	// Ежемесячная отчётность (этап «API администратора и отчётность ОРД», R-18 … R-24, Q-43).
+	InvoiceTypeInitial   string `env:"ORD_INVOICE_TYPE_INITIAL" envDefault:"intermediary-report"`
+	InvoiceTypePublisher string `env:"ORD_INVOICE_TYPE_PUBLISHER" envDefault:"invoice"`
+	InvoiceNumberPrefix  string `env:"ORD_INVOICE_NUMBER_PREFIX" envDefault:"MX"`
+	// ReportAutoSend — задание 1-го числа отправляет отчёт сразу; иначе — дежурный после проверки.
+	ReportAutoSend bool `env:"ORD_REPORT_AUTO_SEND" envDefault:"false"`
+	// ReportErrorDay — с этого числа следующего месяца неотправленный отчёт — оповещение (R-23).
+	ReportErrorDay int `env:"ORD_REPORT_ERROR_DAY" envDefault:"20"`
 }
 
 // Реквизиты платформы для разработки и тестов с ordfake (R-5): корректный ИНН ИП.
@@ -61,6 +69,9 @@ const (
 )
 
 var kktuRe = regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}$`)
+
+// invoicePrefixRe — префикс номера акта (ORD_INVOICE_NUMBER_PREFIX).
+var invoicePrefixRe = regexp.MustCompile(`^[A-Za-z0-9-]{1,16}$`)
 
 // ORDFake сообщает, что вместо ОРД работает ordfake: в тестовом окружении всегда, в разработке —
 // без OAuth-токена (R-18).
@@ -107,6 +118,8 @@ func (c Config) MarkingConfig() markingdomain.Config {
 			SlowInterval: o.PollSlowInterval, Timeout: o.StatusTimeout},
 		DependencyWait: o.DependencyWait, DependencyWaitFailed: o.DependencyWaitFailed,
 		EridWait: o.EridWait, StuckSentAge: o.StuckSentAge,
+		Report: markingdomain.ReportRules{InvoiceTypeInitial: o.InvoiceTypeInitial, InvoiceTypePublisher: o.InvoiceTypePublisher,
+			NumberPrefix: o.InvoiceNumberPrefix, AutoSend: o.ReportAutoSend, ErrorDay: o.ReportErrorDay},
 	}
 }
 
@@ -168,6 +181,8 @@ func (c Config) validateORD(add func(field, reason string)) {
 		{"ORD_PUBLISHER_CONTRACT_TYPE", o.PublisherContractType, markingdomain.OrdContractTypes},
 		{"ORD_PUBLISHER_SUBJECT_TYPE", o.PublisherSubjectType, markingdomain.OrdSubjectTypes},
 		{"ORD_PUBLISHER_ACTION_TYPE", o.PublisherActionType, markingdomain.OrdActionTypes},
+		{"ORD_INVOICE_TYPE_INITIAL", o.InvoiceTypeInitial, markingdomain.OrdInvoiceTypes},
+		{"ORD_INVOICE_TYPE_PUBLISHER", o.InvoiceTypePublisher, markingdomain.OrdInvoiceTypes},
 	} {
 		if !slices.Contains(e.allowed, e.value) {
 			add(e.field, "must be one of "+strings.Join(e.allowed, ", "))
@@ -185,6 +200,12 @@ func (c Config) validateORD(add func(field, reason string)) {
 		if d.value <= 0 {
 			add(d.field, "must be positive")
 		}
+	}
+	if !invoicePrefixRe.MatchString(o.InvoiceNumberPrefix) {
+		add("ORD_INVOICE_NUMBER_PREFIX", "must be 1-16 latin letters, digits or dashes")
+	}
+	if o.ReportErrorDay < 1 || o.ReportErrorDay > 28 {
+		add("ORD_REPORT_ERROR_DAY", "must be 1..28")
 	}
 	if o.PollFastInterval >= o.StatusTimeout || o.PollSlowInterval >= o.StatusTimeout || o.PollFastPeriod >= o.StatusTimeout {
 		add("ORD_POLL_*", "must be less than ORD_STATUS_TIMEOUT")

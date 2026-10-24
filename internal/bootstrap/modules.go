@@ -14,6 +14,8 @@ import (
 	accounthttp "github.com/leha-creator/maxim/internal/account/httpapi"
 	accountjobs "github.com/leha-creator/maxim/internal/account/jobs"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	adminapp "github.com/leha-creator/maxim/internal/admin/app"
+	adminhttp "github.com/leha-creator/maxim/internal/admin/httpapi"
 	billingapp "github.com/leha-creator/maxim/internal/billing/app"
 	billinghttp "github.com/leha-creator/maxim/internal/billing/httpapi"
 	billingjobs "github.com/leha-creator/maxim/internal/billing/jobs"
@@ -29,6 +31,7 @@ import (
 	ledgerjobs "github.com/leha-creator/maxim/internal/ledger/jobs"
 	ledgerpg "github.com/leha-creator/maxim/internal/ledger/postgres"
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
+	markinghttp "github.com/leha-creator/maxim/internal/marking/httpapi"
 	markingjobs "github.com/leha-creator/maxim/internal/marking/jobs"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
 	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
@@ -43,6 +46,7 @@ import (
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
 	placementjobs "github.com/leha-creator/maxim/internal/placement/jobs"
 	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
+	"github.com/leha-creator/maxim/internal/platform/adminref"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/cleanup"
@@ -183,6 +187,8 @@ type modules struct {
 	// marking — объекты ОРД и erid; markingStore — для метрики.
 	marking      *markingapp.Service
 	markingStore *markingpg.Store
+	// markingHTTP — ошибки и объекты ОРД для администратора (этап «API администратора»).
+	markingHTTP *markinghttp.Handlers
 	// payout — выплаты блогерам через Рокет Ворк; payoutStore — для команд администратора.
 	payout      *payoutapp.Service
 	payoutStore *payoutpg.Store
@@ -191,7 +197,10 @@ type modules struct {
 	notification      *notificationapp.Service
 	notificationHTTP  *notificationhttp.Handlers
 	notificationStore *notificationpg.Store
-	platform          *platformJobs
+	// admin — второе подтверждение, журнал действий, счётчики меню (этап «API администратора»).
+	admin     *adminapp.Service
+	adminHTTP *adminhttp.Handlers
+	platform  *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
 	queue    *job.Queue
@@ -207,7 +216,7 @@ func newModules(cfg Config, in *infra) *modules {
 
 	deps := accountapp.Deps{
 		Users: accountStore.Users(), AuthCodes: accountStore.AuthCodes(), Sessions: accountStore.Sessions(),
-		Organizations: accountStore.Organizations(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
+		Organizations: accountStore.Organizations(), Admin: accountStore.Organizations(), PersonalData: accountStore.PersonalData(), Platform: accountStore.Organizations(), Legal: accountStore.LegalDocuments(),
 		Sender: in.mail, Uploads: auditLog, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: log,
 		Config: accountapp.Config{
 			LoginCodeTTL: cfg.Auth.LoginCodeTTL, LoginCodeAttempts: cfg.Auth.LoginCodeAttempts,
@@ -234,7 +243,8 @@ func newModules(cfg Config, in *infra) *modules {
 	// Описания операций баланса — номера заказов и счетов (R-9).
 	ledgerSvc.References = bridge.LedgerReferences{Placements: placementStore.Placements(), Invoices: billingStore}
 	billingSvc.Placements = bridge.BillingPlacements{Placements: placementStore.Placements()}
-	markingSvc, markingStore := newMarkingService(cfg, in, txRunner, queue, auditLog, accountStore, postSvc, channelSvc)
+	markingSvc, markingStore := newMarkingService(cfg, in, txRunner, queue, auditLog, accountStore, postSvc, channelSvc,
+		placementStore.OrdReport())
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
 	platform.stuck.Add(stuckRemovalCheck(cfg, placementSvc))
@@ -265,6 +275,7 @@ func newModules(cfg Config, in *infra) *modules {
 		ledgerStore:       ledgerStore,
 		marking:           markingSvc,
 		markingStore:      markingStore,
+		markingHTTP:       markinghttp.New(markingSvc, adminref.New(in.pool), log),
 		notification:      notificationSvc,
 		notificationHTTP:  notificationhttp.New(notificationSvc, log),
 		notificationStore: notificationStore,
@@ -275,6 +286,7 @@ func newModules(cfg Config, in *infra) *modules {
 		txRunner:          txRunner,
 		queue:             queue,
 	}
+	m.wireAdmin()
 	if cfg.ORD.Enabled {
 		m.wireMarking()
 	}
@@ -300,6 +312,8 @@ func (m *modules) registerJobs(w *job.Worker) {
 	notificationjobs.Register(w, m.notification)
 	if m.cfg.ORD.Enabled {
 		markingjobs.Register(w, m.marking)
+		markingjobs.RegisterReports(w, m.marking)
+		markingjobs.RegisterReports(w, m.marking)
 	}
 }
 
@@ -314,6 +328,8 @@ type apiImpl struct {
 	*ledgerHandlers
 	*payoutHandlers
 	*notificationHandlers
+	*adminHandlers
+	*markingHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -329,7 +345,8 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Metrics: reg,
 		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
 			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP,
-			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP},
+			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP, adminHandlers: m.adminHTTP,
+			markingHandlers: m.markingHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),

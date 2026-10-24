@@ -13,7 +13,7 @@ import (
 // newLedgerService собирает журнал проводок (06 §2): единственный писатель ledger_* и hold.
 func newLedgerService(cfg Config, in *infra, txRunner tx.Runner, auditLog audit.Recorder) (*ledgerapp.Service, *ledgerpg.Store) {
 	store := ledgerpg.New(in.pool, in.log.With(logx.KeyModule, "ledger"))
-	deps := ledgerapp.Deps{Store: store, Reports: store, Tx: txRunner, Audit: auditLog, Clock: in.clock, Log: in.log,
+	deps := ledgerapp.Deps{Store: store, Reports: store, Admin: store, Tx: txRunner, Audit: auditLog, Clock: in.clock, Log: in.log,
 		ManualSecondApproval: money.Kopecks(cfg.Billing.ManualSecondApproval)}
 	if in.alerter != nil {
 		deps.Alerts = in.alerter

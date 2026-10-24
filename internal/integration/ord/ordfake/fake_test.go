@@ -75,3 +75,27 @@ func TestCreativeTokenAndFailures(t *testing.T) {
 		t.Fatalf("timeout must store the object; calls %d", f.Calls(ord.OpContract))
 	}
 }
+
+func TestReportingObjectsStopAtOrdSuccess(t *testing.T) {
+	ctx := context.Background()
+	f := ordfake.New()
+	st, _ := f.UpsertStatistics(ctx, ord.Statistics{ID: "stat-1", CreativeID: "cr-1", PlatformID: "ch-1"})
+	_, _ = f.UpsertInvoice(ctx, ord.Invoice{ID: "inv-1", ContractID: "ct-1"})
+	ic, _ := f.UpsertInvoiceCreatives(ctx, ord.InvoiceCreatives{InvoiceID: "inv-1"})
+	for range 3 {
+		_, _ = f.GetStatus(ctx, st.RequestID)
+		_, _ = f.GetStatus(ctx, ic.RequestID)
+	}
+	for _, id := range []string{"stat-1", "inv-1", ordfake.InvoiceCreativesID("inv-1")} {
+		if o, ok := f.Object(id); !ok || o.Status != "ORD success" && id != "inv-1" {
+			t.Fatalf("%s: %+v", id, o)
+		}
+	}
+	f.FailNext(ord.OpStatistics, 422, "body.amount: invalid")
+	if _, err := f.UpsertStatistics(ctx, ord.Statistics{ID: "stat-2"}); !job.IsPermanent(err) {
+		t.Fatalf("statistics failure: %v", err)
+	}
+	if f.Calls(ord.OpInvoiceCreatives) != 1 {
+		t.Fatalf("invoice creatives calls %d", f.Calls(ord.OpInvoiceCreatives))
+	}
+}

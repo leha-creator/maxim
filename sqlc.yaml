@@ -46,6 +46,12 @@ sql:
               type: string
               pointer: true
   - <<: *entry
+    queries: internal/admin/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/admin/postgres/sqlc
+  - <<: *entry
     queries: internal/platform/audit/queries
     gen:
       go:

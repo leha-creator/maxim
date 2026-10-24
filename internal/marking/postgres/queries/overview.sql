@@ -21,9 +21,16 @@ FROM (
     UNION ALL
     SELECT 'creative'::text, cr.id, cr.ord_external_id, cr.ord_status, cr.sync_error, cr.sync_attempts, cr.updated_at
     FROM creative cr WHERE cr.sync_status = 'error'
+    UNION ALL
+    SELECT 'statistics'::text, st.id, st.ord_external_id, st.ord_status, st.sync_error, st.sync_attempts, st.updated_at
+    FROM ord_statistics st WHERE st.sync_status = 'error'
+    UNION ALL
+    SELECT 'invoice'::text, iv.id, iv.ord_external_id, iv.ord_status, iv.sync_error, iv.sync_attempts, iv.updated_at
+    FROM ord_invoice iv WHERE iv.sync_status = 'error'
 ) e
-WHERE sqlc.narg(after_at)::timestamptz IS NULL
-   OR (e.updated_at, e.id) > (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid)
+WHERE (@object_type::text = '' OR e.object_type = @object_type)
+  AND (sqlc.narg(after_at)::timestamptz IS NULL
+   OR (e.updated_at, e.id) > (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
 ORDER BY e.updated_at, e.id
 LIMIT @lim;
 
@@ -36,6 +43,10 @@ SELECT s.object_type, s.id, s.sent_at FROM (
     SELECT 'platform'::text, p.id, p.sent_at FROM ord_platform p WHERE p.sync_status = 'sent'
     UNION ALL
     SELECT 'creative'::text, cr.id, cr.sent_at FROM creative cr WHERE cr.sync_status = 'sent'
+    UNION ALL
+    SELECT 'statistics'::text, st.id, st.sent_at FROM ord_statistics st WHERE st.sync_status = 'sent'
+    UNION ALL
+    SELECT 'invoice'::text, iv.id, iv.sent_at FROM ord_invoice iv WHERE iv.sync_status = 'sent'
 ) s
 WHERE s.sent_at < @before::timestamptz
 ORDER BY s.sent_at, s.id
@@ -54,4 +65,16 @@ SELECT 'contract'::text, c.sync_status, count(*)::int FROM ord_contract c GROUP 
 UNION ALL
 SELECT 'platform'::text, p.sync_status, count(*)::int FROM ord_platform p GROUP BY p.sync_status
 UNION ALL
-SELECT 'creative'::text, cr.sync_status, count(*)::int FROM creative cr GROUP BY cr.sync_status;
+SELECT 'creative'::text, cr.sync_status, count(*)::int FROM creative cr GROUP BY cr.sync_status
+UNION ALL
+SELECT 'statistics'::text, st.sync_status, count(*)::int FROM ord_statistics st GROUP BY st.sync_status
+UNION ALL
+SELECT 'invoice'::text, iv.sync_status, count(*)::int FROM ord_invoice iv GROUP BY iv.sync_status;
+
+-- name: LastOrdRequest :one
+-- Последний вызов ОРД по объекту (этап «API администратора», R-17): тела — как сохранены адаптером.
+SELECT r.id, r.operation, r.attempt, r.request, r.response_status, r.response_body, r.error, r.created_at
+FROM outbound_request r
+WHERE r.system = 'yandex_ord' AND r.object_type = @object_type AND r.object_id = @object_id
+ORDER BY r.created_at DESC
+LIMIT 1;

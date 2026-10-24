@@ -44,6 +44,12 @@ func (h *Handlers) Login(ctx context.Context, req api.LoginRequestObject) (api.L
 		tx.D.Users[u.ID] = u
 		h.logger(ctx).Info("user created", "op", "Auth.Login", "user_id", u.ID)
 	}
+	if u.Blocked {
+		h.logger(ctx).Warn("login rejected: user blocked", "op", "Auth.Login", "user_id", u.ID)
+		e := store.Forbidden("user is blocked")
+		e.Details = map[string]any{"reason": "user_blocked"}
+		return nil, e
+	}
 	now := tx.Now
 	u.LastLoginAt = &now
 	token := tx.CreateSession(u.ID)

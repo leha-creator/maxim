@@ -14,7 +14,7 @@ import (
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 
-SELECT id, email, admin_role, status, last_login_at, created_at, updated_at FROM "user" WHERE email = $1
+SELECT id, email, admin_role, status, last_login_at, created_at, updated_at, blocked_at, blocked_reason, anonymized_at FROM "user" WHERE email = $1
 `
 
 // Пользователи (04 §2).
@@ -29,12 +29,15 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BlockedAt,
+		&i.BlockedReason,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, admin_role, status, last_login_at, created_at, updated_at FROM "user" WHERE id = $1
+SELECT id, email, admin_role, status, last_login_at, created_at, updated_at, blocked_at, blocked_reason, anonymized_at FROM "user" WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -48,6 +51,9 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BlockedAt,
+		&i.BlockedReason,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }

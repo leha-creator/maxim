@@ -41,6 +41,10 @@ const (
 	OpPlatforms    = "platforms"
 	OpCreative     = "creative"
 	OpStatus       = "status"
+	// Ежемесячная отчётность (этап «API администратора и отчётность ОРД», R-22).
+	OpStatistics       = "statistics"
+	OpInvoice          = "invoice"
+	OpInvoiceCreatives = "invoice/creatives"
 )
 
 // busyRetry — через сколько повторить задание, если ограничитель занят.

@@ -31,6 +31,7 @@ const BaseURL = "/api/v1"
 const (
 	bodyLimitDefault     = 1 << 20
 	bodyLimitTaxDocument = 11 << 20
+	bodyLimitStatement   = 11 << 20
 	bodyLimitMedia       = 51 << 20
 )
 
@@ -121,6 +122,8 @@ func newHandler(d serverDeps) (http.Handler, error) {
 	})
 
 	var apiChain http.Handler = validator(apiHandler)
+	// Пользователь без роли администратора получает 403 на /admin/* до проверки тела (R-1).
+	apiChain = httpx.AdminGate(BaseURL+"/admin", log)(apiChain)
 	apiChain = httpx.Chain(apiChain, d.Before...)
 
 	mux := http.NewServeMux()
@@ -151,6 +154,10 @@ func newHandler(d serverDeps) (http.Handler, error) {
 		httpx.Recover(log),
 		httpx.SecurityHeaders(BaseURL),
 		httpx.BodyLimit(func(r *http.Request) int64 {
+			// Выписка банка — до STATEMENT_MAX_BYTES (10 МБ) и заголовки multipart.
+			if r.Method == http.MethodPost && r.URL.Path == BaseURL+"/admin/bank-statements" {
+				return bodyLimitStatement
+			}
 			if r.URL.Path == BaseURL+"/organizations/current/tax-document" {
 				return bodyLimitTaxDocument
 			}

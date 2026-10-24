@@ -101,6 +101,16 @@ func TestUpsertBodiesMatchSpecification(t *testing.T) {
 		{"/api/v8/platforms", "platforms_request.json", func() (ord.Receipt, error) {
 			return c.UpsertPlatforms(ctx, decode[ord.Platforms](t, "platforms_request.json"))
 		}},
+		// ПРЕДПОЛОЖЕНИЕ (Q-42): образцы отчётности составлены по описанию API v8, не записаны с контура.
+		{"/api/v8/statistics", "statistics_request.json", func() (ord.Receipt, error) {
+			return c.UpsertStatistics(ctx, decode[ord.Statistics](t, "statistics_request.json"))
+		}},
+		{"/api/v8/invoice", "invoice_request.json", func() (ord.Receipt, error) {
+			return c.UpsertInvoice(ctx, decode[ord.Invoice](t, "invoice_request.json"))
+		}},
+		{"/api/v8/invoice/creatives", "invoice_creatives_request.json", func() (ord.Receipt, error) {
+			return c.UpsertInvoiceCreatives(ctx, decode[ord.InvoiceCreatives](t, "invoice_creatives_request.json"))
+		}},
 	}
 	for _, tc := range cases {
 		rec, err := tc.call()
