@@ -129,6 +129,8 @@ func (s *Sender) send(ctx context.Context, op, template, to, subject, text, html
 	defer cancel()
 	if err := client.DialAndSendWithContext(sctx, m); err != nil {
 		// Текст ошибки SMTP не содержит учётных данных: их go-mail не выводит.
+		// Отказ RCPT у go-mail называет адресата: в журнал и выше — только с маской (07 §5.4).
+		err = redacted{err: err, text: strings.ReplaceAll(err.Error(), to, masked)}
 		s.log.ErrorContext(ctx, "mail send failed", logx.KeyOp, op, "template", template, "to", masked, logx.KeyError, err.Error())
 		return fmt.Errorf("send mail: %w", err)
 	}
@@ -229,3 +231,12 @@ func (s *Sender) SendNotification(ctx context.Context, to, subject, text, html s
 	}
 	return err
 }
+
+// redacted — ошибка с текстом без адреса получателя; причина доступна через errors.As.
+type redacted struct {
+	err  error
+	text string
+}
+
+func (r redacted) Error() string { return r.text }
+func (r redacted) Unwrap() error { return r.err }

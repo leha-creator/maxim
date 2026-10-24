@@ -101,3 +101,12 @@ func TestWriteReportCSV(t *testing.T) {
 		t.Fatalf("totals %s", lines[4])
 	}
 }
+
+func TestSafeCell(t *testing.T) {
+	for in, want := range map[string]string{"=HYPERLINK(1)": "'=HYPERLINK(1)", "+7": "'+7", "-x": "'-x", "@a": "'@a",
+		"Кухня": "Кухня", "": "", "https://max.ru/c/1": "https://max.ru/c/1"} {
+		if got := safeCell(in); got != want {
+			t.Errorf("safeCell(%q) = %q", in, got)
+		}
+	}
+}

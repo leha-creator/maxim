@@ -64,7 +64,8 @@ func (s *Service) Send(ctx context.Context, id uuid.UUID) error {
 		if ferr := s.finish(ctx, id, func(n *domain.Notification) { n.MarkFailed(reason, s.Clock.Now()) }); ferr != nil {
 			return ferr
 		}
-		s.log.ErrorContext(ctx, "notification failed", logx.KeyOp, op, KeyTemplate, n.Template, KeyChannel, n.Channel,
+		// Отказ без повтора — ожидаемый исход (бот не может писать пользователю, Q-38): WARN.
+		s.log.WarnContext(ctx, "notification failed", logx.KeyOp, op, KeyTemplate, n.Template, KeyChannel, n.Channel,
 			logx.KeyUserID, n.UserID, "reason", reason, logx.KeyError, err.Error())
 		return nil
 	default:

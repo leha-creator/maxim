@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,5 +181,8 @@ func (p *Placement) AcceptReminder(now time.Time) (NoticeTo, bool) {
 	if p.Status != StatusAwaitingBlogger || p.AcceptDeadlineAt == nil || !p.AcceptDeadlineAt.After(now) {
 		return NoticeTo{}, false
 	}
-	return NoticeTo{Template: NoticeAcceptReminder, Role: ActorBlogger, Key: ReminderKey(p.ID)}, true
+	// Ключ повтора с концом срока: после P-11 и нового P-02 напоминание о новом сроке не
+	// совпадает с прежним (R-10).
+	key := ReminderKey(p.ID) + ":" + strconv.FormatInt(p.AcceptDeadlineAt.Unix(), 10)
+	return NoticeTo{Template: NoticeAcceptReminder, Role: ActorBlogger, Key: key}, true
 }

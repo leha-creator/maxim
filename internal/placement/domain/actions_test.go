@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,7 +195,7 @@ func TestAcceptReminder(t *testing.T) {
 		t.Fatalf("reminder job %+v", reminder)
 	}
 	n, ok := p.AcceptReminder(reminder.RunAt)
-	if !ok || n.Template != NoticeAcceptReminder || n.Role != ActorBlogger || n.Key != ReminderKey(p.ID) {
+	if !ok || n.Template != NoticeAcceptReminder || n.Role != ActorBlogger || !strings.HasPrefix(n.Key, ReminderKey(p.ID)+":") {
 		t.Fatalf("reminder %+v %v", n, ok)
 	}
 	if _, ok := p.AcceptReminder(*p.AcceptDeadlineAt); ok {

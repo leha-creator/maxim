@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -183,8 +184,8 @@ func WriteReportCSV(w io.Writer, r Report) error {
 		if label == "" {
 			label = string(row.Status)
 		}
-		if err := cw.Write([]string{row.Channel.Title, row.Channel.Link, label, mskCell(row.PublishedAt), mskCell(row.RemovedAt),
-			intCell(row.Views), rubCell(row.CPV), rub(row.Spent), rub(row.Refunded), rub(row.Held), row.PublicationURL, campaign}); err != nil {
+		if err := cw.Write([]string{safeCell(row.Channel.Title), safeCell(row.Channel.Link), label, mskCell(row.PublishedAt), mskCell(row.RemovedAt),
+			intCell(row.Views), rubCell(row.CPV), rub(row.Spent), rub(row.Refunded), rub(row.Held), safeCell(row.PublicationURL), campaign}); err != nil {
 			return err
 		}
 	}
@@ -196,6 +197,16 @@ func WriteReportCSV(w io.Writer, r Report) error {
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// safeCell защищает текст от исполнения формулой в Excel (CSV injection): название канала задаёт
+// блогер, поэтому значение, начинающееся с =, +, -, @, табуляции или перевода строки, получает
+// ведущий апостроф.
+func safeCell(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r\n", rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
 
 // rub — копейки рублями с запятой: 1150000 → «11500,00».

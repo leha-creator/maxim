@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"maxim/mockapi/internal/api"
@@ -153,7 +154,7 @@ func writeReportCSV(w io.Writer, r api.OrderReport) error {
 		if row.PublicationUrl != nil {
 			url = *row.PublicationUrl
 		}
-		_ = cw.Write([]string{row.Channel.Title, link, string(row.Status), at(row.PublishedAt), at(row.RemovedAt), num(row.Views),
+		_ = cw.Write([]string{safeCell(row.Channel.Title), safeCell(link), string(row.Status), at(row.PublishedAt), at(row.RemovedAt), num(row.Views),
 			rubPtr(row.CpvAmount), rub(row.SpentAmount), rub(row.RefundedAmount), rub(row.HeldAmount), url, r.Utm.Campaign})
 	}
 	t := r.Totals
@@ -162,4 +163,12 @@ func writeReportCSV(w io.Writer, r api.OrderReport) error {
 		num(&views), rubPtr(t.CpvAmount), rub(t.SpentAmount), rub(t.RefundedAmount), rub(t.HeldAmount), "", r.Utm.Campaign})
 	cw.Flush()
 	return cw.Error()
+}
+
+// safeCell — текст без исполнения формулой в Excel, как в бэкенде.
+func safeCell(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r\n", rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
