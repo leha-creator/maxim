@@ -9,6 +9,7 @@ import (
 
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
 	billingdomain "github.com/leha-creator/maxim/internal/billing/domain"
+	channeldomain "github.com/leha-creator/maxim/internal/channel/domain"
 	channelpg "github.com/leha-creator/maxim/internal/channel/postgres"
 	"github.com/leha-creator/maxim/internal/integration/max"
 	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
@@ -118,4 +119,14 @@ func (b BillingNotifier) Notify(ctx context.Context, n billingdomain.Notice) err
 	}
 	return b.Svc.Notify(ctx, notificationdomain.Notice{Template: n.Template, OrganizationID: n.OrganizationID,
 		Role: notificationdomain.RoleAdvertiser, ObjectType: n.ObjectType, ObjectID: n.ObjectID, Data: n.Data})
+}
+
+// ChannelNotifier — channel/domain.Notifier поверх модуля уведомлений: блогеру о канале.
+type ChannelNotifier struct{ Svc notifier }
+
+var _ channeldomain.Notifier = ChannelNotifier{}
+
+func (b ChannelNotifier) Notify(ctx context.Context, n channeldomain.Notice) error {
+	return b.Svc.Notify(ctx, notificationdomain.Notice{Template: n.Template, OrganizationID: n.OrganizationID,
+		Role: notificationdomain.RoleBlogger, ObjectType: "channel", ObjectID: n.ChannelID.String(), Data: n.Data})
 }

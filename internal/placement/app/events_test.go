@@ -109,7 +109,7 @@ func TestTopViolation(t *testing.T) {
 		AND inbound_event_id = $2`, pid, ev) != 1 {
 		t.Fatal("P-14 history without event source")
 	}
-	if !slices.Contains(e.alerts.reasons(), "placement_disputed") || e.notices.Count(domain.NoticeDisputed) != 2 {
+	if !slices.Contains(e.alerts.reasons(), "placement_disputed") || e.notices.Count(domain.NoticeDisputed) != 3 {
 		t.Fatalf("alerts %v notices %v", e.alerts.reasons(), e.notices.Templates())
 	}
 	if len(e.logged("placement violation detected")) != 1 || len(e.logged("placement dispute opened")) != 1 {

@@ -49,6 +49,8 @@ func Register(w *job.Worker, svc *app.Service, o Options) {
 	})
 	w.Register(domain.KindRemovePlacement, placementHandler(svc.Remove),
 		job.HandlerOptions{Priority: job.PriorityHigh, ObjectRef: objectRef})
+	// Напоминание о T-01 (R-8 этапа уведомлений): устаревшее завершается без действий.
+	w.Register(domain.KindPlacementReminder, placementHandler(svc.Remind), job.HandlerOptions{ObjectRef: objectRef})
 
 	// Сверка (T-09, R-12): следующий запуск создаётся независимо от исхода.
 	w.RegisterPeriodic(domain.KindReconcilePublications, job.Every(o.ReconcileInterval), func(ctx context.Context, _ job.Running) error {

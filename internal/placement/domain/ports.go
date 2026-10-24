@@ -205,7 +205,7 @@ type Notice struct {
 }
 
 // Notifier — уведомления (R-4): вызывается в транзакции перехода и только ставит работу.
-// Реализация — модуль notification; до него — NopNotifier.
+// Реализация — модуль notification (bootstrap/bridge.PlacementNotifier).
 type Notifier interface {
 	Notify(ctx context.Context, n Notice) error
 }

@@ -192,7 +192,7 @@ Rationale: план реализует этап целиком: задание `
 
 ### Phase 3: События
 
-- [ ] **Task 8: Размещения, заказ и пост (R-6, R-8, R-9, R-10)** (depends on 5)
+- [x] **Task 8: Размещения, заказ и пост (R-6, R-8, R-9, R-10)** (depends on 5)
   - `bridge.PlacementNotifier` (`placement/domain.Notice` → `notification/domain.Notice`) вместо `NopNotifier`.
   - `placement/domain`: роль `ActorAdmin` в `NoticeTo` для P-09 и P-14; `NoticePostApproved`, `NoticeAcceptReminder`; задание `placement_reminder` с P-02 и отмена при P-03…P-06 (R-8).
   - `placement/app`: `notice()` добавляет `publish_at`, `remove_at`; при P-08 — `publication_url`, при P-10 — `views`; `VersionChanged(approved)` — `order.post_approved`; `Remind(ctx, placementID)` для задания; `placement/jobs` регистрирует `placement_reminder`.
@@ -200,7 +200,7 @@ Rationale: план реализует этап целиком: задание `
   - Тесты: таблица переходов — уведомления по 03 §4 (кто получает); P-02 ставит напоминание, P-03 его отменяет; напоминание после P-05 — без уведомления; одобрение версии — `order.post_approved`.
   - Файлы: `internal/placement/domain/{placement.go,actions.go,publish.go,jobs.go,*_test.go}`, `internal/placement/app/{transition.go,versions.go,reminder.go,*_test.go}`, `internal/placement/jobs/jobs.go`, `internal/bootstrap/bridge/{placement.go,notification.go}`.
 
-- [ ] **Task 9: Оплата, закрывающие документы, каналы** (depends on 5)
+- [x] **Task 9: Оплата, закрывающие документы, каналы** (depends on 5)
   - `bridge.BillingNotifier` вместо `billingapp.NopNotifier`.
   - `channel/domain.Notifier` и вызов в `channel/app.save` при смене состояния: `moderation → active` — `channel.approved`; `→ rejected` — `channel.rejected` (причина — текст администратора, в `payload` можно: это не журнал); `active → suspended` — `channel.suspended`; `→ disconnected` — `channel.disconnected` (кроме `unclaimed_expired`: канал без организации); `suspended → active` — `channel.restored`. `bridge.ChannelNotifier`.
   - Журнал: без новых событий (пишет `notification/app`).

@@ -241,8 +241,12 @@ func (c *client) login(email string) map[string]any {
 	if r := c.do(http.MethodPost, "/auth/code", map[string]string{"email": email}); r.status != http.StatusAccepted {
 		c.app.t.Fatalf("request code: %d %s", r.status, r.body)
 	}
-	if _, err := c.app.worker.RunOnce(context.Background()); err != nil {
-		c.app.t.Fatal(err)
+	// Письмо с кодом — задание; впереди в очереди могут быть другие (уведомления).
+	before := c.app.mail.Count()
+	for i := 0; i < 20 && c.app.mail.Count() == before; i++ {
+		if _, err := c.app.worker.RunOnce(context.Background()); err != nil {
+			c.app.t.Fatal(err)
+		}
 	}
 	msg, ok := c.app.mail.Last(domain.NormalizeEmail(email))
 	if !ok {

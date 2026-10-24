@@ -36,10 +36,10 @@ func TestSendToBlogger(t *testing.T) {
 	if p.Status != StatusAwaitingBlogger || c.Code != P02SendToBlogger || p.SentToBloggerAt == nil || !p.SentToBloggerAt.Equal(now) {
 		t.Fatalf("P-02: %+v", p)
 	}
-	if !p.AcceptDeadlineAt.Equal(now.Add(24*time.Hour)) || !slices.Equal(jobKeys(c.Jobs), []string{TimerKey(p.ID, TimerAccept)}) {
+	if !p.AcceptDeadlineAt.Equal(now.Add(24*time.Hour)) || !slices.Equal(jobKeys(c.Jobs), []string{TimerKey(p.ID, TimerAccept), ReminderKey(p.ID)}) {
 		t.Fatalf("T-01: %v %v", p.AcceptDeadlineAt, jobKeys(c.Jobs))
 	}
-	if len(c.Notices) != 1 || c.Notices[0] != (NoticeTo{Template: NoticeRequest, Role: ActorBlogger}) {
+	if len(c.Notices) != 1 || c.Notices[0].Template != NoticeRequest || c.Notices[0].Role != ActorBlogger {
 		t.Fatalf("notices %+v", c.Notices)
 	}
 
@@ -69,7 +69,7 @@ func TestBloggerFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p.Status != StatusAwaitingSchedule || !p.ScheduleDeadlineAt.Equal(now.Add(24*time.Hour)) || *c.UserID != user ||
-		!slices.Equal(c.CancelJobs, []string{TimerKey(p.ID, TimerAccept)}) ||
+		!slices.Equal(c.CancelJobs, []string{TimerKey(p.ID, TimerAccept), ReminderKey(p.ID)}) ||
 		!slices.Equal(jobKeys(c.Jobs), []string{TimerKey(p.ID, TimerSchedule)}) {
 		t.Fatalf("P-03: %+v %+v", p, c)
 	}
@@ -106,7 +106,7 @@ func TestBloggerFlow(t *testing.T) {
 		!slices.Equal(jobKeys(c.Jobs), []string{TimerKey(p.ID, TimerWindow)}) {
 		t.Fatalf("P-11 jobs: %+v", c)
 	}
-	if c.Notices[0] != (NoticeTo{Template: NoticeReturned, Role: ActorBlogger}) {
+	if c.Notices[0].Template != NoticeReturned || c.Notices[0].Role != ActorBlogger {
 		t.Fatalf("P-11 notice %+v", c.Notices)
 	}
 }
@@ -126,7 +126,7 @@ func TestCancelAndExpire(t *testing.T) {
 		t.Fatalf("advertiser cancels accepted placement: %v", err)
 	}
 	c, err := p.Cancel(ActorSystem, ReasonChannelUnavailable, now)
-	if err != nil || len(c.CancelJobs) != 5 {
+	if err != nil || len(c.CancelJobs) != 6 {
 		t.Fatalf("system cancel: %v %+v", err, c)
 	}
 	for timer, want := range map[TimerCode]TransitionCode{TimerAccept: P05AcceptTimeout, TimerSchedule: P18ScheduleTimeout, TimerWindow: P06Cancel} {
@@ -173,5 +173,40 @@ func TestReturnToCreatedOnErirRejection(t *testing.T) {
 	}
 	if StatusScheduled.WasPublished() || StatusCancelled.WasPublished() {
 		t.Error("scheduled or cancelled reported as published")
+	}
+}
+
+// Напоминание о T-01 (R-8 этапа уведомлений): за три часа до срока, пока запрос ждёт блогера.
+func TestAcceptReminder(t *testing.T) {
+	now := time.Date(2026, 10, 20, 7, 0, 0, 0, time.UTC)
+	p := testPlacement(StatusCreated)
+	c, err := p.SendToBlogger(true, true, VersionReady, now, DefaultTiming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reminder *Job
+	for i := range c.Jobs {
+		if c.Jobs[i].Kind == KindPlacementReminder {
+			reminder = &c.Jobs[i]
+		}
+	}
+	if reminder == nil || !reminder.RunAt.Equal(p.AcceptDeadlineAt.Add(-ReminderLead)) || reminder.DedupeKey != ReminderKey(p.ID) {
+		t.Fatalf("reminder job %+v", reminder)
+	}
+	n, ok := p.AcceptReminder(reminder.RunAt)
+	if !ok || n.Template != NoticeAcceptReminder || n.Role != ActorBlogger || n.Key != ReminderKey(p.ID) {
+		t.Fatalf("reminder %+v %v", n, ok)
+	}
+	if _, ok := p.AcceptReminder(*p.AcceptDeadlineAt); ok {
+		t.Fatal("reminder after the deadline")
+	}
+	if _, err := p.Accept(uuid.New(), reminder.RunAt, DefaultTiming); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := p.AcceptReminder(reminder.RunAt); ok {
+		t.Fatal("reminder after acceptance")
+	}
+	if _, ok := ReminderJob(p.ID, now.Add(2*time.Hour), now); ok {
+		t.Fatal("reminder for a deadline closer than the lead")
 	}
 }

@@ -190,6 +190,7 @@ func newModules(cfg Config, in *infra) *modules {
 	svc := accountapp.New(deps)
 	channelSvc, channelStore := newChannelService(cfg, in, txRunner, queue, auditLog)
 	notificationSvc, notificationStore := newNotificationService(cfg, in, txRunner, queue, accountStore, channelStore)
+	channelSvc.Notifier = bridge.ChannelNotifier{Svc: notificationSvc}
 	postSvc := newPostService(cfg, in, txRunner, queue, auditLog, accountStore)
 	ledgerSvc, ledgerStore := newLedgerService(cfg, in, txRunner, auditLog)
 	billingSvc, billingStore := newBillingService(cfg, in, txRunner, auditLog, accountStore, ledgerSvc, notificationSvc)

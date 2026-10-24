@@ -8,3 +8,5 @@ Caddyfile text eol=lf
 go.mod text eol=lf
 go.sum text eol=lf
 *.golden text eol=lf
+*.txt text eol=lf
+*.json text eol=lf

@@ -176,6 +176,11 @@ func (p *Placement) Publish(msg SentMessage, now time.Time) (StateChange, error)
 	p.PublishedAt, p.RemoveAt = &at, &removeAt
 	change.MoveJobs = []JobMove{{DedupeKey: RemoveKey(p.ID), RunAt: removeAt}}
 	change.Notices = p.notifyBoth(NoticePublished)
+	if msg.URL != "" {
+		for i := range change.Notices {
+			change.Notices[i].Data = map[string]any{"publication_url": msg.URL}
+		}
+	}
 	return change, nil
 }
 
@@ -188,7 +193,8 @@ func (p *Placement) FailPublish(reason, text string, now time.Time) (StateChange
 	}
 	change.ReasonText = text
 	change.CancelJobs = []string{PublishKey(p.ID), RemoveKey(p.ID)}
-	change.Notices = p.notifyBoth(NoticeFailed)
+	// Публикация не состоялась — администратору тоже (R-9 этапа уведомлений).
+	change.Notices = append(p.notifyBoth(NoticeFailed), NoticeTo{Template: NoticeFailed, Role: ActorAdmin})
 	return change, nil
 }
 
@@ -217,6 +223,6 @@ func (p *Placement) OpenDispute(kind ViolationKind, now time.Time, r ControlRule
 	}
 	change.CancelJobs = []string{TimerKey(p.ID, TimerClaim)}
 	change.Jobs = []Job{TimerJob(p.ID, TimerDispute, now.Add(r.DisputeDeadline), StatusDisputed)}
-	change.Notices = p.notifyBoth(NoticeDisputed)
+	change.Notices = append(p.notifyBoth(NoticeDisputed), NoticeTo{Template: NoticeDisputed, Role: ActorAdmin})
 	return change, nil
 }

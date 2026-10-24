@@ -197,7 +197,8 @@ type Notice struct {
 	Data           map[string]any
 }
 
-// Notifier — уведомления. До модуля уведомлений — NopNotifier.
+// Notifier — уведомления; реализация — модуль notification (bootstrap/bridge.BillingNotifier),
+// в тестах без него — NopNotifier.
 type Notifier interface {
 	Notify(ctx context.Context, n Notice) error
 }

@@ -50,7 +50,7 @@ func TestVersionReadySendsToBloggers(t *testing.T) {
 			}
 		}
 	}
-	if e.notices.Count(domain.NoticeRequest) != 1 {
+	if e.notices.Count(domain.NoticeRequest) != 1 || e.notices.Count(domain.NoticePostApproved) != 1 {
 		t.Fatalf("notices %v", e.notices.Templates())
 	}
 	// Повтор события той же версии ничего не меняет.

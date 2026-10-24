@@ -87,6 +87,14 @@ func (s *Service) VersionChanged(ctx context.Context, versionID uuid.UUID, to do
 				released++
 			}
 		}
+		if to == domain.VersionApproved {
+			// Одна версия — одно уведомление: повтор события не дублирует его.
+			if err := s.Notifier.Notify(ctx, domain.Notice{Template: domain.NoticePostApproved, OrganizationID: o.OrganizationID,
+				Role: domain.ActorAdvertiser, ObjectType: "order", ObjectID: o.ID.String(), Key: "post_approved:" + versionID.String(),
+				Data: map[string]any{"order_id": o.ID, "order_number": o.Number, "version_id": versionID}}); err != nil {
+				return err
+			}
+		}
 		if to == domain.VersionRejected {
 			if err := s.Notifier.Notify(ctx, domain.Notice{Template: domain.NoticePostRejected, OrganizationID: o.OrganizationID,
 				Role: domain.ActorAdvertiser, ObjectType: "order", ObjectID: o.ID.String(),

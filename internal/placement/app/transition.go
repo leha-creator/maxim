@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -103,18 +104,38 @@ func toJob(j domain.Job) job.Job {
 		}
 	case domain.KindCheckPublication:
 		attempts = checkAttempts
+	case domain.KindPlacementReminder:
+		attempts = timerAttempts
 	}
 	return job.Job{Kind: j.Kind, DedupeKey: j.DedupeKey, RunAt: j.RunAt, Payload: j.Payload, MaxAttempts: attempts}
 }
 
-// notice — уведомление стороне размещения: организация по роли (R-4).
+// notice — уведомление стороне размещения: организация по роли (R-4), администратору — без
+// организации. Данные — заказ, канал и сроки размещения для текста (R-6 этапа уведомлений);
+// данные перехода (адрес публикации) — поверх.
 func (s *Service) notice(o domain.Order, p domain.Placement, n domain.NoticeTo) domain.Notice {
 	org := o.OrganizationID
-	if n.Role == domain.ActorBlogger {
+	switch n.Role {
+	case domain.ActorBlogger:
 		org = p.BloggerOrgID
+	case domain.ActorAdmin:
+		org = uuid.Nil
+	}
+	data := map[string]any{"order_id": o.ID, "order_number": o.Number, "channel_id": p.ChannelID}
+	for key, at := range map[string]*time.Time{"accept_deadline_at": p.AcceptDeadlineAt, "publish_at": p.PublishAt,
+		"remove_at": p.RemoveAt, "published_at": p.PublishedAt, "claim_deadline_at": p.ClaimDeadlineAt} {
+		if at != nil {
+			data[key] = at.UTC()
+		}
+	}
+	if p.FinalViews != nil {
+		data["views"] = *p.FinalViews
+	}
+	for k, v := range n.Data {
+		data[k] = v
 	}
 	return domain.Notice{Template: n.Template, OrganizationID: org, Role: n.Role, ObjectType: "placement",
-		ObjectID: p.ID.String(), Data: map[string]any{"order_id": o.ID, "order_number": o.Number, "channel_id": p.ChannelID}}
+		ObjectID: p.ID.String(), Key: n.Key, Data: data}
 }
 
 // refreshOrder пересчитывает состояние заказа (03 §1.2) по текущей версии из базы.
