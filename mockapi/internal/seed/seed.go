@@ -362,16 +362,36 @@ func Load(d *store.Data, now time.Time) {
 		CreatedAt: ago(70), CompletedAt: ptr(ago(60))})
 
 	// ------------------------------------------------ уведомления
-	note := func(user uuid.UUID, tpl, title, text string, obj uuid.UUID, hoursAgo float64, read bool) {
+	// Коды и ссылки — как у бэкенда (каталог уведомлений, 04 §8; notification/domain.Link).
+	note := func(user uuid.UUID, tpl, title, text, objType string, obj uuid.UUID, order *uuid.UUID, link string, hoursAgo float64, read bool) {
 		n := &store.Notification{ID: store.NewID(), UserID: user, Template: tpl, Title: title, Text: text,
-			ObjectType: ptr("placement"), ObjectID: ptr(obj), CreatedAt: ago(hoursAgo)}
+			ObjectType: ptr(objType), ObjectID: ptr(obj), OrderID: order, Link: link, CreatedAt: ago(hoursAgo)}
 		if read {
 			n.ReadAt = ptr(ago(hoursAgo - 0.5))
 		}
 		d.Notifications = append(d.Notifications, n)
 	}
-	note(UserAdvertiser, "placement.removed", "Пост снят", "Канал «Тестовый канал о кулинарии». Примите размещение или подайте претензию в течение 24 часов.", p804.ID, 4, false)
-	note(UserAdvertiser, "placement.published", "Пост опубликован", "Канал «Образцовый бизнес», заказ 1001.", p803.ID, 10, true)
-	note(UserBlogger, "placement.awaiting_blogger", "Новый запрос на размещение", "Заказ 1001, канал «Выдуманные рецепты».", p801.ID, 28, false)
-	note(UserBlogger, "payout.succeeded", "Выплата прошла", "Заказ 1002, канал «Выдуманные рецепты».", p806.ID, 60, true)
+	advOrder := func(o uuid.UUID) string { return "/adv/orders/" + o.String() }
+	blgPlacement := func(p uuid.UUID) string { return "/blg/placements?placement=" + p.String() }
+	note(UserAdvertiser, "placement.removed", "Пост снят из «Тестовый канал о кулинарии»",
+		"Размещение по заказу № 1001 завершено: пост снят из «Тестовый канал о кулинарии».\nПросмотров: 2 400.\nПретензию можно открыть в течение 24 часов, после этого размещение будет принято автоматически.",
+		"placement", p804.ID, ptr(OrderActive), advOrder(OrderActive), 4, false)
+	note(UserAdvertiser, "placement.published", "Пост опубликован в «Образцовый бизнес»",
+		"Пост по заказу № 1001 вышел в «Образцовый бизнес».", "placement", p803.ID, ptr(OrderActive), advOrder(OrderActive), 10, true)
+	note(UserAdvertiser, "order.post_approved", "Пост заказа № 1001 одобрен",
+		"Модератор одобрил пост заказа № 1001. Запросы отправлены блогерам.", "order", OrderActive, ptr(OrderActive), advOrder(OrderActive), 30, true)
+	note(UserAdvertiser, "balance.deposited", "Баланс пополнен на 150 000 ₽",
+		"На баланс зачислено 150 000 ₽ по счёту СЧ-2026-000001.", "invoice", InvoicePaid, nil, "/adv/balance", 50, true)
+	note(UserBlogger, "placement.request", "Новый запрос на размещение в «Выдуманные рецепты»",
+		"Рекламодатель хочет разместить пост в «Выдуманные рецепты», заказ № 1001.\nОтветьте в течение суток, иначе запрос истечёт.",
+		"placement", p801.ID, ptr(OrderActive), blgPlacement(p801.ID), 28, false)
+	note(UserBlogger, "channel.approved", "Канал «Выдуманные рецепты» прошёл модерацию",
+		"Канал «Выдуманные рецепты» опубликован в каталоге.", "channel", ChannelBlogger1, nil, "/blg/channels/"+ChannelBlogger1.String(), 200, true)
+	note(UserBlogger, "placement.disputed", "Претензия по размещению в «Выдуманные рецепты»",
+		"Рекламодатель открыл претензию по заказу № 1002. Платформа рассмотрит её и сообщит решение.",
+		"placement", p805.ID, ptr(OrderPast), blgPlacement(p805.ID), 90, true)
+	note(UserBlogger, "payout.succeeded", "Выплата получена",
+		"Деньги за размещение в «Выдуманные рецепты», заказ № 1002, выплачены.", "placement", p806.ID, ptr(OrderPast), blgPlacement(p806.ID), 60, true)
+	note(UserAdmin, "placement.disputed", "Претензия по размещению",
+		"Рекламодатель открыл претензию по заказу № 1002. Нужно решение администратора.", "placement", p805.ID, ptr(OrderPast), "/adm/placements/"+p805.ID.String(), 90, false)
 }

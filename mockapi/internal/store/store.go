@@ -309,13 +309,14 @@ func (tx *Tx) OrgUsers(orgID uuid.UUID) []*User {
 	return out
 }
 
-// Notify создаёт уведомление в кабинете всем пользователям организации.
-func (tx *Tx) Notify(orgID uuid.UUID, template, title, text, objectType string, objectID uuid.UUID) {
+// Notify создаёт уведомление в кабинете всем пользователям организации. Коды шаблонов — из
+// каталога уведомлений бэкенда (04 §8); link — путь в кабинете, как у бэкенда.
+func (tx *Tx) Notify(orgID uuid.UUID, template, title, text, objectType string, objectID uuid.UUID, orderID *uuid.UUID, link string) {
 	for _, u := range tx.OrgUsers(orgID) {
 		ot, oid := objectType, objectID
 		tx.D.Notifications = append(tx.D.Notifications, &Notification{
 			ID: NewID(), UserID: u.ID, Template: template, Title: title, Text: text,
-			ObjectType: &ot, ObjectID: &oid, CreatedAt: tx.Now,
+			ObjectType: &ot, ObjectID: &oid, OrderID: orderID, Link: link, CreatedAt: tx.Now,
 		})
 	}
 }

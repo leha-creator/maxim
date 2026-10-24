@@ -11,6 +11,7 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	"github.com/leha-creator/maxim/internal/integration/ord"
 	"github.com/leha-creator/maxim/internal/integration/ord/ordfake"
+	notificationdomain "github.com/leha-creator/maxim/internal/notification/domain"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/cleanup"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
@@ -26,6 +27,7 @@ import (
 type mailer interface {
 	accountdomain.LoginCodeSender
 	alert.Mailer
+	notificationdomain.Mailer
 }
 
 // maxAPI — методы адаптера MAX, которые использует сборка (integration/max, maxfake).

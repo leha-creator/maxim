@@ -9,6 +9,7 @@ import (
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	"github.com/leha-creator/maxim/internal/integration/bank/clientbank"
 	ledgerapp "github.com/leha-creator/maxim/internal/ledger/app"
+	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/tx"
@@ -18,15 +19,16 @@ import (
 type billingHandlers = billinghttp.Handlers
 
 // newBillingService собирает модуль расчётов: счета, выписки, закрывающие документы. Деньги
-// пишет журнал (bridge.BillingLedger); реквизиты — модуль аккаунтов. Уведомления —
-// NopNotifier до этапа «Уведомления и отчёт по кампании» (R-17).
+// пишет журнал (bridge.BillingLedger); реквизиты — модуль аккаунтов; уведомления
+// рекламодателю — модуль уведомлений (R-17).
 func newBillingService(cfg Config, in *infra, txRunner tx.Runner, auditLog *audit.Log, accounts *accountpg.Store,
-	ledger *ledgerapp.Service) (*billingapp.Service, *billingpg.Store) {
+	ledger *ledgerapp.Service, notifier *notificationapp.Service) (*billingapp.Service, *billingpg.Store) {
 	log := in.log.With(logx.KeyModule, "billing")
 	store := billingpg.New(in.pool, log)
 	deps := billingapp.Deps{
 		Invoices: store.Invoices(), Statements: store.Statements(), BankTransactions: store.BankTransactions(),
 		ClosingActs: store.ClosingActs(), Ledger: bridge.BillingLedger{Svc: ledger},
+		Notifier:      bridge.BillingNotifier{Svc: notifier},
 		Organizations: bridge.BillingOrganizations{Orgs: accounts.Organizations()},
 		Renderer:      billingpdf.New(in.clock, log),
 		Parser:        clientbank.New(cfg.StatementMaxBytes(), log),

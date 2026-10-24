@@ -58,7 +58,7 @@ Rationale: план реализует этап целиком: задание `
 | R-8 | Напоминание T-01 | Задание `placement_reminder` (`dedupe_key` `reminder:{placement_id}:T-01`, 3 попытки) на `accept_deadline_at − 3 ч` ставится вместе с P-02, если до срока больше 3 ч; отменяется P-03, P-04, P-05, P-06. Обработчик проверяет `awaiting_blogger` и тот же срок, иначе устарело. Шаблон `placement.accept_reminder` | 8 |
 | R-9 | Уведомление администратора | P-09 и P-14 по 03 §4 уведомляют администратора: в кабинете (`placement.failed`, `placement.disputed` с ролью `admin`). Остальные события администратора — оповещения `platform/alert` | 2, 8 |
 | R-10 | Повтор события | Транзакционные события повторно уведомление не создают (переход атомарен). Для заданий-напоминаний — ключ `Notice.Key`: уникальный индекс `(user_id, channel, dedupe_key)` и `ON CONFLICT DO NOTHING` | 1, 4, 8 |
-| R-11 | Выплаты и споры | Коды есть в каталоге и с текстами: `placement.dispute_resolved` (P-15, обоим), `payout.sent` («Принято, выплата отправлена», блогеру), `payout.paid` (P-16, блогеру, со ссылкой на чек `receipt_url`), `payout.failed` (блогеру). Вызывающих в master нет; подключение — раздел «Подключение выплат и споров» | 2, 3 |
+| R-11 | Выплаты и споры | Коды есть в каталоге и с текстами: `placement.dispute_resolved` (P-15, обоим), `payout.sent` («Принято, выплата отправлена», блогеру), `payout.succeeded` (P-16, блогеру, со ссылкой на чек `receipt_url`), `payout.failed` (блогеру), `rocketwork.active` и `rocketwork.blocked` (статус исполнителя, блогеру). Коды совпадают с R-15 плана `rocketwork-payouts.md`. Вызывающих в master нет; подключение — раздел «Подключение выплат и споров» | 2, 3 |
 | R-12 | Кабинет: видимость | `listNotifications` — уведомления пользователя сессии (по `user_id`) в канале `cabinet`, новые сверху, курсор `(created_at, id)`; `unread=true` — без `read_at`. `total` — число строк по фильтру. `markNotificationRead` — чужое или не кабинетное — `404`; повтор — `204`. `markAllNotificationsRead` — все непрочитанные пользователя, повтор безопасен | 4, 7 |
 | R-13 | `order_id` в уведомлении (MAXI-50) | В схему `Notification` добавляется необязательный `order_id` (из `payload.order_id`), чтобы кабинет вёл на заказ. Плюс необязательный `link` — относительный путь в кабинете (R-6) | 7 |
 | R-14 | Отчёт по заказу (S-09) | `getOrderReport` по правилам `mockapi`: строка — канал, состояние, `published_at`, `removed_at`, `views` (последнее считанное значение, Q-08), `publication_url`, `utm_campaign = order_{номер}` (A-21); суммы — `spent` (`accepted`, `paid`: цена минус `refund_amount`; `refunded`: 0), `refunded` (финальные без распределения, удержание снято, — вся цена; `refund_amount` после распределения), `held` (активное удержание). Новое: `cpv_amount` строки и итога — потрачено, делённое на просмотры, округление вниз в копейках; нет просмотров — нет CPV (D-28). `links` отчёта — адреса ссылок текущей версии поста с UTM (как ушли в канал) | 10 |
@@ -80,7 +80,7 @@ Rationale: план реализует этап целиком: задание `
 | E-5 | Публичная ссылка на пост | `publication.url` — из ответа MAX (`message.url`), вида `https://max.ru/c/{chat}/{mid}`; если MAX не вернул — ссылки в строке нет | отчёт, шаблоны |
 | E-6 | Почта | SMTP принимает письмо синхронно, отказ адреса — ошибка `5xx` при `RCPT TO`; отчёты о недоставке (bounce) не обрабатываются | `integration/mail` |
 | E-7 | Тексты уведомлений | Тексты написаны для этапа, без согласования с продуктом; правятся в `templates/notification` без изменения кода | `templates/notification` |
-| E-8 | Чек выплаты | `payout.paid` получает `receipt_url` — ссылку на чек «Мой налог» из Рокет Ворк (05 §4.3); формат ссылки неизвестен, в шаблоне выводится как есть | `templates/notification/payout.paid.tmpl` |
+| E-8 | Чек выплаты | `payout.succeeded` получает `receipt_url` — ссылку на чек «Мой налог» из Рокет Ворк (05 §4.3); формат ссылки неизвестен, в шаблоне выводится как есть | `templates/notification/payout.succeeded.tmpl` |
 
 ## Каталог шаблонов
 
@@ -104,13 +104,13 @@ Rationale: план реализует этап целиком: задание `
 | `placement.removal_overdue` | блогер | T-10 |
 | `placement.disputed` | оба, администратор | P-14 |
 | `placement.dispute_resolved` | оба | P-15 (только код) |
-| `payout.sent`, `payout.paid`, `payout.failed` | блогер | выплаты (только коды) |
+| `payout.sent`, `payout.succeeded`, `payout.failed`, `rocketwork.active`, `rocketwork.blocked` | блогер | выплаты и статус исполнителя (только коды) |
 | `channel.approved`, `channel.rejected`, `channel.suspended`, `channel.disconnected` | блогер | смена состояния канала (новое) |
 | `channel.restored` | блогер | права бота вернулись (S-25 шаг 3) |
 
 ## Подключение выплат и споров (после слияния этапов)
 
-- **Выплаты (`internal/payout`).** Порт `payout/domain.Notifier` с той же сигнатурой `Notify(ctx, Notice)`; в `bootstrap` — `bridge.PayoutNotifier` над `notification/app.Notify` (как `bridge.BillingNotifier`). Вызовы в транзакции перехода выплаты: создание выплаты после P-12/P-13 — `payout.sent` (роль `blogger`, `Data`: `placement_id`, `channel_id`, `order_number`, `amount`); P-16 — `payout.paid` (+`receipt_url`); выплата отклонена или исчерпаны попытки `send_payout` — `payout.failed` (+`reason` кодом, без текста Рокет Ворк). Объект — `payout`, ссылка — `/blogger/payouts`.
+- **Выплаты (`internal/payout`).** Порт `payout/domain.Notifier` с той же сигнатурой `Notify(ctx, Notice)`; в `bootstrap` — `bridge.PayoutNotifier` над `notification/app.Notify` (как `bridge.BillingNotifier`). Вызовы в транзакции перехода выплаты: создание выплаты после P-12/P-13 — `payout.sent` (роль `blogger`, `Data`: `placement_id`, `channel_id`, `order_number`, `amount`); P-16 — `payout.succeeded` (+`receipt_url`); выплата отклонена или исчерпаны попытки `send_payout` — `payout.failed` (+`reason` кодом, без текста Рокет Ворк). Объект — `payout`, ссылка — `/blg/payouts`. Статус исполнителя (`ApplyContractor`) — `rocketwork.active` / `rocketwork.blocked` (+`reason` кодом), объект — `rocketwork_contractor`. `payout.domain.Notice` без роли: переходник ставит `RoleBlogger`. `ContractorGate` в `newPlacementService` заменить на реализацию модуля выплат.
 - **Приёмка и споры.** Модуль размещений уже уведомляет из `StateChange.Notices`: для P-12/P-13 добавить в `domain` `Notices` по таблице (блогеру — через `payout.sent` выплаты, отдельного шаблона приёмки нет); для P-15 — `p.notifyBoth(NoticeDisputeResolved)` с `Data` `performance_share`, `refund_amount`. Претензия (S-08) — P-14 уже уведомляет обоих и администратора.
 - Проверка после подключения: тест каталога (`TestCatalogCodesHaveCallers` переводит коды из списка «ждут модуль» в обычные) и сквозной сценарий выплаты.
 
@@ -158,13 +158,13 @@ Rationale: план реализует этап целиком: задание `
 
 ### Phase 2: Хранение, доставка, кабинет
 
-- [ ] **Task 4: `notification/postgres` (R-4, R-10, R-12, R-16)** (depends on 1, 2)
+- [x] **Task 4: `notification/postgres` (R-4, R-10, R-12, R-16)** (depends on 1, 2)
   - `sqlc.yaml`: запись модуля; `queries/notifications.sql`: вставка с `ON CONFLICT DO NOTHING`, чтение для отправки с `FOR UPDATE`, отметки `sent`/`failed`/попытка, список кабинета с курсором и `unread`, число по фильтру, отметка прочитанным (своё, кабинет), отметка всех, удаление старых конечных пачкой.
   - Журнал: не применимо (адаптер без событий предметной области).
   - Тесты (PostgreSQL): курсор, `unread`, чужое не отмечается, повтор ключа, очистка не трогает `pending`.
   - Файлы: `internal/notification/postgres/{store.go,notifications.go,*_test.go,queries/notifications.sql,sqlc/*}`, `sqlc.yaml`.
 
-- [ ] **Task 5: `notification/app` и задание `send_notification` (R-1…R-7, R-10)** (depends on 3, 4)
+- [x] **Task 5: `notification/app` и задание `send_notification` (R-1…R-7, R-10)** (depends on 3, 4)
   - `Notify(ctx, Notice)` — только в транзакции вызывающего (`tx`): адресаты, `Plan`, вставка, `send_notification` для `max_bot`/`email` (I-10).
   - `Send(ctx, notificationID, attempt)` — строка не `pending` — выход; почта адресата читается в момент отправки (не в `payload` задания); бот — приоритет «ответы и уведомления»; успех — `sent`; отказ без повтора — `failed`; иначе ошибка (повтор), попытка и `last_error` (без персональных данных); `Exhausted` — `failed`.
   - `List`, `MarkRead`, `MarkAllRead`.
@@ -173,7 +173,7 @@ Rationale: план реализует этап целиком: задание `
   - Тесты (PostgreSQL, `maxfake`, `mailfake`): уведомление блогеру — три строки и два задания; отправка — `sent`, текст в `maxfake`; отказ MAX `403` — `failed` без повтора, письмо всё равно ушло; повтор задания после `sent` — без второй отправки; откат транзакции события — ни строк, ни заданий.
   - Файлы: `internal/notification/app/{service.go,notify.go,send.go,cabinet.go,*_test.go}`, `internal/notification/jobs/jobs.go`, `internal/notification/notificationtest/*`.
 
-- [ ] **Task 6: Адаптеры доставки и переходники (R-1, R-3, R-7, E-1, E-6)** (depends on 5)
+- [x] **Task 6: Адаптеры доставки и переходники (R-1, R-3, R-7, E-1, E-6)** (depends on 5)
   - `internal/integration/mail`: `SendNotification(ctx, to, subject, text, html)`; `mailfake` запоминает такие письма.
   - `internal/bootstrap/bridge/notification.go`: `NotificationRecipients` (члены организации и администраторы над `account/postgres`), `NotificationChannels` (название и `added_by_max_user_id` над `channel/postgres`), `NotificationMessenger` (над `maxAPI.SendUserMessage` с `max.WithPriority(PriorityReply)`, отказ `403/404` — `job.Permanent`, E-1).
   - Журнал: адаптеры MAX и почты уже пишут свои события; переходники — DEBUG при пропуске адресата.
@@ -181,9 +181,9 @@ Rationale: план реализует этап целиком: задание `
   - Тесты: `mailfake` хранит письмо; переходник MAX переводит `403` в отказ без повтора (поддельный клиент).
   - Файлы: `internal/integration/mail/{mail.go,mail_test.go,mailfake/fake.go}`, `internal/bootstrap/bridge/notification.go`, при необходимости `internal/account/postgres`, `internal/channel/postgres` (выборки).
 
-- [ ] **Task 7: Кабинет и контракт уведомлений (R-12, R-13)** (depends on 5)
+- [x] **Task 7: Кабинет и контракт уведомлений (R-12, R-13)** (depends on 5)
   - `api/openapi.yaml`: `Notification.order_id`, `Notification.link`; `go generate ./internal/apigen`.
-  - `internal/notification/httpapi`: `listNotifications`, `markNotificationRead`, `markAllNotificationsRead` (нужна только сессия: принципал `httpx` из context без `RequireCabinet` — у администратора нет организации и кабинета); удаление из `unimplemented.go`.
+  - `internal/notification/httpapi`: `listNotifications`, `markNotificationRead`, `markAllNotificationsRead` (нужна только сессия: принципал `httpx` из context без `RequireCabinet` — у администратора нет организации и кабинета); `unimplemented.go` генерируется `genstub` по всем операциям и не правится: обработчики модуля встраиваются в `apiImpl` выше заглушек. В `listNotifications` добавлен ответ `422` (испорченный курсор).
   - `mockapi`: `order_id` и `link` в уведомлениях; уведомления администратора, шаблоны `balance.deposited`, `order.post_approved`, `placement.disputed` в сценариях заглушки; контрактный тест проходит.
   - Журнал: INFO `notifications marked read` (`count`), DEBUG `notifications listed`.
   - Тесты (`httptest` поверх сервера): `401` без сессии; список, `unread`, курсор; чужое — `404`; `read-all` дважды — `204`.

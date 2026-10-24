@@ -125,7 +125,7 @@ func TestLink(t *testing.T) {
 		{Notice{Template: "order.post_rejected", Role: RoleAdvertiser, ObjectType: "order", ObjectID: "o"}, "/adv/orders/o"},
 		{Notice{Template: "balance.deposited", Role: RoleAdvertiser}, "/adv/balance"},
 		{Notice{Template: "channel.approved", Role: RoleBlogger, ObjectType: "channel", ObjectID: "c"}, "/blg/channels/c"},
-		{Notice{Template: "payout.paid", Role: RoleBlogger, ObjectType: "payout", ObjectID: "x"}, "/blg/payouts"},
+		{Notice{Template: "payout.succeeded", Role: RoleBlogger, ObjectType: "payout", ObjectID: "x"}, "/blg/payouts"},
 		{Notice{Template: "placement.failed", Role: RoleAdmin, ObjectType: "placement", ObjectID: "p"}, "/adm/placements/p"},
 	}
 	for _, c := range cases {

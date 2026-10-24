@@ -130,22 +130,22 @@ func (s *Service) closingAct(ctx context.Context, op string, p domain.Period, or
 			return err
 		}
 		created = true
-		return s.Audit.Record(ctx, audit.Entry{
+		if err := s.Audit.Record(ctx, audit.Entry{
 			Action: ActionClosingActGenerated, ObjectType: "closing_act", ObjectID: act.ID.String(), ActorType: audit.ActorSystem,
 			OrganizationID: ptr(orgID), Data: map[string]any{"number": act.Number, "period": p.String(),
 				"placements_amount": int64(placements), "fee_amount": int64(fee), "placements": len(lines)},
-		})
+		}); err != nil {
+			return err
+		}
+		// Уведомление — в транзакции документа (I-10).
+		return s.Notifier.Notify(ctx, domain.Notice{Template: domain.NoticeClosingActsReady, OrganizationID: orgID,
+			ObjectType: "closing_act", ObjectID: act.ID.String(), Data: map[string]any{"number": act.Number, "period": p.String()}})
 	})
 	if err != nil || !created {
 		return false, err
 	}
 	s.log.InfoContext(ctx, "closing act created", logx.KeyOp, op, KeyClosingActID, act.ID, logx.KeyOrganizationID, orgID,
 		"placements_amount", int64(placements), "fee_amount", int64(fee))
-	if err := s.Notifier.Notify(ctx, domain.Notice{Template: domain.NoticeClosingActsReady, OrganizationID: orgID,
-		ObjectType: "closing_act", ObjectID: act.ID.String(), Data: map[string]any{"number": act.Number, "period": p.String()}}); err != nil {
-		s.log.ErrorContext(ctx, "notification failed", logx.KeyOp, op, "template", domain.NoticeClosingActsReady,
-			KeyClosingActID, act.ID, logx.KeyError, err.Error())
-	}
 	return true, nil
 }
 

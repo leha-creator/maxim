@@ -199,7 +199,9 @@ type Notice struct {
 	Role           ActorType
 	ObjectType     string
 	ObjectID       string
-	Data           map[string]any
+	// Key — ключ повтора (напоминание T-01): одно уведомление на ключ; пусто — без проверки.
+	Key  string
+	Data map[string]any
 }
 
 // Notifier — уведомления (R-4): вызывается в транзакции перехода и только ставит работу.

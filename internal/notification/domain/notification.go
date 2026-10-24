@@ -143,3 +143,8 @@ func uuidFrom(v any) *uuid.UUID {
 	}
 	return nil
 }
+
+// MarkExhausted — попытки задания исчерпаны; последняя попытка уже засчитана MarkAttempt.
+func (n *Notification) MarkExhausted(reason string, now time.Time) {
+	n.Status, n.LastError, n.UpdatedAt = StatusFailed, &reason, now
+}

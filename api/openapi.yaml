@@ -324,6 +324,7 @@ paths:
                         items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /notifications/read-all:
     post:
       tags: [notifications]
@@ -2304,11 +2305,21 @@ components:
       required: [id, template, title, text, created_at, is_read]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
-        template: { type: string, example: placement.awaiting_blogger }
+        template:
+          type: string
+          example: placement.request
+          description: Код шаблона из каталога уведомлений (04 §8)
         title: { type: string }
-        text: { type: string }
+        text: { type: string, description: Текст без разметки }
         object_type: { type: string, example: placement }
         object_id: { $ref: '#/components/schemas/Uuid' }
+        order_id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Заказ, к которому относится уведомление (размещение, пост, маркировка)
+        link:
+          type: string
+          example: /adv/orders/0190a000-0000-7000-8000-000000000101
+          description: Путь в кабинете к объекту уведомления; нет — объект без своей страницы
         is_read: { type: boolean }
         created_at: { type: string, format: date-time }
 

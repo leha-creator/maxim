@@ -2,6 +2,9 @@ package domain
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,4 +76,34 @@ type Messenger interface {
 // Mailer — письмо. Реализация — integration/mail. Неверный адрес — job.Permanent.
 type Mailer interface {
 	SendNotification(ctx context.Context, to, subject, text, html string) error
+}
+
+// ErrInvalidCursor — курсор страницы испорчен.
+var ErrInvalidCursor = errors.New("notification: invalid cursor")
+
+type cursorJSON struct {
+	T time.Time `json:"t"`
+	I uuid.UUID `json:"i"`
+}
+
+// Encode — курсор для ответа API.
+func (c Cursor) Encode() string {
+	raw, _ := json.Marshal(cursorJSON{T: c.CreatedAt, I: c.ID})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+// DecodeCursor разбирает курсор; пустая строка — первая страница.
+func DecodeCursor(s string) (*Cursor, error) {
+	if s == "" {
+		return nil, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, ErrInvalidCursor
+	}
+	var c cursorJSON
+	if err := json.Unmarshal(raw, &c); err != nil || c.I == uuid.Nil || c.T.IsZero() {
+		return nil, ErrInvalidCursor
+	}
+	return &Cursor{CreatedAt: c.T, ID: c.I}, nil
 }

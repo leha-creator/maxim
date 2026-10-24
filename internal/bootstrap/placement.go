@@ -4,6 +4,7 @@ import (
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	channelapp "github.com/leha-creator/maxim/internal/channel/app"
 	ledgerapp "github.com/leha-creator/maxim/internal/ledger/app"
+	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
 	placementapp "github.com/leha-creator/maxim/internal/placement/app"
 	"github.com/leha-creator/maxim/internal/placement/domain"
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
@@ -28,14 +29,15 @@ const stuckRemovalOverdue = "publication_removal_overdue"
 
 // newPlacementService собирает модуль размещений. Порты других модулей — переходники
 // пакета bridge (удержания — журнал проводок); порты будущих модулей — пустые реализации с
-// метками этапов (R-3, R-4):
+// метками этапов (R-3):
 //
 //	ContractorGate — AllowAllContractors, этап «Выплаты блогерам через Рокет Ворк»
-//	Notifier       — NopNotifier, этап «Уведомления и отчёт по кампании»
+//
+// Уведомления сторонам — модуль уведомлений (bridge.PlacementNotifier).
 //
 // Реализации модуля размещений подставляются в модули каналов и post (R-5, S-25, R-8).
 func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Scheduler, auditLog audit.Recorder,
-	channels *channelapp.Service, posts *postapp.Service, ledger *ledgerapp.Service) (*placementapp.Service, *placementpg.Store) {
+	channels *channelapp.Service, posts *postapp.Service, ledger *ledgerapp.Service, notifier *notificationapp.Service) (*placementapp.Service, *placementpg.Store) {
 	log := in.log.With(logx.KeyModule, "placement")
 	store := placementpg.New(in.pool, log)
 	p := cfg.Placement
@@ -47,7 +49,7 @@ func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sc
 		Versions:    bridge.PlacementVersions{Svc: posts},
 		Holds:       bridge.LedgerHolds{Svc: ledger},
 		Contractors: bridge.AllowAllContractors{Log: log},
-		Notifier:    bridge.NopNotifier{Log: log},
+		Notifier:    bridge.PlacementNotifier{Svc: notifier},
 		Tx:          txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,
 		Config: placementapp.Config{
 			FeeRateBP: cfg.Channel.FeeRateBP,

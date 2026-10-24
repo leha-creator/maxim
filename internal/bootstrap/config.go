@@ -62,11 +62,12 @@ type Config struct {
 	SecretsKey     string `env:"APP_SECRETS_KEY"`  // base64, 32 байта: шифрование секретов в job.payload (R-1)
 	AuthCodePepper string `env:"AUTH_CODE_PEPPER"` // секрет HMAC кода входа (R-3)
 
-	Auth      AuthConfig
-	Channel   ChannelConfig
-	Media     MediaConfig
-	Placement PlacementConfig
-	Billing   BillingConfig
+	Auth         AuthConfig
+	Channel      ChannelConfig
+	Media        MediaConfig
+	Placement    PlacementConfig
+	Billing      BillingConfig
+	Notification NotificationConfig
 
 	ORD       ORDConfig
 	MAX       MAXConfig
@@ -414,6 +415,7 @@ func (c Config) Validate(mode string) error {
 		c.validatePlacement(add)
 		c.validateORD(add)
 		c.validateBilling(add)
+		c.validateNotification(add)
 	}
 	if mode == ModeWorker {
 		c.validateWorker(add)
@@ -653,6 +655,9 @@ func (c Config) LogValue() slog.Value {
 		slog.String("ledger_check_interval", c.Billing.LedgerCheckInterval.String()),
 		slog.Int64("ledger_manual_second_approval_threshold", c.Billing.ManualSecondApproval),
 		slog.String("closing_acts_at", fmt.Sprintf("%d %s", c.Billing.ClosingActsDay, c.Billing.ClosingActsTime)),
+		slog.String("cabinet_base_url", c.CabinetBaseURL()),
+		slog.Int("notification_send_attempts", c.Notification.SendAttempts),
+		slog.String("notification_retention", c.Notification.Retention.String()),
 	)
 }
 

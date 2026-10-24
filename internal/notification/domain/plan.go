@@ -120,7 +120,7 @@ func Link(n Notice) string {
 			return "/blg/placements?placement=" + id
 		case n.ObjectType == "channel":
 			return "/blg/channels/" + id
-		case strings.HasPrefix(n.Template, "payout."):
+		case strings.HasPrefix(n.Template, "payout.") || strings.HasPrefix(n.Template, "rocketwork."):
 			return "/blg/payouts"
 		}
 	}

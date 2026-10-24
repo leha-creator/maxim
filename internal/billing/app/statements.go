@@ -191,7 +191,8 @@ func (s *Service) importIncoming(ctx context.Context, op string, statementID uui
 	return out, nil
 }
 
-// credit — проводка deposit и оплата счёта в транзакции вызывающего.
+// credit — проводка deposit, оплата счёта и уведомление в транзакции вызывающего: уведомление
+// создаётся вместе с зачислением или не создаётся вовсе (I-10).
 func (s *Service) credit(ctx context.Context, bt domain.BankTransaction, inv *domain.Invoice, adminID uuid.UUID, now time.Time) error {
 	req := domain.DepositRequest{BankTransactionID: bt.ID, OrganizationID: bt.OrganizationID, Amount: bt.Amount, AdminID: adminID}
 	if inv != nil {
@@ -200,30 +201,28 @@ func (s *Service) credit(ctx context.Context, bt domain.BankTransaction, inv *do
 	if err := s.Ledger.Deposit(ctx, req); err != nil {
 		return err
 	}
-	if inv == nil {
-		return nil
+	data := map[string]any{KeyAmount: int64(bt.Amount)}
+	if inv != nil {
+		if err := inv.MarkPaid(bt.Amount, now); err != nil {
+			return err
+		}
+		if err := s.Invoices.Update(ctx, *inv); err != nil {
+			return err
+		}
+		data["invoice_number"] = inv.Number
 	}
-	if err := inv.MarkPaid(bt.Amount, now); err != nil {
-		return err
-	}
-	return s.Invoices.Update(ctx, *inv)
+	return s.Notifier.Notify(ctx, domain.Notice{Template: domain.NoticeBalanceDeposited, OrganizationID: bt.OrganizationID,
+		ObjectType: "bank_transaction", ObjectID: bt.ID.String(), Data: data})
 }
 
-// credited — журнал и уведомление после фиксации зачисления.
+// credited — журнал после фиксации зачисления.
 func (s *Service) credited(ctx context.Context, op string, bt domain.BankTransaction, inv *domain.Invoice, by domain.MatchMethod) {
 	args := []any{logx.KeyOp, op, KeyBankTransactionID, bt.ID, logx.KeyOrganizationID, bt.OrganizationID,
 		KeyAmount, int64(bt.Amount), "by", string(by)}
-	data := map[string]any{KeyAmount: int64(bt.Amount)}
 	if inv != nil {
 		args = append(args, KeyInvoiceID, inv.ID, "invoice_amount", int64(inv.Amount))
-		data["invoice_number"] = inv.Number
 	}
 	s.log.InfoContext(ctx, "payment credited", args...)
-	if err := s.Notifier.Notify(ctx, domain.Notice{Template: domain.NoticeBalanceDeposited, OrganizationID: bt.OrganizationID,
-		ObjectType: "bank_transaction", ObjectID: bt.ID.String(), Data: data}); err != nil {
-		s.log.ErrorContext(ctx, "notification failed", logx.KeyOp, op, "template", domain.NoticeBalanceDeposited,
-			KeyBankTransactionID, bt.ID, logx.KeyError, err.Error())
-	}
 }
 
 // MatchManually — администратор относит несопоставленное или пропущенное поступление к
