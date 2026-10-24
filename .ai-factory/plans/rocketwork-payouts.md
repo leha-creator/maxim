@@ -1,7 +1,8 @@
 # План реализации: Выплаты блогерам через Рокет Ворк
 
-Branch: master (без отдельной ветки, по решению пользователя)
+Branch: feature/rocketwork-payouts
 Created: 2026-10-20
+Refined: 2026-10-24 (`/aif-improve`, сверка с кодом после 1b1a9d1 и 7e7d786)
 
 ## Settings
 - Testing: yes. Состояния исполнителя и выплаты, коды отказов, приведение ответов адаптера к нашим статусам, расписание опроса (5 мин первый час, затем раз в час), формула контроля депозита, годовой лимит самозанятого и порог 90%, ключи идемпотентности — чистые табличные тесты `payout/domain`. Подпись вебхука и разбор событий — тесты адаптера и `rocketworkfake`. Сценарии `payout/app` с `postgres` — на настоящей PostgreSQL (`platform/dbtest`), `clock.Manual`, `rocketworkfake`, `ledgertest`, `placementtest`. После каждой денежной операции — `ledger.CheckBalance` без оповещений. Сквозные сценарии — на собранных `api` и `worker` (`harness_test.go`).
@@ -54,7 +55,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 - Проверка зависших: T-12 и выплаты в `sent` без исхода.
 
 Не входит (следующие этапы):
-- Настоящий HTTP-клиент Рокет Ворк, имена методов, авторизация, формат подписи, лимиты запросов — этап «Проверки и доступы» (Q-10, Q-11, Q-12). Здесь — только место для него за интерфейсом и режим `disabled`.
+- Сверка HTTP-клиента с настоящим API Рокет Ворк (методы, авторизация, подпись, лимиты) — этап «Проверки и доступы» (Q-10, Q-11, Q-12). Здесь — клиент по допущениям (задача 3a) и режим `disabled`.
 - Вызов `Payouts.Create` и `Holds.Settle` из P-12, P-13, P-15 — этап «Приёмка, споры и возвраты». Здесь вызов делает служебная команда `maxim dev placement accept` (только `development`/`test`) и тесты.
 - Реестр выплат в OpenAPI администратора, экран `adm/payouts`, выгрузка CSV, повтор через интерфейс — этап «API администратора».
 - Отправка уведомлений: порт `Notifier` остаётся `NopNotifier`, коды шаблонов — R-15.
@@ -66,7 +67,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 | # | Вопрос | Решение в плане | Задача |
 |---|---|---|---|
-| R-1 | API Рокет Ворк не известен | Модуль работает только через интерфейс `payout/domain.Provider` по контракту 05 §4.2 (`EnsureContractor`, `GetContractor`, `GetDepositBalance`, `CreatePayout`, `GetPayout`, `FindPayout` по нашему ключу, `ParseWebhook`). `ROCKETWORK_MODE` ∈ `fake`, `disabled` (позже `live`). `fake` — `rocketworkfake` (по умолчанию в `development`/`test`). `disabled` — все вызовы возвращают `ErrProviderDisabled`: `inviteRocketwork` — `503 rocketwork_unavailable`, задания откладываются `job.Postpone` на час с WARN, вебхук — `404`. В `production` допустим только `disabled` до появления `live`; запуск с `fake` в `production` — ошибка конфигурации | 3, 11 |
+| R-1 | API Рокет Ворк не известен | Модуль работает только через интерфейс `payout/domain.Provider` по контракту 05 §4.2 (`EnsureContractor`, `GetContractor`, `GetDepositBalance`, `CreatePayout`, `GetPayout`, `FindPayout` по нашему ключу, `ParseWebhook`). `ROCKETWORK_MODE` ∈ `fake`, `disabled`, `live`. `fake` — `rocketworkfake` (по умолчанию в `development`/`test`). `live` — HTTP-клиент `integration/rocketwork.Client` по **предполагаемому** контракту (раздел «Допущения о внешних данных», каждое место помечено `// ПРЕДПОЛОЖЕНИЕ (Q-NN): …`); включать только после сверки с настоящей документацией. `disabled` — все вызовы возвращают `ErrProviderDisabled`: `inviteRocketwork` — `503 rocketwork_unavailable`, задания откладываются `job.Postpone` на час с WARN, вебхук — `404`. В `production` по умолчанию `disabled`; `fake` в `production` — ошибка конфигурации; `live` в `production` — WARN `rocketwork live client uses an unverified contract` при запуске | 3, 3a, 11 |
 | R-2 | Статусы Рокет Ворк | Приведение к нашим статусам — внутри адаптера: исполнитель → `invited`, `pending`, `active`, `blocked` (+ `blocked_reason`); выплата → `sent`, `succeeded`, `failed` (+ наш `failure_code` из 05 §4.3). Неизвестный статус сервиса — `pending`/`sent` с WARN `rocketwork unknown status`, объект продолжают опрашивать | 2, 3 |
 | R-3 | Юрлицо (A-36) | Для `legal_entity` исполнитель не создаётся, `getRocketworkStatus` → `required = false`, `status = none`; гейт пропускает. Выплата создаётся с `method = bank_transfer`, `rocketwork_contractor_id = null`, задание `send_payout` не ставится. Администратор переводит деньги вручную и выполняет `maxim admin payout mark-paid --payout … --bank-ref … --reason …`: `succeeded`, проводка `payout` `blogger_payable → bank` (правило вида `payout` расширяется вторым вариантом: одна проводка в `bank`, комиссии нет), P-16. До ответа на Q-36 | 1, 2, 5, 10 |
 | R-4 | Кто создаёт выплату | Порт `placement/domain.Payouts{Create(ctx, PayoutRequest{PlacementID, BloggerOrgID, Amount}) (uuid.UUID, error)}` вызывается в транзакции перехода в `accepted` (I-10) и ставит `send_payout` (I-13). Реализация — `bridge.PlacementPayouts` → `payout/app.Create`. До этапа приёмки — `placementtest.Payouts` и служебная `maxim dev placement accept --placement … --share …` (P-12 с `Settle` и `Create`, только `development`/`test`) | 5, 6, 11 |
@@ -85,8 +86,36 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 | R-17 | Аннулирование чека, возврат выплаты, возврат депозита | В ТЗ нет. Не делается; записывается в открытые вопросы к Рокет Ворк (Q-12) | 14 |
 | R-18 | ПДн | В Рокет Ворк уходят только ИНН, ФИО (`blogger_profile.full_name`), телефон, тип лица (06 §8). Ссылку онбординга храним (`onboarding_url`) — она для блогера; в журнал выше DEBUG не пишется | 3, 5 |
 
+## Уточнения после сверки с кодом (aif-improve, 2026-10-24)
+
+| # | Что найдено в коде | Решение | Задача |
+|---|---|---|---|
+| I-1 | `newModules` строит `placement` раньше остальных; `payout` нужен `placement/app.MarkPaid`, а `placement` — `ContractorGate` и `Payouts` из `payout`: цикл при сборке | `placement/app.Service.SetPayoutPorts(gate, payouts)` (как `channels.SetPlacementPorts`); модуль выплат собирается после `placement`, затем вызывается `SetPayoutPorts`. До вызова — `AllowAllContractors` и `bridge.NoPayouts` (ошибка `payouts are not wired`) | 7, 11 |
+| I-2 | Патч 2026-10-24-14.25: mockapi обязан отдавать те же `details.reason`, что backend; сейчас mock `inviteRocketwork` отвечает `200` и `409 reason=conflict` | mock: `202`, `409 details.reason = contractor_not_required`; мгновенная активация в mock остаётся (так описано в операции); новые поля `Payout.failure_code`, `method`, операции `refresh` и `summary`; тест ошибок в стиле `gaps_test.go` | 12 |
+| I-3 | `job.Queue.Reschedule` переносит только ожидающее задание; выполняющийся опрос себя не переносит. Образец — `marking/app/poll.go`: `job.Postpone(err, next)` | `PollPayout`/`PollContractor` возвращают `job.Postpone(…, PollDelay(...))` — попытки не тратятся | 6 |
+| I-4 | `PageMeta.total` (7e7d786) необязателен | `listBloggerPayouts` заполняет `total` | 12 |
+| I-5 | `rocketworkWebhook` есть в strict server; сырой маршрут в `Routes` перекрывает его в `ServeMux` (как `maxWebhookPattern`) | заглушка в `unimplemented.go` остаётся ради интерфейса strict server, приём — `payout/httpapi.Webhook` в `Routes` | 8 |
+| I-6 | Нужен правдоподобный контракт HTTP-клиента, а не только место под него | задача 3a: `integration/rocketwork.Client` через `platform/outbound` по допущениям ниже; тесты на `httptest` | 3a |
+
+## Допущения о внешних данных
+
+Документации API Рокет Ворк нет (Q-10, Q-11, Q-12). Всё ниже придумано и помечено в коде комментарием `// ПРЕДПОЛОЖЕНИЕ (Q-NN): …`. После получения документации заменить в `internal/integration/rocketwork/{client.go,types.go,webhook.go,testdata/*}` и `rocketworkfake`.
+
+1. **Q-10, адрес.** Базовый адрес `https://api.rocketwork.ru/api/v2` (`ROCKETWORK_BASE_URL`), JSON, UTF-8.
+2. **Q-10, авторизация.** `Authorization: Bearer <ROCKETWORK_TOKEN>` — постоянный токен кабинета заказчика; `401/403` — окончательная ошибка (`provider_error`), оповещение от `outbound`.
+3. **Q-10, исполнитель.** `POST /contractors` `{external_id: <organization_id>, inn, phone, full_name, legal_form: self_employed|individual_entrepreneur}` → `{id, status, onboarding_url, blocked_reason?}`; повтор с тем же `inn` возвращает существующего. `GET /contractors/{id}` — то же тело.
+4. **Q-11, статусы исполнителя.** `invited` → `invited`; `registering`, `documents_check` → `pending`; `active` → `active`; `blocked`, `fns_unbound`, `deleted` → `blocked` (`blocked_reason`; `fns_unbound` → `tax_status_lost`). Неизвестный — `pending` + WARN.
+5. **Q-10, депозит.** `GET /account/balance` → `{available_kopecks, currency: "RUB"}`.
+6. **Q-10, выплата.** `POST /payments`, заголовок `Idempotency-Key: rw-payout:<payout_id>`, тело `{contractor_id, amount_kopecks, purpose, external_id: <payout_id>}` → `{id, status, external_id, amount_kopecks, fee_kopecks?, receipt_url?, failure_reason?, failure_message?}`; повтор с тем же ключом возвращает ту же выплату. `GET /payments/{id}`; `GET /payments?external_id=<payout_id>` → `{items: [...]}` (`FindPayout`).
+7. **Q-11, статусы выплаты.** `new`, `processing` → `sent`; `paid` → `succeeded` (`fee_kopecks`, `receipt_url`); `failed`, `rejected` → `failed` с `failure_reason` ∈ `contractor_not_active`, `tax_status_lost`, `income_limit_exceeded`, `insufficient_funds` (→ `insufficient_deposit`), прочее → `provider_error`. Неизвестный — `sent` + WARN.
+8. **Q-10, ошибки.** Тело `{error: {code, message}}`; `422 insufficient_funds` при создании выплаты; `409 contractor_not_active`; `404` — объекта нет; `429` с `Retry-After`; `5xx` — повтор.
+9. **Q-12, вебхук.** Тело `{id: <event_id>, event: contractor.status_changed|payment.status_changed, object_id, occurred_at}`; заголовок `X-Rocketwork-Signature: sha256=<hex HMAC-SHA256(body, ROCKETWORK_WEBHOOK_SECRET)>`. Событие несёт только идентификатор — состояние запрашиваем сами.
+10. **Q-11, комиссия.** Комиссия сервиса списывается с депозита сверх суммы и приходит в `fee_kopecks` успешной выплаты (отдельная проводка `payout_fees`, 06 §2.3).
+11. **Q-10, лимит запросов.** 5 запросов в секунду на заказчика (`ROCKETWORK_RATE`, корзина `rocketwork:global`).
+12. **Данные `rocketworkfake`.** Комиссия — 3% суммы, не меньше 1 ₽; начальный депозит 0 (задаётся `maxim dev rocketwork deposit`); ссылка онбординга `https://rocketwork.example.test/onboarding/<id>`; чек `https://rocketwork.example.test/receipts/<payment_id>`.
+
 ## Commit Plan
-- **Commit 1** (после задач 1–3): `feat(payout): payout schema, domain rules and rocket work adapter contract`
+- **Commit 1** (после задач 1–3a): `feat(payout): payout schema, domain rules and rocket work adapter contract`
 - **Commit 2** (после задач 4–7): `feat(payout): contractors, payouts, send and poll jobs, P-16`
 - **Commit 3** (после задач 8–10): `feat(payout): rocket work webhook, deposit control, admin payout commands`
 - **Commit 4** (после задач 11–12): `feat(payout): blogger payouts api, config and wiring`
@@ -125,7 +154,13 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Журнал: подделка — DEBUG `rocketworkfake call` (операция, ключ); `disabled` — WARN `rocketwork disabled` один раз на операцию в минуту.
   - Тесты: идемпотентность `CreatePayout` и `EnsureContractor` (по ИНН); подпись — верная, чужой секрет, изменённое тело, пустой заголовок; маскирование тела; неизвестный статус → `pending`/`sent`.
   - Файлы: `internal/integration/rocketwork/{types.go,disabled.go,redact.go,webhook.go,*_test.go}`, `internal/integration/rocketwork/rocketworkfake/{fake.go,fake_test.go}`, `internal/bootstrap/bridge/payout.go`.
-<!-- Commit checkpoint: tasks 1-3 -->
+
+- [ ] **Task 3a: HTTP-клиент Рокет Ворк по предполагаемому контракту (R-1, I-6)** (depends on 3)
+  - `internal/integration/rocketwork/client.go`: `Client` через `platform/outbound` (`SystemRocketWork`) и `ratelimit` (как `integration/ord`): `EnsureContractor`, `GetContractor`, `GetDepositBalance`, `CreatePayout` (`Idempotency-Key`), `GetPayout`, `FindPayout`, `ParseWebhook` — по разделу «Допущения о внешних данных»; каждое допущение — `// ПРЕДПОЛОЖЕНИЕ (Q-NN): …`. Приведение статусов и кодов — общие функции `types.go` (их же использует подделка).
+  - Журнал: `outbound_request` с маскированным телом (`redact.go`); DEBUG тела ответа.
+  - Тесты (`httptest`): каждый метод, `Idempotency-Key`, `401`, `422 insufficient_funds`, `404`, `5xx`, неизвестный статус.
+  - Файлы: `internal/integration/rocketwork/{client.go,client_test.go}`.
+<!-- Commit checkpoint: tasks 1-3a -->
 
 ### Phase 2: Хранилище и сценарии
 
@@ -148,7 +183,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 - [ ] **Task 6: Задания отправки и опроса выплат (R-6, R-7, R-8, R-10)** (depends on 5)
   - `internal/payout/app/send.go`: `Send(ctx, payoutID)` — вне транзакции: актуальность исполнителя (R-7), `GetDepositBalance`, `CreatePayout` с ключом, затем в транзакции `MarkSent`, уведомление `payout.sent`, задание `poll_payout:{payout_id}`. Ответ сразу окончательный — `complete`/`fail`. `insufficient_deposit` → `job.Postpone(1h)` + оповещение; `provider_error` → `job.Retry`; `OnExhausted` → `fail(provider_error)`.
-  - `internal/payout/app/poll.go`: `PollPayout(ctx, payoutID)` — `GetPayout`, окончательный статус → `complete`/`fail`, иначе `Reschedule` по `PollDelay`; `PollContractor(ctx, contractorID)`, `EnsureContractor(ctx, orgID)`.
+  - `internal/payout/app/poll.go`: `PollPayout(ctx, payoutID)` — `GetPayout`, окончательный статус → `complete`/`fail`, иначе `job.Postpone` на `PollDelay` (I-3); `PollContractor(ctx, contractorID)`, `EnsureContractor(ctx, orgID)`.
   - `internal/payout/jobs/jobs.go`: `Register(w, svc, Options)` — `send_payout`, `poll_payout`, `poll_contractor`, `ensure_contractor` с полезной нагрузкой JSON, `ObjectRef`, `job.Permanent` при ошибке разбора (образец — `marking/jobs`).
   - Журнал: INFO `payout sent` (`external_id`); ERROR `rocketwork deposit insufficient` (`deposit`, `required`); WARN `payout send retry` (`attempt`, `error`); DEBUG `payout poll` (`next_run_at`); ERROR `payout send exhausted`.
   - Тесты: успех; ответ «выполнено» сразу; таймаут создания — `FindPayout` находит, второй выплаты в сервисе нет; таймаут и не найдена — повтор с тем же ключом; нехватка депозита — выплата `created`, попытка не потрачена, после `SetDeposit` — отправлена; исполнитель заблокирован — `failed contractor_not_active`; 10 ошибок — `failed provider_error`; опрос на 5-й и 65-й минуте; `disabled` — откладывание без смены статуса.
@@ -156,6 +191,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 - [ ] **Task 7: Порт выплат в размещениях и P-16 (R-4, R-5)** (depends on 5)
   - `internal/placement/domain/ports.go`: `Payouts{Create(ctx, PayoutRequest) (uuid.UUID, error)}` с комментарием «вызывается из P-12, P-13, P-15 на этапе приёмки».
+  - `internal/placement/app/service.go`: `SetPayoutPorts(gate, payouts)` (I-1); `bridge.NoPayouts` до подключения.
   - `internal/placement/app/paid.go`: `MarkPaid(ctx, placementID, payoutID)` — P-16 (`ActorSystem`) через `apply` в транзакции вызывающего, история с `payout_id`; размещение не `accepted` — `ErrInvalidTransition`.
   - `internal/bootstrap/bridge/payout.go`: `PlacementPayouts` (→ `payout/app.Create`), `PayoutPlacements` (→ `placement/app.MarkPaid`, `Brief`), `PayoutLedger` (→ `ledger.Service.Post` с `NewPayout`/`NewLegalPayout`, итоги), `PayoutOrganizations` (→ новый `accountpg.Organizations.ForPayout`).
   - `internal/account/postgres`: `ForPayout(orgID)` — ID, `legal_type`, ИНН, ФИО из `blogger_profile`, телефон.
@@ -196,8 +232,8 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 ### Phase 4: Кабинет блогера, конфигурация, подключение
 
 - [ ] **Task 11: Конфигурация и подключение модуля (R-1, R-4)** (depends on 7, 8, 9, 10)
-  - `internal/bootstrap/config_rocketwork.go`: `RocketWorkConfig` — `ROCKETWORK_MODE` (`fake`/`disabled`; `production` — только `disabled`, R-1), `ROCKETWORK_WEBHOOK_SECRET` (обязателен при `fake` вне `test`), `ROCKETWORK_DEPOSIT_CHECK_INTERVAL`, `ROCKETWORK_DEPOSIT_TOLERANCE`, `ROCKETWORK_CONTRACTOR_POLL_MAX_AGE`, `PAYOUT_POLL_FAST`, `PAYOUT_POLL_SLOW`, `PAYOUT_NPD_ANNUAL_LIMIT`; проверки границ; маскированная выдача (`secret(...)`).
-  - `internal/bootstrap/payout.go`: `newPayoutService(...)`; `integration.go` — `connectRocketWork` (`infra.rocketwork`; в `test` — подделка из `harness`); `modules.go` — поле, `registerJobs`, `stuck`, маршрут вебхука, обработчики в `apiImpl`; `placement.go` — `Contractors` и `Payouts` из модуля выплат вместо `AllowAllContractors`.
+  - `internal/bootstrap/config_rocketwork.go`: `RocketWorkConfig` — `ROCKETWORK_MODE` (`fake`/`disabled`/`live`; в `production` не `fake`, R-1), `ROCKETWORK_BASE_URL`, `ROCKETWORK_TOKEN` (обязателен при `live`), `ROCKETWORK_RATE`, `ROCKETWORK_WEBHOOK_SECRET` (обязателен при `fake` вне `test`), `ROCKETWORK_DEPOSIT_CHECK_INTERVAL`, `ROCKETWORK_DEPOSIT_TOLERANCE`, `ROCKETWORK_CONTRACTOR_POLL_MAX_AGE`, `PAYOUT_POLL_FAST`, `PAYOUT_POLL_SLOW`, `PAYOUT_NPD_ANNUAL_LIMIT`; проверки границ; маскированная выдача (`secret(...)`).
+  - `internal/bootstrap/payout.go`: `newPayoutService(...)`; `integration.go` — `connectRocketWork` (`infra.rocketwork`; в `test` — подделка из `harness`); `modules.go` — поле, `registerJobs`, `stuck`, маршрут вебхука, обработчики в `apiImpl`; `placement.go` — `Contractors` и `Payouts` из модуля выплат через `SetPayoutPorts` после сборки `payout` (I-1).
   - `internal/bootstrap/dev.go`: `maxim dev rocketwork activate|block|deposit|complete|fail …` и `maxim dev placement accept --placement --share` (R-4). Подделка используется процессами `api` и `worker`, поэтому в `development` `rocketworkfake` хранит состояние в JSON-файле `ROCKETWORK_FAKE_STATE_PATH` (общий для процессов, без новых таблиц); команда меняет состояние и при `--webhook` отправляет подписанный вебхук на `api`.
   - `.env.example`, `deploy/.env.example`, `compose.dev.yml`: новые переменные.
   - Журнал: INFO `rocketwork configured` (`mode`, интервалы); WARN при `disabled` в `production` («выплаты не отправляются до подключения клиента»).
@@ -208,7 +244,8 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - `api/openapi.yaml`: изменения R-16; `go generate ./...` (`internal/apigen`).
   - `internal/payout/httpapi/handlers.go`: `ListBloggerPayouts` (номер заказа и канал через `Placements.Brief`), `GetBloggerPayoutSummary`, `GetRocketworkStatus`, `InviteRocketwork` (`202`, `409 contractor_not_required`, `503 rocketwork_unavailable`), `RefreshRocketworkStatus`; только роль блогера своей организации; ограничение частоты `invite`/`refresh` (`platform/ratelimit`, 10 в час на организацию, `429`).
   - `internal/bootstrap/unimplemented.go`: убрать реализованные операции.
-  - `mockapi/internal/{store,handlers}`: новые поля и операции, контрактный тест.
+  - `inviteRocketwork`: ответ `200` → `202` (I-2); `listBloggerPayouts` заполняет `total` (I-4).
+  - `mockapi/internal/{store,handlers}`: новые поля и операции, `202`, `409 details.reason = contractor_not_required` (I-2), контрактный тест и тест ошибок в `gaps_test.go`.
   - Журнал: DEBUG на чтение; INFO `rocketwork invite requested`; WARN `rate limited`.
   - Тесты (`payout_http_test.go`): контрактная проверка ответов по OpenAPI; чужая выплата не видна; юрлицо — `409`; `disabled` — `503`; курсор; итоги.
   - Файлы: `api/openapi.yaml`, `internal/apigen/api.gen.go`, `internal/payout/httpapi/{handlers.go,handlers_test.go}`, `internal/bootstrap/{unimplemented.go,payout_http_test.go}`, `mockapi/internal/store/*.go`, `mockapi/internal/handlers/*.go`.
@@ -253,5 +290,5 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 - Вебхук без верной подписи отклоняется до сохранения; выплаты завершаются и без вебхуков (опрос).
 - Нехватка и расхождение депозита дают оповещение раз в час; `reconcile` показывает сверку с сервисом.
 - ИНН (кроме маскированного), ФИО, телефон, ссылки онбординга и чека, секреты отсутствуют в журнале.
-- В `production` модуль запускается только в `disabled`; переход на настоящий клиент — после этапа «Проверки и доступы».
+- В `production` модуль запускается в `disabled` (по умолчанию) или `live`; `live` опирается на «Допущения о внешних данных» и включается после их сверки (этап «Проверки и доступы»).
 - Решения R-1 … R-18 подтверждены и внесены в документы (задача 14).
