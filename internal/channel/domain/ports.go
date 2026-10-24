@@ -38,6 +38,9 @@ type Channels interface {
 	// SetOrdPlatformReady отмечает регистрацию площадки в ОРД, если она ещё не отмечена (R-14
 	// этапа «Маркировка»); false — канала нет или отметка уже есть. Версию строки не меняет.
 	SetOrdPlatformReady(ctx context.Context, id uuid.UUID, at time.Time) (bool, error)
+	// LowerRating уменьшает рейтинг канала на points, не ниже 0 (A-08, санкция по решению спора);
+	// возвращает прежнее и новое значения; канала нет — ErrNotFound. Версию строки не меняет.
+	LowerRating(ctx context.Context, id uuid.UUID, points int) (from, to int, err error)
 }
 
 // LinkCodes — коды подключения (R-15: строки auth_code с purpose = channel_link).

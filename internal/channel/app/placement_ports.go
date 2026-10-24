@@ -102,3 +102,15 @@ func (s *Service) placementChannel(c *domain.Channel, formats map[string]domain.
 
 // IsNotFound — канала нет (для переходника модуля размещений).
 func IsNotFound(err error) bool { return errors.Is(err, domain.ErrNotFound) }
+
+// LowerRating — санкция по решению спора (A-08, этап «Приёмка, споры и возвраты»): рейтинг канала
+// уменьшается на points, не ниже 0, в транзакции вызывающего. Нет канала — domain.ErrNotFound.
+func (s *Service) LowerRating(ctx context.Context, channelID uuid.UUID, points int) (int, int, error) {
+	from, to, err := s.Channels.LowerRating(ctx, channelID, points)
+	if err != nil {
+		return 0, 0, err
+	}
+	s.log.InfoContext(ctx, "channel rating lowered", logx.KeyOp, "Channel.LowerRating", KeyChannelID, channelID,
+		"from", from, "to", to, "points", points)
+	return from, to, nil
+}

@@ -174,7 +174,7 @@ func TestBillingEndToEnd(t *testing.T) {
 	p2 := uuidOf(t, a.placementOf(order2.ID, ch))
 	if err := a.mods.txRunner.InTx(ctx, func(ctx context.Context) error {
 		return a.mods.placement.Holds.Settle(ctx, p2, blg.orgID(t), placementdomain.Distribution{PerformanceShare: 7500,
-			PayoutAmount: 750_000, FeeCharged: 112_500, RefundAmount: 287_500})
+			PayoutAmount: 750_000, FeeCharged: 112_500, RefundAmount: 287_500}, placementdomain.Settler{Actor: placementdomain.ActorSystem})
 	}); err != nil {
 		t.Fatal(err)
 	}

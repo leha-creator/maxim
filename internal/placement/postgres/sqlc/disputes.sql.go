@@ -39,6 +39,33 @@ func (q *Queries) GetDisputeByPlacement(ctx context.Context, placementID uuid.UU
 	return i, err
 }
 
+const getDisputeByPlacementForUpdate = `-- name: GetDisputeByPlacementForUpdate :one
+SELECT id, placement_id, reason, opened_by_type, claim_id, violation_id, deadline_at, suggested_share, resolution, performance_share, resolution_comment, resolved_by, resolved_at, created_at, updated_at FROM dispute WHERE placement_id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetDisputeByPlacementForUpdate(ctx context.Context, placementID uuid.UUID) (Dispute, error) {
+	row := q.db.QueryRow(ctx, getDisputeByPlacementForUpdate, placementID)
+	var i Dispute
+	err := row.Scan(
+		&i.ID,
+		&i.PlacementID,
+		&i.Reason,
+		&i.OpenedByType,
+		&i.ClaimID,
+		&i.ViolationID,
+		&i.DeadlineAt,
+		&i.SuggestedShare,
+		&i.Resolution,
+		&i.PerformanceShare,
+		&i.ResolutionComment,
+		&i.ResolvedBy,
+		&i.ResolvedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertDispute = `-- name: InsertDispute :exec
 
 INSERT INTO dispute (
@@ -76,6 +103,57 @@ func (q *Queries) InsertDispute(ctx context.Context, arg InsertDisputeParams) er
 		arg.UpdatedAt,
 	)
 	return err
+}
+
+const listDisputesAdmin = `-- name: ListDisputesAdmin :many
+SELECT id, placement_id, reason, opened_by_type, claim_id, violation_id, deadline_at, suggested_share, resolution, performance_share, resolution_comment, resolved_by, resolved_at, created_at, updated_at FROM dispute
+WHERE ($1::boolean OR resolution IS NULL)
+  AND ($2::timestamptz IS NULL OR (resolution IS NULL AND deadline_at <= $2))
+ORDER BY deadline_at, id
+LIMIT $3
+`
+
+type ListDisputesAdminParams struct {
+	AllDisputes bool
+	OverdueAt   *time.Time
+	Lim         int32
+}
+
+// Очередь споров администратора по сроку T-06: открытые (или все), просроченные к overdue_at.
+func (q *Queries) ListDisputesAdmin(ctx context.Context, arg ListDisputesAdminParams) ([]Dispute, error) {
+	rows, err := q.db.Query(ctx, listDisputesAdmin, arg.AllDisputes, arg.OverdueAt, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Dispute{}
+	for rows.Next() {
+		var i Dispute
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlacementID,
+			&i.Reason,
+			&i.OpenedByType,
+			&i.ClaimID,
+			&i.ViolationID,
+			&i.DeadlineAt,
+			&i.SuggestedShare,
+			&i.Resolution,
+			&i.PerformanceShare,
+			&i.ResolutionComment,
+			&i.ResolvedBy,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDisputesByPlacements = `-- name: ListDisputesByPlacements :many
@@ -116,4 +194,38 @@ func (q *Queries) ListDisputesByPlacements(ctx context.Context, placementIds []u
 		return nil, err
 	}
 	return items, nil
+}
+
+const resolveDispute = `-- name: ResolveDispute :execrows
+UPDATE dispute SET resolution = $1, performance_share = $2,
+    resolution_comment = $3, resolved_by = $4, resolved_at = $5,
+    updated_at = $6
+WHERE id = $7 AND resolution IS NULL
+`
+
+type ResolveDisputeParams struct {
+	Resolution        *string
+	PerformanceShare  *int32
+	ResolutionComment *string
+	ResolvedBy        *uuid.UUID
+	ResolvedAt        *time.Time
+	UpdatedAt         time.Time
+	ID                uuid.UUID
+}
+
+// S-18: решение окончательное — записывается один раз.
+func (q *Queries) ResolveDispute(ctx context.Context, arg ResolveDisputeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resolveDispute,
+		arg.Resolution,
+		arg.PerformanceShare,
+		arg.ResolutionComment,
+		arg.ResolvedBy,
+		arg.ResolvedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

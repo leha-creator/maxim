@@ -24,6 +24,11 @@ type ControlRules struct {
 	DisputeDeadline time.Duration
 	// TopViolationShare — предложение доли при top_violated (DISPUTE_TOP_VIOLATION_SHARE, 5000).
 	TopViolationShare int
+	// RatingPenaltyRefund, RatingPenaltyProportional — снижение рейтинга канала по решению спора
+	// full_refund и proportional (A-08, DISPUTE_RATING_PENALTY_*). Нуль — без санкции: значения
+	// по умолчанию задаёт конфигурация, WithDefaults их не подставляет.
+	RatingPenaltyRefund       int
+	RatingPenaltyProportional int
 	// ReconcileInterval — T-09 (RECONCILE_INTERVAL, 5 мин, A-27).
 	ReconcileInterval time.Duration
 	// ScheduledGrace — scheduled без публикации дольше этого после publish_at проверяется сверкой (5 мин).

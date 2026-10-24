@@ -138,7 +138,7 @@ func (s *Service) placementViews(ctx context.Context, ps []domain.Placement) ([]
 		if h == nil {
 			h = []domain.HistoryEntry{}
 		}
-		view := PlacementView{Placement: p, Channel: ref, History: h, Actions: domain.AdvertiserActions(&p)}
+		view := PlacementView{Placement: p, Channel: ref, History: h, Actions: domain.AdvertiserActions(&p, false, s.Clock.Now())}
 		if pub, ok := pubs[p.ID]; ok {
 			view.Publication = &pub
 		}

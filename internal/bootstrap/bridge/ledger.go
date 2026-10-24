@@ -42,10 +42,21 @@ func (h LedgerHolds) HasActive(ctx context.Context, placementIDs []uuid.UUID) (m
 	return h.Svc.HasActive(ctx, placementIDs)
 }
 
-func (h LedgerHolds) Settle(ctx context.Context, placementID, bloggerOrgID uuid.UUID, d domain.Distribution) error {
+// Settle — распределение удержания; актор проводки settlement — по переходу (R-6 этапа приёмки).
+func (h LedgerHolds) Settle(ctx context.Context, placementID, bloggerOrgID uuid.UUID, d domain.Distribution, by domain.Settler) error {
+	actor, user := ledgerdomain.ActorSystem, uuid.Nil
+	switch by.Actor {
+	case domain.ActorAdvertiser:
+		actor = ledgerdomain.ActorAdvertiser
+	case domain.ActorAdmin:
+		actor = ledgerdomain.ActorAdmin
+	}
+	if by.UserID != nil && actor != ledgerdomain.ActorSystem {
+		user = *by.UserID
+	}
 	return h.Svc.Settle(ctx, placementID, bloggerOrgID, ledgerdomain.Distribution{
 		Payout: d.PayoutAmount, FeeCharged: d.FeeCharged, Refund: d.RefundAmount,
-	}, ledgerdomain.ActorSystem, uuid.Nil)
+	}, actor, user)
 }
 
 // ---------------------------------------------------------------- ledger ← placement, billing

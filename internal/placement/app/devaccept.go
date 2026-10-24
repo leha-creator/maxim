@@ -48,7 +48,7 @@ func (s *Service) DevAccept(ctx context.Context, placementID uuid.UUID, share in
 		if err := s.apply(ctx, op, o, p, change, source{Key: "dev_accept:" + p.ID.String()}); err != nil {
 			return err
 		}
-		if err := s.Holds.Settle(ctx, p.ID, p.BloggerOrgID, d); err != nil {
+		if err := s.Holds.Settle(ctx, p.ID, p.BloggerOrgID, d, domain.Settler{Actor: domain.ActorSystem}); err != nil {
 			return err
 		}
 		if d.PayoutAmount > 0 && s.Payouts != nil {
