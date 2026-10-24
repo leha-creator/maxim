@@ -118,7 +118,7 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
 
 ### Фаза 3. Стек и выпуск без простоя
 
-- [ ] **Task 4: Образ PostgreSQL с архивом WAL** (depends on —).
+- [x] **Task 4: Образ PostgreSQL с архивом WAL** (depends on —).
   - `deploy/postgres/Dockerfile`: `FROM postgres:17-alpine` (точный тег), `COPY --from` клиента `mc` из закреплённого образа (`pgsty/mc:<тег>`; бинарный файл статический), `apk add curl` (письма о сбоях), каталог `/var/lib/postgresql/wal-archive` с владельцем `postgres`, скрипты в `/usr/local/bin/`, `initdb/` в `/docker-entrypoint-initdb.d/`, `HEALTHCHECK` не задаётся (задаёт compose).
   - `deploy/postgres/initdb/10-roles.sh`: роль приложения (`POSTGRES_APP_ROLE`, по умолчанию `maxim_app`, пароль `POSTGRES_APP_PASSWORD`), роль копирования `maxim_backup` (`LOGIN REPLICATION`, `pg_read_all_data`, пароль `POSTGRES_BACKUP_PASSWORD`); строка `host replication maxim_backup all scram-sha-256` в `pg_hba.conf`. Пароли через переменные `psql -v`, не в тексте команд.
   - `deploy/postgres/postgresql.conf.d/` или аргументы `command` в compose: `wal_level=replica`, `archive_mode=on`, `archive_command='/usr/local/bin/wal-archive.sh %p %f'`, `archive_timeout=60`, `max_wal_senders=4`, `password_encryption=scram-sha-256`.
@@ -126,8 +126,9 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
   - Проверка: `docker build -f deploy/postgres/Dockerfile deploy/postgres`, `hadolint`, `shellcheck`.
   - Логирование: `wal-archive.sh` пишет в stderr PostgreSQL только ошибки (`level=error`, имя сегмента); успешная архивация не пишется — её видно по выгрузке в задаче 8.
   - Файлы: `deploy/postgres/Dockerfile`, `deploy/postgres/initdb/10-roles.sh`, `deploy/postgres/bin/wal-archive.sh`.
+  - Как сделано: `postgres:17.10-alpine3.24`, `mc` из `pgsty/mc:RELEASE.2026-09-16T00-00-00Z`, `curl` и `jq`; контекст сборки — `deploy/` (нужен `deploy/scripts/lib.sh`), ограничен `deploy/postgres/Dockerfile.dockerignore`: `docker build -f deploy/postgres/Dockerfile deploy`. Параметры WAL — аргументами `command` в compose. Образ на сервер тянется из GHCR (`MAXIM_POSTGRES_IMAGE`), собирает `release.yml`.
 
-- [ ] **Task 5: Compose стека и сайт edge-прокси** (depends on 3, 4).
+- [x] **Task 5: Compose стека и сайт edge-прокси** (depends on 3, 4).
   - `deploy/app/compose.yml`: проект из `COMPOSE_PROJECT_NAME` (`maxim-staging`, `maxim-production`).
     - `postgres` — образ `maxim-postgres` (собирается на сервере из `deploy/postgres` или тянется из GHCR — выбрать при реализации и записать), тома `pgdata` и `wal-archive`, `command` с параметрами WAL, `healthcheck` `pg_isready`, `stop_grace_period: 60s`, сети только `backend`, `shm_size: 256m`.
     - `backup` — тот же образ, `entrypoint` `backup-agent.sh` (задача 8), тома `wal-archive` и `backup-tmp`, `healthcheck` по файлу состояния, `depends_on: postgres healthy`.
@@ -139,8 +140,9 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
   - Проверка: `docker compose -f deploy/app/compose.yml --env-file deploy/app/env/staging.env.example config --quiet` и то же для продакшена (с профилями `slot-a`, `slot-b`, `tools`); `caddy validate` с подставленными значениями.
   - Логирование: журналы контейнеров — JSON в stdout, ротация Docker (`bootstrap.sh`, 3 × 10 МБ); Caddy — журнал доступа JSON.
   - Файлы: `deploy/app/compose.yml`, `deploy/app/maxim-app.caddy`.
+  - Как сделано: переменные разделены на `app.env` (бэкенд) и `stack.env` (подстановка compose, пароли postgres и ключи корзины копий — в api и worker не попадают); у `backup` ещё том `backup-state`; `handle_errors` edge-сайта отвечает JSON `503 unavailable`. `docker compose config --quiet` — оба шаблона и репетиция со всеми профилями; `caddy validate` (caddy:2.11.7) — «Valid configuration».
 
-- [ ] **Task 6: Скрипт выпуска и проверка миграций** (depends on 1, 2, 5).
+- [x] **Task 6: Скрипт выпуска и проверка миграций** (depends on 1, 2, 5).
   - `deploy/app/release.sh` (bash, `set -Eeuo pipefail`, `trap ERR`): аргументы `--tag <tag>` | `--rollback`, `--dir <APP_DIR>` (по умолчанию каталог скрипта), `--env-file`, `--health-timeout 120`, `--skip-pull`, `--edge-reload` (команда перезагрузки edge-Caddy, по умолчанию как в `deploy.yml`), `--dry-run`. Состояние ячеек — `slots.env` (`ACTIVE_SLOT`, `MAXIM_TAG_A`, `MAXIM_TAG_B`), пишется атомарно через временный файл. Блокировка `flock` на `release.lock`: два выпуска одновременно не идут.
   - Порядок выпуска: (1) `docker pull` нового тега; (2) `maxim config check --for api` и `--for worker` новым образом с `app.env`, `--for migrate` с `MIGRATE_DATABASE_URL`; (3) `docker compose up -d postgres backup` и ожидание `healthy`; (4) `docker compose run --rm migrate`; (5) запуск `api-<new>` и `worker-<new>` с новым тегом; ожидание `healthy` до `--health-timeout`, при неудаче — остановка новой ячейки, печать журналов, код 1 (старая ячейка продолжает работать; миграции совместимы по правилу); (6) пауза 3 с, чтобы edge-Caddy увидел новую ячейку живой; (7) `docker compose stop` старой ячейки (плавно, по `stop_grace_period`); (8) запись `slots.env`; (9) итог: тег, ячейка, длительность.
   - `--rollback`: если у неактивной ячейки есть тег — запустить её (без миграций), дождаться готовности, остановить активную, поменять `ACTIVE_SLOT`.
@@ -150,16 +152,18 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
   - Правила миграций и порядок выпуска — в `deploy/app/README.md` (задача 11) и строкой в 07 §8.
   - Логирование: JSON-строки на каждый шаг (`event=release_step`, `step`, `slot`, `tag`, `duration_ms`), `level=error` с шагом и кодом выхода; при неудаче готовности — последние 50 строк журнала новой ячейки.
   - Файлы: `deploy/app/release.sh`, `deploy/scripts/check-migrations.sh`.
+  - Как сделано: замок — каталог `.release.lock` (`mkdir` атомарен, `flock` есть не везде, где идёт репетиция); вместо `--edge-reload` — `--edge-dir DIR` (по умолчанию `/opt/edge`, если есть) и `--no-edge`, команда reload — как в `deploy.yml`; при ошибке validate/reload прежний файл сайта возвращается, новая ячейка останавливается; `--compose-file` — дополнительный файл compose (репетиция). `config check` для api, worker и migrate идёт через сервис `migrate` (новый образ, только сеть `backend`): временный контейнер не получает алиас ячейки в сети `edge`. `check-migrations.sh` проверен на всей истории (`checked=10`, без ошибок) и на отрицательном примере во временном репозитории (изменённая миграция, `ALTER COLUMN … TYPE`, `RENAME` — ошибки; файл с `-- release: contract` — предупреждение).
 
-- [ ] **Task 7: Локальная репетиция выпуска** (depends on 6).
+- [x] **Task 7: Локальная репетиция выпуска** (depends on 6).
   - `deploy/local/compose.rehearsal.yml` — дополнение к `deploy/app/compose.yml`: сеть `edge` не внешняя (`name: maxim-rehearsal-edge`), свой Caddy (`caddy:2.11.7`) с сайтом из `maxim-app.caddy` (адрес `:80`, порт хоста `127.0.0.1:${REHEARSAL_HTTP_PORT:-18480}`), MinIO с созданием корзин и Mailpit; всё под проектом `maxim-rehearsal`, порты не пересекаются со стандартными.
   - `deploy/local/rehearse-release.sh`: собирает образ бэкенда дважды с разными `VERSION` (`maxim:rehearsal-v1`, `maxim:rehearsal-v2`) и образ `maxim-postgres`; первый выпуск v1; фоновый цикл запросов через Caddy каждые 50 мс к `GET /livez` (отвечает само приложение, `200`, пока процесс обслуживает запросы; публичных `GET` операций API без сессии нет — `/auth/code` и `/auth/login` меняющие) и к `GET /api/v1/me` (ожидается `401` от приложения, а не `502/503` от прокси); выпуск v2; `--rollback` на v1; остановка цикла. Успех — ни одного `5xx` и ни одной ошибки соединения, версии ячеек совпадают с ожидаемыми, задания не потеряны (нет `running` без `locked_by` после выпуска). В конце — `docker compose down -v` своего проекта (только `maxim-rehearsal`; чужие контейнеры не трогаются), ключ `--keep` оставляет стек.
   - Логирование: JSON-строки шагов; итог `event=rehearsal_result` с числом запросов, ошибок и длительностью каждого выпуска.
   - Файлы: `deploy/local/compose.rehearsal.yml`, `deploy/local/rehearse-release.sh`, `deploy/local/rehearsal.env` (значения разработки).
+  - Как сделано: edge-прокси репетиции — отдельный проект `deploy/local/edge` (как `/opt/edge` на сервере: `Caddyfile` с `import sites/*.caddy`, сайт кладёт `release.sh`, reload через `docker compose exec`), сеть `maxim-rehearsal-edge`; переменные — `rehearsal.app.env` и `rehearsal.stack.env` (два файла, как на сервере); рабочие копии — `deploy/local/.state/` (в `.gitignore`). Итог на Windows + Docker Desktop: `requests=503, unexpected=0, errors_5xx=0, connection_errors=0, orphan_running_jobs=0`, выпуск ≈ 29 с, откат ≈ 25 с; после прогона контейнеров, томов и сетей `maxim-rehearsal*` не осталось.
 
 ### Фаза 4. Резервные копии и восстановление
 
-- [ ] **Task 8: Скрипты резервного копирования** (depends on 4, 5).
+- [x] **Task 8: Скрипты резервного копирования** (depends on 4, 5).
   - `deploy/postgres/bin/backup-lib.sh`: журнал JSON, настройка `mc` через `MC_HOST_backup` и `MC_HOST_app` (из `BACKUP_S3_*` и `S3_*`), путь копий `${BACKUP_S3_BUCKET}/${BACKUP_PREFIX}/…`, файл состояния `/var/lib/backup-state/<kind>.json` (время, итог, размер), письмо о сбое `notify_failure <kind> <text>` через `curl --url smtp(s)://…` на `ALERT_EMAILS`, не чаще раза в час на вид.
   - `backup-dump.sh`: `pg_dump -Fc -Z 6` в `backup-tmp`, `sha256sum`, выгрузка `db/dump/YYYY/MM/DD/maxim-<ts>.dump` и `.sha256`, манифест (`goose` версия, размер, длительность, `server_version`), удаление временного файла.
   - `backup-base.sh`: `pg_basebackup -U maxim_backup -Ft -z -X none -c fast --checkpoint=fast -l <метка>` (WAL берётся из архива), выгрузка `db/base/<ts>/` и манифест с начальным сегментом (`backup_label`).
@@ -169,13 +173,15 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
   - `backup-agent.sh`: точка входа контейнера `backup` — пишет `crontab` из `deploy/postgres/crontab` (расписание из переменных `BACKUP_*_CRON` с допущением П-7), запускает `crond -f -d 8` в фоне и цикл `wal-upload.sh` каждые `BACKUP_WAL_INTERVAL` (30 с); `SIGTERM` — последняя выгрузка WAL и выход. `backup-health.sh` для `healthcheck`: последняя успешная выгрузка WAL не старше 5 минут, последняя логическая копия не старше 26 часов (после первых суток).
   - Логирование: `{"ts","level","component":"backup","event":"dump_done","bytes","duration_ms","key"}` и аналогично для каждого вида; `level=error` с командой и кодом выхода; пароли и ключи не выводятся (`MC_HOST_*` не печатается).
   - Файлы: `deploy/postgres/bin/backup-*.sh`, `deploy/postgres/bin/wal-upload.sh`, `deploy/postgres/crontab`, `deploy/postgres/Dockerfile` (копирование скриптов).
+  - Как сделано: `mc` настраивается `alias set` во временном каталоге процесса (а не `MC_HOST_*`: так ключи не попадают в окружение дочерних процессов и не остаются на томе); `crond` работает от root, задания переходят на `postgres` через `gosu`; проверка размера — `mc stat --no-list` (без него `stat` по ключу `x.dump` выдаёт и `x.dump.sha256` — найдено репетицией).
 
-- [ ] **Task 9: Проверка восстановления и репетиция** (depends on 8).
+- [x] **Task 9: Проверка восстановления и репетиция** (depends on 8).
   - `deploy/postgres/bin/restore-check.sh [--key <dump>]`: последняя логическая копия (или заданная) → проверка `sha256` → временный кластер (`initdb` в `/tmp/restore-check`, порт 5433, `pg_ctl start`) → `pg_restore --no-owner --exit-on-error` → проверки: версия `goose_db_version` равна версии из манифеста копии; таблицы из списка (`organization`, `placement`, `ledger_account`, `ledger_entry`, `media_file` …) существуют; журнал проводок сходится — те же запросы, что у задания `check_ledger_balance` (`internal/ledger/postgres/queries/reports.sql`: `SumBalancesBySide` — активы равны пассивам, `ListCacheMismatches` — кеш остатка равен сумме проводок со знаком «+» для активов `bank`, `rocketwork_deposit`, `payout_fees`, `ListNegativeLiabilities` — нет отрицательных пассивов; в скрипте ссылка на источник, чтобы править вместе); копия моложе `BACKUP_MAX_AGE` (26 ч); для выборки до 50 `media_file.storage_key` без `purged_at` объект есть в `objects/<bucket>/` копии (если копии объектов ещё нет и `media_file` пуст — WARN и пропуск, иначе отсутствие объекта — ошибка); печать длительности восстановления. Кластер удаляется в `trap EXIT`. Код 1 при любой неудаче, письмо через `notify_failure`.
   - `deploy/postgres/bin/restore-pitr.sh --target-time <RFC3339> --pgdata <dir>`: подходящая физическая копия (старт раньше цели) → распаковка → `restore_command` = `mc cp backup/…/db/wal/%f %p` → `recovery_target_time`, `recovery_target_action=promote` → запуск и ожидание конца восстановления. Используется при аварии и на квартальной проверке.
   - `deploy/local/rehearse-backup.sh`: проект `maxim-rehearsal-backup`, свободные порты; поднимает PostgreSQL из `maxim-postgres`, MinIO, `backup`; применяет миграции образом бэкенда; вставляет тестовые строки (организация, счёт журнала, проводка, `media_file` с объектом в MinIO); делает `backup-base.sh`, ещё вставки, фиксирует время T, ещё вставки; `backup-dump.sh`, `backup-objects.sh`; `restore-check.sh` → успех; `restore-pitr.sh --target-time T` во временный каталог → строки до T есть, после T нет; затем порча копии (`sha256` не сходится) → `restore-check.sh` падает. В конце `down -v` своего проекта.
   - Логирование: `restore-check` — `event=restore_check_step` на каждую проверку и итог `event=restore_check_result` (`ok`, `duration_ms`, `dump_key`, `dump_age_h`, `migration_version`, `objects_checked`); `restore-pitr` — шаги и найденная физическая копия.
   - Файлы: `deploy/postgres/bin/restore-check.sh`, `deploy/postgres/bin/restore-pitr.sh`, `deploy/local/rehearse-backup.sh`.
+  - Как сделано: временный кластер — в `BACKUP_TMP_DIR` (том, а не `/tmp` в памяти). Репетиция вставляет пользователя, организацию, `media_file` с объектом и таблицу меток `rehearsal_marker`; проводки журнала не вставляются (сверка проходит на пустом журнале — проверка запросов, а не данных). Итог: `restore-check` — все шаги `ok`, `objects_checked=1`; PITR на T — строки `1,2` (строка 3 после T отсутствует, «recovery stopping before commit»); испорченная `.sha256` — `restore-check` падает на шаге `checksum`.
 
 ### Фаза 5. CI
 
@@ -209,8 +215,7 @@ Source: docs/07-non-functional.md §8, docs/06-finance-legal.md §5, §8, §9, �
 
 - **После задач 1–2:** `feat(ops): health probe, config check and drain before api shutdown`
 - **После задачи 3:** `chore(deploy): environment templates with a slot for upcoming modules`
-- **После задач 4–7:** `feat(deploy): backend stack with zero-downtime blue-green release`
-- **После задач 8–9:** `feat(deploy): postgres and object storage backups with restore check`
+- **После задач 4–9 (одним коммитом: стек compose ссылается на контейнер `backup` и его скрипты, по отдельности образ и репетиция не собираются):** `feat(deploy): backend stack with zero-downtime release, backups and restore check`
 - **После задачи 10:** `ci: ops checks and manual release workflow`
 - **После задачи 11:** `docs(deploy): operations runbook`
 - **После задачи 12:** `docs(launch): legal readiness checklists, personal data, RKN notice draft and pilot plan`

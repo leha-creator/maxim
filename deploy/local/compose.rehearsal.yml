@@ -1,0 +1,51 @@
+# Дополнение к deploy/app/compose.yml для локальной репетиции (rehearse-release.sh,
+# rehearse-backup.sh): S3 — MinIO внутри проекта, почта — Mailpit без порта на хосте, сеть
+# edge — своя сеть репетиции вместо общей сети сервера. Порты хоста не публикуются: снаружи
+# виден только Caddy репетиции (deploy/local/edge, 127.0.0.1:${REHEARSAL_HTTP_PORT:-18480}).
+# Значения — только для разработки.
+services:
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio-secret
+    volumes: [minio:/data]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      retries: 30
+    networks: [backend]
+
+  # Корзины приложения и корзина копий (в жизни она у другого провайдера или в другом регионе).
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://minio:9000 minio minio-secret >/dev/null
+        mc mb --ignore-existing local/maxim-rehearsal-private local/maxim-rehearsal-public local/maxim-rehearsal-backups
+    restart: "no"
+    networks: [backend]
+
+  postgres:
+    depends_on:
+      minio-init: { condition: service_completed_successfully }
+
+  backup:
+    depends_on:
+      minio-init: { condition: service_completed_successfully }
+
+  mailpit:
+    ports: !reset []
+
+networks:
+  edge:
+    external: true
+    name: ${REHEARSAL_EDGE_NETWORK:-maxim-rehearsal-edge}
+
+volumes:
+  minio: {}

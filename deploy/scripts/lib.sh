@@ -38,6 +38,11 @@ log() {
 # now_ms — миллисекунды с начала эпохи (для duration_ms).
 now_ms() {
   local s
+  # bash 5: EPOCHREALTIME с микросекундами (busybox date в образе postgres не знает %N).
+  if [[ ${EPOCHREALTIME:-} =~ ^([0-9]+)[.,]([0-9]{3}) ]]; then
+    printf '%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return
+  fi
   s=$(date +%s%N 2>/dev/null)
   if [[ $s =~ ^[0-9]+$ && ${#s} -gt 12 ]]; then
     printf '%s' $((s / 1000000))

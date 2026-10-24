@@ -1,0 +1,8 @@
+# Расписание контейнера backup (busybox crond, UTC). backup-agent.sh подставляет выражения из
+# переменных BACKUP_*_CRON (stack.env) и пишет файл в /etc/crontabs/root. Задания читают
+# окружение из /tmp/backup.env (crond его не передаёт) и пишут журнал в stdout контейнера.
+@BASE_CRON@ . /tmp/backup.env; /usr/local/bin/backup-base.sh >/proc/1/fd/1 2>/proc/1/fd/2
+@DUMP_CRON@ . /tmp/backup.env; /usr/local/bin/backup-dump.sh >/proc/1/fd/1 2>/proc/1/fd/2
+@OBJECTS_CRON@ . /tmp/backup.env; /usr/local/bin/backup-objects.sh >/proc/1/fd/1 2>/proc/1/fd/2
+@PRUNE_CRON@ . /tmp/backup.env; /usr/local/bin/backup-prune.sh >/proc/1/fd/1 2>/proc/1/fd/2
+@RESTORE_CHECK_CRON@ . /tmp/backup.env; /usr/local/bin/restore-check.sh >/proc/1/fd/1 2>/proc/1/fd/2

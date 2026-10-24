@@ -1,0 +1,18 @@
+# Edge-прокси репетиции: та же схема, что /opt/edge на сервере (Caddyfile импортирует
+# sites/*.caddy, сайт кладёт release.sh, reload через `docker compose exec caddy`), но HTTP на
+# 127.0.0.1:${REHEARSAL_HTTP_PORT:-18480} и своя сеть. rehearse-release.sh копирует каталог во
+# временный и запускает оттуда, поэтому sites/ здесь нет.
+name: ${REHEARSAL_EDGE_PROJECT:-maxim-rehearsal-edge}
+
+services:
+  caddy:
+    image: caddy:2.11.7
+    ports: ["127.0.0.1:${REHEARSAL_HTTP_PORT:-18480}:80"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+    networks: [edge]
+
+networks:
+  edge:
+    name: ${REHEARSAL_EDGE_NETWORK:-maxim-rehearsal-edge}
