@@ -122,6 +122,8 @@ func newHandler(d serverDeps) (http.Handler, error) {
 	})
 
 	var apiChain http.Handler = validator(apiHandler)
+	// Пользователь без роли администратора получает 403 на /admin/* до проверки тела (R-1).
+	apiChain = httpx.AdminGate(BaseURL+"/admin", log)(apiChain)
 	apiChain = httpx.Chain(apiChain, d.Before...)
 
 	mux := http.NewServeMux()

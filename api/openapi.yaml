@@ -1723,7 +1723,7 @@ paths:
       operationId: listAdminChannels
       summary: Каналы для администратора (очередь модерации)
       description: |
-        Каналы всех организаций, кроме `unclaimed`, по времени последнего изменения, старые первыми.
+        Роль: moderator, senior. Каналы всех организаций, кроме `unclaimed`, по времени последнего изменения, старые первыми.
         `rkn_recheck_due = true` — номер РКН подтверждён больше 90 суток назад и его пора проверить снова
         (06 §6.3); канал при этом продолжает работать.
       parameters:
@@ -1761,7 +1761,7 @@ paths:
       tags: [admin-channels]
       operationId: getAdminChannel
       summary: Канал для модерации (S-16 шаг 1)
-      description: Сведения из MAX, метрики за 30 суток, флаги аномалий, история модерации.
+      description: 'Роль: moderator, senior. Сведения из MAX, метрики за 30 суток, флаги аномалий, история модерации.'
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
@@ -1780,7 +1780,7 @@ paths:
       operationId: approveChannel
       summary: Одобрить канал (S-16 шаг 3)
       description: |
-        Только из `moderation`. Нужны права бота и публичность канала, категория, включённая цена,
+        Роль: moderator, senior. Только из `moderation`. Нужны права бота и публичность канала, категория, включённая цена,
         а при подписчиках от 10 000 — подтверждённый номер РКН. Чего не хватает — `409` с
         `details.missing` из `rights`, `category`, `price`, `rkn`. Канал в другом состоянии — `409`
         с `details.status`.
@@ -1803,7 +1803,7 @@ paths:
       operationId: rejectChannel
       summary: Отклонить канал (S-16)
       description: |
-        Только из `moderation`. Канал переходит в `rejected`, текст причины виден блогеру в
+        Роль: moderator, senior. Только из `moderation`. Канал переходит в `rejected`, текст причины виден блогеру в
         `status_reason`. После правки блогером канал снова уходит на модерацию.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -1831,7 +1831,7 @@ paths:
       operationId: setChannelRknCheck
       summary: Результат проверки номера РКН (06 §6.3, Q-34)
       description: |
-        Администратор вручную сверил номер с реестром. Канал в `unclaimed` или `disconnected`
+        Роль: moderator, senior. Администратор вручную сверил номер с реестром. Канал в `unclaimed` или `disconnected`
         либо без номера — `409`. `confirmed` возвращает в `active` канал, приостановленный с
         причиной `rkn_required`; `rejected` оставляет такой канал приостановленным.
       parameters:
