@@ -158,5 +158,25 @@ if ! grep -q '"step":"checksum","ok":false' <<< "$out"; then
   exit 1
 fi
 
+# Очистка со сроком 0 суток: из двух логических копий остаётся новая, единственная физическая
+# остаётся, WAL до её начального сегмента удаляется, сам начальный сегмент — нет.
+log info rehearsal_step step=prune
+sleep 1
+in_backup /usr/local/bin/backup-dump.sh >/dev/null
+in_backup env BACKUP_DUMP_RETENTION_DAYS=0 BACKUP_BASE_RETENTION_DAYS=0 /usr/local/bin/backup-prune.sh
+# shellcheck disable=SC2016 # переменные раскрываются в контейнере
+listing=$(in_backup bash -c '. /usr/local/bin/backup-lib.sh; mc_setup; r=$(backup_root);
+  echo "dumps=$(m ls -r --json "$r/db/dump/" | jq -r "select(.key|endswith(\".dump\"))|.key" | wc -l)";
+  echo "bases=$(m ls --json "$r/db/base/" | jq -r .key | wc -l)";
+  start=$(m cat "$r/db/base/$(m ls --json "$r/db/base/" | jq -r .key | head -n 1)manifest.json" | jq -r .start_segment);
+  echo "start=$start"; m ls --json "$r/db/wal/" | jq -r .key | sed "s/^/wal=/"' | tr -d '\r')
+start=$(sed -n 's/^start=//p' <<< "$listing")
+if ! grep -qx 'dumps=1' <<< "$listing" || ! grep -qx 'bases=1' <<< "$listing" \
+  || ! grep -qx "wal=$start" <<< "$listing" \
+  || [[ -n $(sed -n 's/^wal=\([0-9A-F]\{24\}\)$/\1/p' <<< "$listing" | awk -v s="$start" '$0 < s') ]]; then
+  log error rehearsal_prune_mismatch listing="$(tr '\n' ' ' <<< "$listing")"
+  exit 1
+fi
+
 log info rehearsal_result ok=true restore_check_ms="$restore_ms" restore_pitr_ms="$pitr_ms" pitr_rows="$rows" \
   target_time="$T" duration_ms="$(($(now_ms) - started))"
