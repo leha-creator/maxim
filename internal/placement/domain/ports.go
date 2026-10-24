@@ -76,6 +76,8 @@ type Placements interface {
 	// UpdateIfStatus сохраняет размещение, если в базе состояние status и lock_version
 	// lockVersion (03 §11); иначе ErrStaleVersion.
 	UpdateIfStatus(ctx context.Context, p Placement, status Status, lockVersion int) error
+	// SetDistribution сохраняет распределение удержания (03 §7) один раз; уже задано — ErrStaleVersion.
+	SetDistribution(ctx context.Context, id uuid.UUID, d Distribution) error
 	// ListByOrder — размещения заказа по времени создания.
 	ListByOrder(ctx context.Context, orderID uuid.UUID) ([]Placement, error)
 	// ListByOrderForUpdate — то же с блокировкой строк в порядке id.

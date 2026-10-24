@@ -31,6 +31,9 @@ import (
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	markingjobs "github.com/leha-creator/maxim/internal/marking/jobs"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
+	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
+	payoutjobs "github.com/leha-creator/maxim/internal/payout/jobs"
+	payoutpg "github.com/leha-creator/maxim/internal/payout/postgres"
 	placementapp "github.com/leha-creator/maxim/internal/placement/app"
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
 	placementjobs "github.com/leha-creator/maxim/internal/placement/jobs"
@@ -44,6 +47,8 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/metrics"
+	"github.com/leha-creator/maxim/internal/platform/outbound"
+	"github.com/leha-creator/maxim/internal/platform/ratelimit"
 	"github.com/leha-creator/maxim/internal/platform/secretbox"
 	"github.com/leha-creator/maxim/internal/platform/storage"
 	"github.com/leha-creator/maxim/internal/platform/storage/storagefake"
@@ -68,6 +73,12 @@ type infra struct {
 	// reg — реестр метрик процесса; nil в служебных командах.
 	reg *metrics.Registry
 	box *secretbox.Box
+	// rocketwork — Рокет Ворк (rocketwork.Client, rocketwork.Disabled, rocketworkfake); nil — disabled.
+	rocketwork bridge.RocketWorkAPI
+	// outMetrics, limitMetrics — общие метрики outbound и ограничителя: регистрируются один раз
+	// на процесс, сколько бы адаптеров ни подключилось.
+	outMetrics   *outbound.Metrics
+	limitMetrics *ratelimit.Metrics
 }
 
 // newInfra подключает адаптеры, нужные режиму.
@@ -113,6 +124,12 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 		}
 		in.connectORD(ctx, cfg)
 	}
+	// Рокет Ворк: подпись вебхука (api), задания (worker), сверка депозита и команды (admin, dev).
+	if mode == ModeAPI || mode == ModeWorker || mode == modeAdminMoney || mode == ModeAdmin || mode == ModeDev {
+		if err := in.connectRocketWork(ctx, cfg); err != nil {
+			return nil, err
+		}
+	}
 	if mode == ModeAPI || mode == ModeWorker {
 		box, err := secretbox.New(cfg.SecretsKeyBytes())
 		if err != nil {
@@ -148,7 +165,10 @@ type modules struct {
 	// marking — объекты ОРД и erid; markingStore — для метрики.
 	marking      *markingapp.Service
 	markingStore *markingpg.Store
-	platform     *platformJobs
+	// payout — выплаты блогерам через Рокет Ворк; payoutStore — для команд администратора.
+	payout      *payoutapp.Service
+	payoutStore *payoutpg.Store
+	platform    *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
 	queue    *job.Queue
@@ -185,6 +205,7 @@ func newModules(cfg Config, in *infra) *modules {
 	ledgerSvc, ledgerStore := newLedgerService(cfg, in, txRunner, auditLog)
 	billingSvc, billingStore := newBillingService(cfg, in, txRunner, auditLog, accountStore, ledgerSvc)
 	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc, ledgerSvc)
+	payoutSvc, payoutStore := newPayoutService(cfg, in, txRunner, queue, auditLog, accountStore, ledgerSvc, placementSvc, placementStore)
 	// Описания операций баланса — номера заказов и счетов (R-9).
 	ledgerSvc.References = bridge.LedgerReferences{Placements: placementStore.Placements(), Invoices: billingStore}
 	billingSvc.Placements = bridge.BillingPlacements{Placements: placementStore.Placements()}
@@ -192,6 +213,9 @@ func newModules(cfg Config, in *infra) *modules {
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
 	platform.stuck.Add(stuckRemovalCheck(cfg, placementSvc))
+	for _, c := range payoutSvc.StuckChecks() {
+		platform.stuck.Add(c)
+	}
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
 	})
@@ -215,6 +239,8 @@ func newModules(cfg Config, in *infra) *modules {
 		ledgerStore:    ledgerStore,
 		marking:        markingSvc,
 		markingStore:   markingStore,
+		payout:         payoutSvc,
+		payoutStore:    payoutStore,
 		platform:       platform,
 		txRunner:       txRunner,
 		queue:          queue,
@@ -240,6 +266,7 @@ func (m *modules) registerJobs(w *job.Worker) {
 	billingjobs.Register(w, m.billing, billingjobs.Options{ExpireInterval: m.cfg.Billing.InvoiceExpireInterval,
 		ClosingDay: m.cfg.Billing.ClosingActsDay, ClosingHour: closingHour, ClosingMinute: closingMinute})
 	ledgerjobs.Register(w, m.ledger, m.cfg.Billing.LedgerCheckInterval)
+	payoutjobs.Register(w, m.platform.dispatcher, m.payout, payoutjobs.Options{DepositCheckInterval: m.cfg.RocketWork.DepositCheckInterval})
 	if m.cfg.ORD.Enabled {
 		markingjobs.Register(w, m.marking)
 	}
@@ -271,7 +298,8 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
-			maxWebhookPattern: newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
+			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
+			rocketworkWebhookPattern: newRocketWorkWebhook(in, m.payout, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
 		},
 		Ready:         readiness(in.pool),
 		Authenticated: httpx.Authenticated,

@@ -13,6 +13,7 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/ids"
 	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
+	"github.com/leha-creator/maxim/internal/platform/money"
 )
 
 // Retry — повтор выплаты администратором (S-19, R-9): только из последней попытки failed
@@ -70,7 +71,7 @@ func (s *Service) Retry(ctx context.Context, payoutID, adminID uuid.UUID, reason
 
 // MarkLegalPaid — администратор перевёл деньги юрлицу (R-3, A-36): succeeded, проводка
 // blogger_payable → bank и P-16 в одной транзакции, запись в журнал действий.
-func (s *Service) MarkLegalPaid(ctx context.Context, payoutID, adminID uuid.UUID, bankRef, reason string) (domain.Payout, error) {
+func (s *Service) MarkLegalPaid(ctx context.Context, payoutID, adminID, approverID uuid.UUID, bankRef, reason string) (domain.Payout, error) {
 	const op = "Payout.MarkLegalPaid"
 	bankRef, reason = strings.TrimSpace(bankRef), strings.TrimSpace(reason)
 	if bankRef == "" || reason == "" {
@@ -102,7 +103,7 @@ func (s *Service) MarkLegalPaid(ctx context.Context, payoutID, adminID uuid.UUID
 		}
 		return s.Audit.Record(ctx, audit.Entry{Action: ActionMarkPaid, ObjectType: "payout", ObjectID: p.ID.String(),
 			Reason: &reason, ActorType: audit.ActorAdmin, OrganizationID: &p.BloggerOrganizationID,
-			Data: map[string]any{"bank_reference": bankRef, "amount": int64(p.Amount)}})
+			Data: legalPaidData(bankRef, p.Amount, approverID)})
 	})
 	if err != nil {
 		return domain.Payout{}, err
@@ -115,6 +116,14 @@ func (s *Service) MarkLegalPaid(ctx context.Context, payoutID, adminID uuid.UUID
 	s.log.WarnContext(ctx, "admin payout marked paid", logx.KeyOp, op, KeyPayoutID, p.ID, KeyPlacementID, p.PlacementID,
 		KeyAmount, int64(p.Amount), "admin_user_id", adminID, "replayed", !changed)
 	return p, nil
+}
+
+func legalPaidData(bankRef string, amount money.Kopecks, approverID uuid.UUID) map[string]any {
+	data := map[string]any{"bank_reference": bankRef, "amount": int64(amount)}
+	if approverID != uuid.Nil {
+		data["approver_id"] = approverID.String()
+	}
+	return data
 }
 
 // AdminList — реестр выплат для команды администратора.

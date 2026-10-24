@@ -16,19 +16,13 @@ import (
 	"github.com/leha-creator/maxim/internal/payout/domain"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
 	"github.com/leha-creator/maxim/internal/platform/job"
+	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
 // Options — расписание периодических заданий.
 type Options struct {
 	// DepositCheckInterval — check_rocketwork_deposit (ROCKETWORK_DEPOSIT_CHECK_INTERVAL, R-12).
 	DepositCheckInterval time.Duration
-}
-
-// EventPayload — тело inbound_event Рокет Ворк: подпись уже проверена, формат сервиса разобран
-// адаптером, хранится только идентификатор объекта (R-10).
-type EventPayload struct {
-	ExternalID string `json:"external_id"`
-	EventID    string `json:"event_id,omitempty"`
 }
 
 // Register регистрирует виды заданий модуля и обработчики событий Рокет Ворк.
@@ -90,10 +84,10 @@ func Register(w *job.Worker, d *inbound.Dispatcher, svc *app.Service, opts Optio
 		interval = time.Hour
 	}
 	w.RegisterPeriodic(app.KindCheckDeposit, job.Every(interval), func(ctx context.Context, _ job.Running) error {
-		_, err := svc.CheckDeposit(ctx)
-		if errors.Is(err, domain.ErrProviderDisabled) {
-			return nil
+		if !svc.Config.ProviderEnabled {
+			return nil // режим disabled: сверять нечего (R-1)
 		}
+		_, err := svc.CheckDeposit(ctx)
 		return err
 	}, job.HandlerOptions{})
 
@@ -104,20 +98,27 @@ func Register(w *job.Worker, d *inbound.Dispatcher, svc *app.Service, opts Optio
 
 // RegisterEvents — события Рокет Ворк в общем диспетчере входящих событий.
 func RegisterEvents(d *inbound.Dispatcher, svc *app.Service) {
-	d.Handle(inbound.SourceRocketWork, string(domain.WebhookContractorStatus), event(svc.ApplyContractor))
-	d.Handle(inbound.SourceRocketWork, string(domain.WebhookPayoutStatus), event(svc.ApplyPayout))
+	d.Handle(inbound.SourceRocketWork, string(domain.WebhookContractorStatus), event(svc, svc.ApplyContractor))
+	d.Handle(inbound.SourceRocketWork, string(domain.WebhookPayoutStatus), event(svc, svc.ApplyPayout))
 }
 
 // event разбирает тело события; неизвестный объект — ignored (app.ErrIgnored).
-func event(apply func(ctx context.Context, externalID string) error) inbound.Handler {
+func event(svc *app.Service, apply func(ctx context.Context, externalID string) error) inbound.Handler {
+	const op = "Payout.RocketWorkEvent"
 	return func(ctx context.Context, e inbound.Event) error {
-		var p EventPayload
+		var p app.EventPayload
 		if err := json.Unmarshal(e.Payload, &p); err != nil || p.ExternalID == "" {
 			return job.Permanent(fmt.Errorf("decode rocketwork event: %v", err))
 		}
 		err := apply(ctx, p.ExternalID)
 		if errors.Is(err, domain.ErrNotFound) {
+			svc.Log.DebugContext(ctx, "rocketwork event ignored", logx.KeyOp, op, "event_type", e.EventType,
+				"external_id", p.ExternalID)
 			return inbound.ErrIgnore
+		}
+		if err == nil {
+			svc.Log.InfoContext(ctx, "rocketwork event processed", logx.KeyOp, op, "event_type", e.EventType,
+				"external_id", p.ExternalID, "event_id", p.EventID)
 		}
 		return err
 	}

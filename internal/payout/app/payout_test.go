@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
 	"github.com/leha-creator/maxim/internal/integration/rocketwork"
 	"github.com/leha-creator/maxim/internal/ledger/ledgertest"
@@ -337,16 +339,16 @@ func TestLegalEntityMarkPaid(t *testing.T) {
 	if p.Method != domain.MethodBankTransfer || e.jobs(app.SendKey(id)) != 0 {
 		t.Fatalf("legal payout %+v", p)
 	}
-	_, err := e.svc.MarkLegalPaid(ctx, id, e.admin, "", "оплачено")
+	_, err := e.svc.MarkLegalPaid(ctx, id, e.admin, uuid.Nil, "", "оплачено")
 	mustErr(t, err, domain.ErrInvalidPayout)
-	if p, err = e.svc.MarkLegalPaid(ctx, id, e.admin, "п/п 15", "оплачено"); err != nil {
+	if p, err = e.svc.MarkLegalPaid(ctx, id, e.admin, uuid.Nil, "п/п 15", "оплачено"); err != nil {
 		t.Fatal(err)
 	}
 	if p.Status != domain.StatusSucceeded || p.BankReference != "п/п 15" || e.payable(org) != 0 || e.placements.paidCount() != 1 {
 		t.Fatalf("legal paid %+v", p)
 	}
 	// Повтор — без второй проводки.
-	if _, err := e.svc.MarkLegalPaid(ctx, id, e.admin, "п/п 15", "оплачено"); err != nil {
+	if _, err := e.svc.MarkLegalPaid(ctx, id, e.admin, uuid.Nil, "п/п 15", "оплачено"); err != nil {
 		t.Fatal(err)
 	}
 	if n := e.count(`SELECT count(*) FROM ledger_transaction WHERE payout_id = $1`, id); n != 1 {
@@ -355,7 +357,7 @@ func TestLegalEntityMarkPaid(t *testing.T) {
 	// Выплату через Рокет Ворк вручную не отмечают.
 	rw := e.blogger(accountdomain.SelfEmployed)
 	_, rid := e.accepted(rw, 10_000)
-	_, err = e.svc.MarkLegalPaid(ctx, rid, e.admin, "п/п 16", "оплачено")
+	_, err = e.svc.MarkLegalPaid(ctx, rid, e.admin, uuid.Nil, "п/п 16", "оплачено")
 	mustErr(t, err, domain.ErrInvalidPayoutState)
 }
 
@@ -405,5 +407,66 @@ func TestProviderDisabled(t *testing.T) {
 	e.rw.FailNext("GetDepositBalance", rocketwork.ErrDisabled)
 	if _, err := e.svc.CheckDeposit(ctx); !isPostponed(err) {
 		t.Fatalf("check deposit disabled: %v", err)
+	}
+}
+
+func TestDepositExcludesLegalAndTolerance(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.accepted(e.blogger(accountdomain.LegalEntity), 70_000)
+	e.accepted(e.blogger(accountdomain.SoleProprietor), 20_000)
+	_ = e.rw.SetDeposit(100)
+	r, err := e.svc.CheckDeposit(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Payable != 20_000 || r.Need != 20_000 {
+		t.Fatalf("legal entity counted: %+v", r)
+	}
+	// Допуск 1,00 ₽: журнал 0, сервис 1,00 ₽ — не расхождение; 1,01 ₽ — расхождение.
+	if r.Mismatch() {
+		t.Fatalf("100 kopecks is within tolerance: %+v", r)
+	}
+	_ = e.rw.SetDeposit(101)
+	if r, _ = e.svc.CheckDeposit(ctx); !r.Mismatch() {
+		t.Fatalf("101 kopecks over tolerance: %+v", r)
+	}
+}
+
+func TestStuckChecks(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	org := e.blogger(accountdomain.SelfEmployed)
+	pid, id := e.accepted(org, 50_000)
+	if _, err := e.d.Pool.Exec(ctx, `UPDATE placement SET status = 'accepted', status_changed_at = $2, performance_share = 10000,
+		payout_amount = blogger_amount, fee_charged = fee_amount, refund_amount = 0 WHERE id = $1`, pid, start); err != nil {
+		t.Fatal(err)
+	}
+	checks := map[string]func(context.Context, time.Time) ([]string, error){}
+	for _, c := range e.svc.StuckChecks() {
+		checks[c.Name] = c.Find
+	}
+	find := func(name string, before time.Time) int {
+		t.Helper()
+		keys, err := checks[name](ctx, before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(keys)
+	}
+	for _, name := range []string{app.StuckAcceptedUnpaid, app.StuckCreatedNotSent} {
+		if find(name, start) != 0 || find(name, start.Add(time.Second)) != 1 {
+			t.Fatalf("%s boundary", name)
+		}
+	}
+	if find(app.StuckSentNoOutcome, start.Add(time.Second)) != 0 {
+		t.Fatal("created payout counted as sent")
+	}
+	_ = e.rw.SetDeposit(100_000)
+	if err := e.svc.Send(ctx, id, 1); err != nil {
+		t.Fatal(err)
+	}
+	if find(app.StuckSentNoOutcome, start.Add(time.Second)) != 1 || find(app.StuckCreatedNotSent, start.Add(time.Second)) != 0 {
+		t.Fatal("sent payout not found")
 	}
 }

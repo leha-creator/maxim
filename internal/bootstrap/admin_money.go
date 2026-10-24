@@ -68,6 +68,7 @@ func newMoneyFlags(name string, out io.Writer) *moneyFlags {
 //	maxim admin money ledger manual --debit <вид[:разрез]> --credit <вид[:разрез]> --amount <руб.коп> --reason … --email … [--approver-email …] [--key …]
 //	maxim admin money ledger list [--org …] [--kind …] [--since YYYY-MM-DD] [--limit N]
 //	maxim admin money balance-return --org … --amount … --reason … --email … [--key …]
+//	maxim admin money deposit-topup --amount … --reason … --email … [--approver-email …] [--key …] — пополнение депозита Рокет Ворк
 //	maxim admin money reconcile
 //	maxim admin money closing-acts --period YYYY-MM --email … — закрывающие документы за месяц вручную (R-16)
 //
@@ -112,6 +113,8 @@ func runAdminMoney(ctx context.Context, cfg Config, log *slog.Logger, args []str
 		ok = need(f.debit, f.credit, f.amount, f.reason, f.email)
 	case "balance-return":
 		ok = need(f.org, f.amount, f.reason, f.email)
+	case "deposit-topup":
+		ok = need(f.amount, f.reason, f.email)
 	case "closing-acts":
 		ok = need(f.period, f.email)
 	default:
@@ -188,6 +191,8 @@ func (c *moneyCmd) run(ctx context.Context, cmd string) error {
 		return c.manual(ctx, admin)
 	case "balance-return":
 		return c.balanceReturn(ctx, admin)
+	case "deposit-topup":
+		return c.depositTopup(ctx, admin)
 	case "closing-acts":
 		return c.closingActs(ctx)
 	}
@@ -328,6 +333,26 @@ func (c *moneyCmd) balanceReturn(ctx context.Context, admin uuid.UUID) error {
 	return nil
 }
 
+// depositTopup — перевод с расчётного счёта на депозит Рокет Ворк (06 §2.3): bank → rocketwork_deposit.
+func (c *moneyCmd) depositTopup(ctx context.Context, admin uuid.UUID) error {
+	amount, err := c.amount()
+	if err != nil {
+		return err
+	}
+	approver := uuid.Nil
+	if *c.f.approver != "" {
+		if approver, err = c.senior(ctx, *c.f.approver); err != nil {
+			return err
+		}
+	}
+	res, err := c.m.ledger.DepositTopup(ctx, c.key(), amount, admin, approver, *c.f.reason)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(c.out, "deposit topup %s posted (replayed %t)\n", res.ID, res.Replayed)
+	return nil
+}
+
 // account разбирает «вид[:разрез]»: разрез организации — идентификатор или ИНН, размещения — идентификатор.
 func (c *moneyCmd) account(ctx context.Context, s string) (ledgerdomain.AccountRef, error) {
 	kind, scope, _ := strings.Cut(s, ":")
@@ -440,6 +465,7 @@ func (c *moneyCmd) reconcile(ctx context.Context) error {
 	cash := bank + totals[ledgerdomain.AccountRocketworkDeposit]
 	fmt.Fprintf(c.out, "advertiser liabilities %s, money (bank + rocketwork deposit) %s, cover %s\n",
 		rub(clients), rub(cash), rub(cash-clients))
+	c.reconcileRocketWork(ctx)
 	return nil
 }
 
@@ -462,4 +488,21 @@ func (c *moneyCmd) closingActs(ctx context.Context) error {
 	res, err := c.m.billing.GenerateClosingActs(ctx, p)
 	fmt.Fprintf(c.out, "closing acts %s: created %d, skipped %d, failed %d\n", p, res.Created, res.Skipped, res.Failed)
 	return err
+}
+
+// reconcileRocketWork — строка сверки депозита Рокет Ворк (R-12 этапа выплат): журнал, API,
+// расхождение и обязательства. Сервис недоступен или выключен — строка с причиной.
+func (c *moneyCmd) reconcileRocketWork(ctx context.Context) {
+	if c.m.payout == nil {
+		return
+	}
+	r, err := c.m.payout.DepositReport(ctx)
+	if err != nil {
+		fmt.Fprintf(c.out, "rocketwork deposit: unavailable (%v)\n", err)
+		return
+	}
+	fmt.Fprintf(c.out, "rocketwork deposit: ledger %s, api %s, difference %s, mismatch %t\n",
+		rub(r.Ledger), rub(r.API), rub(r.API-r.Ledger), r.Mismatch())
+	fmt.Fprintf(c.out, "rocketwork obligations: payable %s, in flight %s, need %s, shortage %s\n",
+		rub(r.Payable), rub(r.InFlight), rub(r.Need), rub(r.Shortage()))
 }

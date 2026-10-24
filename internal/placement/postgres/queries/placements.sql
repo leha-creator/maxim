@@ -117,3 +117,9 @@ JOIN "order" o ON o.id = p.order_id
 JOIN channel c ON c.id = p.channel_id
 LEFT JOIN publication pub ON pub.placement_id = p.id
 WHERE p.id = ANY(@ids::uuid[]);
+
+-- name: SetPlacementDistribution :execrows
+-- Распределение удержания при переходе в accepted или refunded (03 §7, I-12); один раз.
+UPDATE placement SET performance_share = @performance_share, payout_amount = @payout_amount,
+    fee_charged = @fee_charged, refund_amount = @refund_amount
+WHERE id = @id AND performance_share IS NULL;

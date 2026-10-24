@@ -72,7 +72,7 @@ func newEnv(t *testing.T) *env {
 		Organizations: bridge.PayoutOrganizations{Orgs: accountpg.New(d.Pool, log).Organizations()},
 		Notifier:      e.notices, Alerts: e.alerts, Tx: runner, Jobs: job.NewQueue(d.Pool, clk, log),
 		Audit: audit.New(d.Pool, clk, log), Clock: clk, Log: log,
-		Config: app.Config{ProviderEnabled: true, NPDAnnualLimit: 100000},
+		Config: app.Config{ProviderEnabled: true, NPDAnnualLimit: 100000, DepositTolerance: 100},
 	})
 	return e
 }

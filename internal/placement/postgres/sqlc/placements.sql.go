@@ -923,6 +923,35 @@ func (q *Queries) ScheduledWithoutPublication(ctx context.Context, before *time.
 	return items, nil
 }
 
+const setPlacementDistribution = `-- name: SetPlacementDistribution :execrows
+UPDATE placement SET performance_share = $1, payout_amount = $2,
+    fee_charged = $3, refund_amount = $4
+WHERE id = $5 AND performance_share IS NULL
+`
+
+type SetPlacementDistributionParams struct {
+	PerformanceShare *int32
+	PayoutAmount     *int64
+	FeeCharged       *int64
+	RefundAmount     *int64
+	ID               uuid.UUID
+}
+
+// Распределение удержания при переходе в accepted или refunded (03 §7, I-12); один раз.
+func (q *Queries) SetPlacementDistribution(ctx context.Context, arg SetPlacementDistributionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPlacementDistribution,
+		arg.PerformanceShare,
+		arg.PayoutAmount,
+		arg.FeeCharged,
+		arg.RefundAmount,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updatePlacement = `-- name: UpdatePlacement :execrows
 UPDATE placement SET
     post_version_id = $1, status = $2, status_changed_at = $3,

@@ -11,6 +11,8 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	"github.com/leha-creator/maxim/internal/integration/ord"
 	"github.com/leha-creator/maxim/internal/integration/ord/ordfake"
+	"github.com/leha-creator/maxim/internal/integration/rocketwork"
+	"github.com/leha-creator/maxim/internal/integration/rocketwork/rocketworkfake"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/cleanup"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
@@ -65,11 +67,7 @@ func (in *infra) connectMAX(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	var outMetrics *outbound.Metrics
-	var limitMetrics *ratelimit.Metrics
-	if in.reg != nil {
-		outMetrics, limitMetrics = outbound.NewMetrics(in.reg), ratelimit.NewMetrics(in.reg)
-	}
+	outMetrics, limitMetrics := in.integrationMetrics()
 	out := outbound.New(in.pool, in.clock, log, outbound.Options{
 		System: outbound.SystemMAX, HTTP: httpClient, Alerter: in.alerter, Metrics: outMetrics,
 	})
@@ -141,11 +139,7 @@ func (in *infra) connectORD(ctx context.Context, cfg Config) {
 		log.InfoContext(ctx, "ord adapter connected", logx.KeyOp, "Bootstrap.ConnectORD", "mode", "fake")
 		return
 	}
-	var outMetrics *outbound.Metrics
-	var limitMetrics *ratelimit.Metrics
-	if in.reg != nil {
-		outMetrics, limitMetrics = outbound.NewMetrics(in.reg), ratelimit.NewMetrics(in.reg)
-	}
+	outMetrics, limitMetrics := in.integrationMetrics()
 	out := outbound.New(in.pool, in.clock, log, outbound.Options{
 		System: outbound.SystemYandexORD, Alerter: in.alerter, Metrics: outMetrics,
 	})
@@ -155,4 +149,44 @@ func (in *infra) connectORD(ctx context.Context, cfg Config) {
 	}, log)
 	log.InfoContext(ctx, "ord adapter connected", logx.KeyOp, "Bootstrap.ConnectORD", "mode", "real",
 		"base_url", cfg.ORDBaseURL(), "api_version", cfg.ORD.APIVersion)
+}
+
+// integrationMetrics — метрики outbound и ограничителя, созданные один раз на процесс.
+func (in *infra) integrationMetrics() (*outbound.Metrics, *ratelimit.Metrics) {
+	if in.reg != nil && in.outMetrics == nil {
+		in.outMetrics, in.limitMetrics = outbound.NewMetrics(in.reg), ratelimit.NewMetrics(in.reg)
+	}
+	return in.outMetrics, in.limitMetrics
+}
+
+// connectRocketWork подключает адаптер Рокет Ворк по ROCKETWORK_MODE (R-1): rocketworkfake
+// (в разработке — с общим файлом состояния для api и worker), заглушка disabled или
+// HTTP-клиент по предполагаемому контракту (live).
+func (in *infra) connectRocketWork(ctx context.Context, cfg Config) error {
+	const op = "Bootstrap.ConnectRocketWork"
+	log := in.log.With(logx.KeyModule, "rocketwork")
+	switch mode := cfg.RocketWorkMode(); mode {
+	case RocketWorkFake:
+		opts := []rocketworkfake.Option{rocketworkfake.WithLogger(log)}
+		if cfg.RocketWork.FakeStatePath != "" {
+			opts = append(opts, rocketworkfake.WithStatePath(cfg.RocketWork.FakeStatePath))
+		}
+		in.rocketwork = rocketworkfake.New(cfg.RocketWorkWebhookSecret(), opts...)
+		log.InfoContext(ctx, "rocketwork adapter connected", logx.KeyOp, op, "mode", mode,
+			"state_path", cfg.RocketWork.FakeStatePath)
+	case RocketWorkLive:
+		outMetrics, limitMetrics := in.integrationMetrics()
+		out := outbound.New(in.pool, in.clock, log, outbound.Options{
+			System: outbound.SystemRocketWork, Alerter: in.alerter, Metrics: outMetrics,
+		})
+		limiter := ratelimit.New(in.pool, in.clock, log, ratelimit.Options{Metrics: limitMetrics})
+		in.rocketwork = rocketwork.New(out, limiter, rocketwork.Options{BaseURL: cfg.RocketWork.BaseURL,
+			Token: cfg.RocketWork.Token, WebhookSecret: cfg.RocketWorkWebhookSecret(), Rate: cfg.RocketWork.Rate}, log)
+		log.WarnContext(ctx, "rocketwork live client uses an unverified contract", logx.KeyOp, op, "mode", mode,
+			"base_url", cfg.RocketWork.BaseURL, "questions", "Q-10, Q-11, Q-12")
+	default:
+		in.rocketwork = rocketwork.NewDisabled(log, in.clock.Now)
+		log.InfoContext(ctx, "rocketwork adapter connected", logx.KeyOp, op, "mode", RocketWorkDisabled)
+	}
+	return nil
 }

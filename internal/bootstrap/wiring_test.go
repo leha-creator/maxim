@@ -3,11 +3,13 @@ package bootstrap
 import (
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
+	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
 )
 
@@ -167,5 +169,36 @@ func TestBillingWiring(t *testing.T) {
 		if r := adv.do(op.method, op.path, nil); r.status == http.StatusNotImplemented || r.status >= 500 {
 			t.Errorf("%s %s: %d", op.method, op.path, r.status)
 		}
+	}
+}
+
+// Этап выплат (I-1, R-11): задания, события Рокет Ворк, гейт исполнителя и зависшие.
+func TestPayoutWiring(t *testing.T) {
+	a := newTestApp(t)
+	for _, kind := range []string{payoutapp.KindEnsureContractor, payoutapp.KindPollContractor, payoutapp.KindSendPayout,
+		payoutapp.KindPollPayout, payoutapp.KindCheckDeposit} {
+		if !slices.Contains(a.worker.Kinds(), kind) {
+			t.Fatalf("worker kinds %v have no %s", a.worker.Kinds(), kind)
+		}
+	}
+	for _, ev := range []string{"contractor_status", "payout_status"} {
+		if !a.mods.platform.dispatcher.Handles(inbound.SourceRocketWork, ev) {
+			t.Errorf("no handler for Rocket Work event %s", ev)
+		}
+	}
+	if a.mods.placement.Contractors != a.mods.payout {
+		t.Fatalf("contractor gate %T", a.mods.placement.Contractors)
+	}
+	if _, ok := a.mods.placement.Payouts.(bridge.PlacementPayouts); !ok {
+		t.Fatalf("payouts port %T", a.mods.placement.Payouts)
+	}
+	// Вебхук смонтирован: неверная подпись — 401, а не 404 или 501.
+	resp, err := http.Post(a.srv.URL+"/api/v1/webhooks/rocketwork", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("rocketwork webhook: %d", resp.StatusCode)
 	}
 }

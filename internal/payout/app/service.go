@@ -242,3 +242,10 @@ func (s *Service) schedule(ctx context.Context, j job.Job) error {
 	}
 	return s.Jobs.Enqueue(ctx, j)
 }
+
+// EventPayload — тело inbound_event Рокет Ворк: подпись уже проверена, формат сервиса разобран
+// адаптером, хранится только идентификатор объекта (R-10).
+type EventPayload struct {
+	ExternalID string `json:"external_id"`
+	EventID    string `json:"event_id,omitempty"`
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/leha-creator/maxim/internal/channel/channeltest"
 	"github.com/leha-creator/maxim/internal/integration/max"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
+	"github.com/leha-creator/maxim/internal/integration/rocketwork/rocketworkfake"
 )
 
 // bloggerClient — пользователь с организацией-блогером (S-10).
@@ -31,6 +32,11 @@ func (a *testApp) bloggerClient(email string) *client {
 	if r.status != http.StatusCreated {
 		a.t.Fatalf("create blogger: %d %s", r.status, r.body)
 	}
+	var org struct {
+		ID uuid.UUID `json:"id"`
+	}
+	r.json(a.t, &org)
+	a.activeContractor(org.ID)
 	return c
 }
 
@@ -313,4 +319,32 @@ func uuidOf(t *testing.T, s string) uuid.UUID {
 		t.Fatal(err)
 	}
 	return id
+}
+
+func (a *testApp) rocketWork() *rocketworkfake.Fake {
+	return a.mods.in.rocketwork.(*rocketworkfake.Fake)
+}
+
+// activeContractor проводит онбординг блогера в Рокет Ворк до active (S-11): приглашение,
+// регистрация исполнителя и событие сервиса — без HTTP, чтобы сценарии других этапов могли
+// принимать заявки (P-03 проверяет исполнителя).
+func (a *testApp) activeContractor(orgID uuid.UUID) {
+	a.t.Helper()
+	ctx := context.Background()
+	if _, err := a.mods.payout.Invite(ctx, orgID); err != nil {
+		a.t.Fatalf("rocketwork invite: %v", err)
+	}
+	if err := a.mods.payout.EnsureContractor(ctx, orgID); err != nil {
+		a.t.Fatalf("rocketwork ensure: %v", err)
+	}
+	c, err := a.mods.payoutStore.ContractorByOrg(ctx, orgID, false)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	if err := a.rocketWork().ActivateContractor(c.ExternalID); err != nil {
+		a.t.Fatal(err)
+	}
+	if err := a.mods.payout.ApplyContractor(ctx, c.ExternalID); err != nil {
+		a.t.Fatalf("rocketwork activate: %v", err)
+	}
 }

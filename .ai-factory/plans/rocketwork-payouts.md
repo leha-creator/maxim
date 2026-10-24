@@ -203,7 +203,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 ### Phase 3: Вебхук, депозит, команды администратора
 
-- [ ] **Task 8: Вебхук Рокет Ворк (R-10, R-11)** (depends on 6)
+- [x] **Task 8: Вебхук Рокет Ворк (R-10, R-11)** (depends on 6)
   - `internal/payout/httpapi/webhook.go`: `Webhook.ServeHTTP` — лимит 1 МиБ, `Provider.ParseWebhook`, отказ — `401` и счётчик отказов с оповещением `webhook_auth_failed:rocketwork` (образец — `channel/httpapi/webhook.go`), `inbound.Recorder.Record(Event{Source: SourceRocketWork, ExternalKey, EventType})`, ответ `200` независимо от разбора; `disabled` — `404`.
   - `internal/payout/jobs/jobs.go`: `Dispatcher.Handle(SourceRocketWork, "contractor_status" | "payout_status", …)` — событие несёт только внешний идентификатор; обработчик запрашивает свежее состояние (`GetContractor`/`GetPayout`) и применяет через `ApplyContractor`/`complete`/`fail`. Неизвестный объект — `app.ErrIgnored`.
   - `internal/bootstrap/payout.go`: маршрут `POST {BaseURL}/webhooks/rocketwork` в `Routes` (вне строгого сервера; CSRF уже исключён по префиксу).
@@ -211,7 +211,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты: подписанное событие — `inbound_event`, обработка переводит выплату в `succeeded` и размещение в `paid`; повтор события — дубликат; неверная подпись — `401`, пятый отказ — оповещение; тело > 1 МиБ — `413`.
   - Файлы: `internal/payout/httpapi/{webhook.go,webhook_test.go}`, `internal/payout/jobs/jobs.go`, `internal/bootstrap/payout.go`.
 
-- [ ] **Task 9: Контроль депозита, лимит, зависшие (R-12, R-14)** (depends on 6)
+- [x] **Task 9: Контроль депозита, лимит, зависшие (R-12, R-14)** (depends on 6)
   - `internal/payout/app/deposit.go`: `CheckDeposit(ctx)` — R-12, оповещения `rocketwork_deposit_low`, `rocketwork_deposit_mismatch` и их закрытие, метрика; `DepositReport(ctx)` для `reconcile`.
   - `internal/payout/jobs/jobs.go`: периодическое `check_rocketwork_deposit` (`ROCKETWORK_DEPOSIT_CHECK_INTERVAL`, 1 ч, `max_attempts` 1).
   - `internal/payout/app/stuck.go`: проверки `stuck.Check` R-14 — регистрируются в `m.platform.stuck`; убрать заглушку-комментарий в `internal/platform/stuck/stuck.go`.
@@ -220,7 +220,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты: депозит меньше обязательств — оповещение, после пополнения — закрыто; расхождение 1,00 ₽ — нет, 1,01 ₽ — есть; выплаты юрлицам и их размещения в расчёт не входят; три проверки `stuck` на границах порогов.
   - Файлы: `internal/payout/app/{deposit.go,stuck.go,*_test.go}`, `internal/payout/jobs/jobs.go`, `internal/platform/stuck/stuck.go`.
 
-- [ ] **Task 10: Команды администратора (R-3, R-9, R-12)** (depends on 6, 9)
+- [x] **Task 10: Команды администратора (R-3, R-9, R-12)** (depends on 6, 9)
   - `internal/bootstrap/admin_payout.go`: `maxim admin payout list [--status] [--org-inn] [--from --to]` (таблица: дата, блогер — маскированный ИНН, размещение, попытка, сумма, состояние, код); `retry --payout --email --reason` (R-9); `mark-paid --payout --bank-ref --email --reason` (R-3, только `bank_transfer`, `senior`; сумма выше `LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD` — `--approver-email`); `contractor refresh --org-inn`.
   - `internal/bootstrap/admin_money.go`: `deposit-topup --amount --email --reason [--key]` — `ledger.NewDepositTopup` (`senior`, порог второго администратора, ключ печатается); `reconcile` дополняется строкой «Рокет Ворк: журнал / API / расхождение» из `DepositReport`.
   - `internal/payout/app/admin.go`: `Retry`, `MarkLegalPaid` с `audit_log`.
