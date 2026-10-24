@@ -39,14 +39,27 @@ func newHTTPServer(addr string, h http.Handler) *http.Server {
 	}
 }
 
-func metricsServer(addr string, reg *metrics.Registry) namedServer {
+// metricsServer — порт метрик. С ready на нём же /livez и /readyz: у worker нет другого
+// HTTP-порта, а HEALTHCHECK compose проверяет готовность (deploy/app/compose.yml).
+func metricsServer(addr string, reg *metrics.Registry, log *slog.Logger, ready func(ctx context.Context) error) namedServer {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", reg.Handler())
+	if ready != nil {
+		mux.HandleFunc("GET /livez", livezHandler)
+		mux.HandleFunc("GET /readyz", readyzHandler(log, ready))
+	}
 	return namedServer{name: "metrics", srv: newHTTPServer(addr, mux)}
 }
 
+// stopPolicy — порядок остановки серверов: признак остановки для /readyz и пауза до Shutdown,
+// за которую прокси убирает экземпляр (HTTP_SHUTDOWN_DRAIN, 07 §8).
+type stopPolicy struct {
+	life  *lifecycle
+	drain time.Duration
+}
+
 // serve запускает серверы и останавливает их плавно, когда отменяется ctx.
-func serve(ctx context.Context, log *slog.Logger, servers ...namedServer) error {
+func serve(ctx context.Context, log *slog.Logger, stop stopPolicy, servers ...namedServer) error {
 	g, gctx := errgroup.WithContext(ctx)
 	for _, s := range servers {
 		ln, err := net.Listen("tcp", s.srv.Addr)
@@ -63,6 +76,14 @@ func serve(ctx context.Context, log *slog.Logger, servers ...namedServer) error 
 	}
 	g.Go(func() error {
 		<-gctx.Done()
+		if stop.life != nil {
+			stop.life.stopping.Store(true)
+		}
+		if stop.drain > 0 {
+			// /readyz уже отвечает 503; новые запросы ещё принимаются, пока прокси не убрал экземпляр.
+			log.Info("drain started", logx.KeyOp, "Bootstrap.Serve", "drain_ms", stop.drain.Milliseconds())
+			time.Sleep(stop.drain)
+		}
 		start := time.Now()
 		log.Info("shutdown started", logx.KeyOp, "Bootstrap.Serve")
 		sctx, cancel := context.WithTimeout(context.Background(), apiShutdownTimeout)
@@ -100,7 +121,7 @@ func runAPI(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	return serve(ctx, log,
+	return serve(ctx, log, stopPolicy{life: &in.life, drain: cfg.ShutdownDrain},
 		namedServer{name: "api", srv: newHTTPServer(cfg.HTTPAddr, h)},
-		metricsServer(cfg.MetricsAddr, reg))
+		metricsServer(cfg.MetricsAddr, reg, nil, nil))
 }

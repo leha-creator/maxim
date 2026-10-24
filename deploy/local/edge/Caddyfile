@@ -1,0 +1,7 @@
+# Edge-прокси репетиции: без HTTPS, сайты — файлы из sites/.
+{
+	auto_https off
+	admin localhost:2019
+}
+
+import sites/*.caddy

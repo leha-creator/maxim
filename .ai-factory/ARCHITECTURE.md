@@ -158,7 +158,13 @@ maxim/
 ├── templates/                       # тексты уведомлений и писем (07 §6): email/*.tmpl, embed.go
 ├── compose.dev.yml                  # локальное окружение: PostgreSQL, MinIO, Mailpit, migrate, api, worker
 ├── Dockerfile                       # образ бэкенда (distroless); контекст — Dockerfile.dockerignore
-├── docs/                            # проектная документация (справочно)
+├── deploy/                          # эксплуатация (deploy/app/README.md); стенд заглушки — compose.yml, maxim.caddy, bootstrap.sh
+│   ├── app/                         #   стек окружения: compose (ячейки api/worker a и b, postgres, backup), сайт edge-Caddy,
+│   │   └── env/<env>/               #   release.sh; шаблоны app.env и stack.env для staging и production
+│   ├── postgres/                    #   образ maxim-postgres: архив WAL, роли, скрипты копий и восстановления (bin/), crontab
+│   ├── local/                       #   репетиции выпуска и копий на своей машине (свой edge-Caddy, MinIO, Mailpit)
+│   └── scripts/                     #   lib.sh (журнал JSON), check-env.sh, check-migrations.sh
+├── docs/                            # проектная документация (справочно); docs/launch — запуск и пилот
 └── mockapi/                         # тестовый сервер в памяти (справочно, отдельный модуль)
 ```
 

@@ -236,12 +236,18 @@ MSYS_NO_PATHCONV=1 docker compose -f compose.dev.yml run --rm --no-deps -v "$PWD
 
 Порядок изменений: сначала [api/openapi.yaml](api/openapi.yaml), затем генерация, затем обработчик. Схема базы меняется только новой миграцией в [migrations/](migrations/); запросы пишутся в `internal/*/postgres/queries/*.sql` и `internal/platform/*/queries/*.sql`.
 
+## Эксплуатация
+
+Тестовое окружение и продакшен: стек, выпуск без простоя и откат, резервные копии, восстановление, типовые сбои — [deploy/app/README.md](deploy/app/README.md). Запуск и пилот (юридические документы, персональные данные, уведомление РКН, план пилота) — [docs/launch/README.md](docs/launch/README.md). Репетиции на своей машине (нужен Docker; проекты `maxim-rehearsal*`, порт `127.0.0.1:18480`): `deploy/local/rehearse-release.sh`, `deploy/local/rehearse-backup.sh`.
+
 ## CI
 
 | Workflow | Что делает |
 |---|---|
 | [backend.yml](.github/workflows/backend.yml) | Генерация без изменений в git, `sqlc vet`, `go vet`, `go test -race` с контейнерами, сборка образа |
 | [deploy.yml](.github/workflows/deploy.yml) | Заглушка API: проверки, образ, выкладка на [тестовый стенд](deploy/README.md) |
+| [ops.yml](.github/workflows/ops.yml) | Скрипты и шаблоны эксплуатации: `shellcheck`, `check-env.sh`, `check-migrations.sh` (миграции совместимы с прошлым выпуском), `compose config`, `caddy validate`, `hadolint`, `maxim config check` шаблонов; репетиции копий с восстановлением и выпуска без простоя |
+| [release.yml](.github/workflows/release.yml) | Только вручную: образы бэкенда и PostgreSQL в GHCR, выпуск или откат на `staging` или `production` через `release.sh` |
 
 ## Структура
 
@@ -257,4 +263,5 @@ MSYS_NO_PATHCONV=1 docker compose -f compose.dev.yml run --rm --no-deps -v "$PWD
 | `internal/integration` | Адаптеры внешних систем и их подделки: почта, MAX |
 | `migrations`, `templates` | Миграции goose и шаблоны писем |
 | `docs`, `api` | Проектная документация и договор HTTP API |
-| `mockapi`, `deploy` | Тестовый сервер API с выдуманными данными и его стенд |
+| `mockapi` | Тестовый сервер API с выдуманными данными; его стенд — `deploy/compose.yml`, `deploy/maxim.caddy` |
+| `deploy/app`, `deploy/postgres`, `deploy/local`, `deploy/scripts` | Стек окружений и выпуск, образ PostgreSQL с копиями, репетиции, проверки ([руководство](deploy/app/README.md)) |

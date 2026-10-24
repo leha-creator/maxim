@@ -27,3 +27,6 @@ mockapi/mockapi.exe
 
 # Файлы ручных прогонов (выписки dev statement --out)
 /tmp/
+
+# Каталог репетиций выпуска и копий (deploy/local).
+deploy/local/.state/

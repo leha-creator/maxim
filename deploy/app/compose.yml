@@ -1,0 +1,193 @@
+# Стек бэкенда на сервере окружения (тестовое, продакшен): PostgreSQL с архивом WAL,
+# резервное копирование, две ячейки api и worker для выпуска без простоя. Руководство —
+# deploy/app/README.md. На сервере файл лежит в /opt/maxim-<env>/ рядом с app.env,
+# stack.env и slots.env; запускается только через release.sh:
+#   docker compose --env-file stack.env --env-file slots.env -f compose.yml ...
+# HTTPS и проксирование — общий edge-Caddy сервера (сеть edge), сайт — maxim-app.caddy.
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required (stack.env)}
+
+x-app: &app
+  env_file:
+    - path: ${APP_ENV_FILE:-./app.env}
+      required: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+
+x-api: &api
+  <<: *app
+  command: ["api"]
+  healthcheck:
+    test: ["CMD", "/maxim", "probe", "http://127.0.0.1:8080/readyz"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
+    start_period: 60s
+    start_interval: 1s
+  # HTTP_SHUTDOWN_DRAIN (5 с) + Shutdown (15 с) + запас.
+  stop_grace_period: 30s
+  # ПРЕДПОЛОЖЕНИЕ по объёмам 07 §7.
+  mem_limit: 512m
+
+x-worker: &worker
+  <<: *app
+  command: ["worker"]
+  healthcheck:
+    test: ["CMD", "/maxim", "probe", "http://127.0.0.1:9090/readyz"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
+    start_period: 60s
+    start_interval: 1s
+  # Задания дорабатывают до 30 с (job.shutdownDeadline), затем возвращаются в очередь.
+  stop_grace_period: 45s
+  mem_limit: 768m
+  networks: [backend]
+
+services:
+  postgres:
+    image: ${MAXIM_POSTGRES_IMAGE:?MAXIM_POSTGRES_IMAGE is required (stack.env)}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-maxim}
+      POSTGRES_USER: ${POSTGRES_USER:-maxim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (stack.env)}
+      POSTGRES_APP_ROLE: ${POSTGRES_APP_ROLE:-maxim_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required (stack.env)}
+      POSTGRES_BACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:?POSTGRES_BACKUP_PASSWORD is required (stack.env)}
+    # Архив WAL для восстановления на момент времени (07 §8): сегмент закрывается не реже
+    # раза в минуту, выгрузку в S3 делает backup.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/usr/local/bin/wal-archive.sh %p %f
+      - -c
+      - archive_timeout=60
+      - -c
+      - max_wal_senders=4
+      - -c
+      - password_encryption=scram-sha-256
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - wal-archive:/var/lib/postgresql/wal-archive
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 60s
+    shm_size: 256m
+    security_opt: [no-new-privileges:true]
+    networks: [backend]
+
+  backup:
+    image: ${MAXIM_POSTGRES_IMAGE}
+    restart: unless-stopped
+    entrypoint: ["/usr/local/bin/backup-agent.sh"]
+    # S3_* (копия объектов), SMTP_*, MAIL_FROM, ALERT_EMAILS (письмо о сбое) — из app.env.
+    env_file:
+      - path: ${APP_ENV_FILE:-./app.env}
+        required: true
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: maxim_backup
+      PGPASSWORD: ${POSTGRES_BACKUP_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-maxim}
+      POSTGRES_USER: ${POSTGRES_USER:-maxim}
+      POSTGRES_DB: ${POSTGRES_DB:-maxim}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:?BACKUP_S3_ENDPOINT is required (stack.env)}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:?BACKUP_S3_ACCESS_KEY is required (stack.env)}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:?BACKUP_S3_SECRET_KEY is required (stack.env)}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET is required (stack.env)}
+      BACKUP_S3_USE_SSL: ${BACKUP_S3_USE_SSL:-true}
+      BACKUP_PREFIX: ${BACKUP_PREFIX:?BACKUP_PREFIX is required (stack.env)}
+      BACKUP_DUMP_RETENTION_DAYS: ${BACKUP_DUMP_RETENTION_DAYS:-30}
+      BACKUP_BASE_RETENTION_DAYS: ${BACKUP_BASE_RETENTION_DAYS:-8}
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-26}
+      BACKUP_WAL_INTERVAL: ${BACKUP_WAL_INTERVAL:-30}
+      BACKUP_BASE_CRON: ${BACKUP_BASE_CRON:-30 0 * * *}
+      BACKUP_DUMP_CRON: ${BACKUP_DUMP_CRON:-0 1 * * *}
+      BACKUP_OBJECTS_CRON: ${BACKUP_OBJECTS_CRON:-0 2 * * *}
+      BACKUP_PRUNE_CRON: ${BACKUP_PRUNE_CRON:-0 3 * * *}
+      BACKUP_RESTORE_CHECK_CRON: ${BACKUP_RESTORE_CHECK_CRON:-0 4 * * 0}
+    volumes:
+      - wal-archive:/var/lib/postgresql/wal-archive
+      - backup-state:/var/lib/backup-state
+      - backup-tmp:/var/lib/backup-tmp
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/backup-health.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    stop_grace_period: 60s
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend]
+
+  # Миграции: release.sh запускает новым образом до новой ячейки (07 §8).
+  migrate:
+    <<: *app
+    profiles: [tools]
+    image: ${MAXIM_IMAGE:?MAXIM_IMAGE is required (stack.env)}:${MAXIM_TAG_NEW:-unset}
+    command: ["migrate", "up"]
+    restart: "no"
+    environment:
+      DATABASE_URL: ${MIGRATE_DATABASE_URL:?MIGRATE_DATABASE_URL is required (stack.env)}
+    networks: [backend]
+
+  api-a:
+    <<: *api
+    profiles: [slot-a]
+    image: ${MAXIM_IMAGE}:${MAXIM_TAG_A:-unset}
+    networks:
+      backend: {}
+      edge:
+        aliases: ["${EDGE_ALIAS_PREFIX:?EDGE_ALIAS_PREFIX is required (stack.env)}-api-a"]
+
+  api-b:
+    <<: *api
+    profiles: [slot-b]
+    image: ${MAXIM_IMAGE}:${MAXIM_TAG_B:-unset}
+    networks:
+      backend: {}
+      edge:
+        aliases: ["${EDGE_ALIAS_PREFIX}-api-b"]
+
+  worker-a:
+    <<: *worker
+    profiles: [slot-a]
+    image: ${MAXIM_IMAGE}:${MAXIM_TAG_A:-unset}
+
+  worker-b:
+    <<: *worker
+    profiles: [slot-b]
+    image: ${MAXIM_IMAGE}:${MAXIM_TAG_B:-unset}
+
+  # Почта тестового окружения без SMTP: SMTP_HOST=mailpit; веб-интерфейс только на 127.0.0.1.
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    profiles: [mailpit]
+    restart: unless-stopped
+    ports: ["127.0.0.1:8025:8025"]
+    networks: [backend]
+
+networks:
+  backend: {}
+  edge:
+    external: true
+    name: edge
+
+volumes:
+  pgdata: {}
+  wal-archive: {}
+  backup-state: {}
+  backup-tmp: {}

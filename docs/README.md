@@ -27,6 +27,8 @@
 
 Исходные материалы: [RESEARCH.md](../.ai-factory/RESEARCH.md) — исследование с источниками; [ROADMAP.md](../.ai-factory/ROADMAP.md) — этапы.
 
+Запуск и пилот: [launch/README.md](launch/README.md) — чек-лист запуска, задание юристу по офертам и правилам площадки, персональные данные, черновик уведомления Роскомнадзора, план пилота. Эксплуатация серверов — [deploy/app/README.md](../deploy/app/README.md).
+
 Тестовый стенд заглушки API: <https://dev.plwedding.ru/docs>. Как он устроен и обновляется — [deploy/README.md](../deploy/README.md).
 
 ## Порядок чтения

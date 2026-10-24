@@ -40,6 +40,9 @@ const (
 	ModeDev = "dev"
 )
 
+// maxShutdownDrain — верхний предел HTTP_SHUTDOWN_DRAIN: дольше stop_grace_period compose ждать нельзя.
+const maxShutdownDrain = 60 * time.Second
+
 // Config — вся конфигурация приложения. Источник — только переменные окружения (07 §8).
 type Config struct {
 	Env      string `env:"APP_ENV" envDefault:"development"`
@@ -51,6 +54,9 @@ type Config struct {
 	// TrustedProxyCIDRs — адреса прокси, чьему X-Forwarded-For можно верить (edge-прокси стенда).
 	TrustedProxyCIDRs []string `env:"TRUSTED_PROXY_CIDRS" envSeparator:","`
 	CookieSecure      bool     `env:"COOKIE_SECURE" envDefault:"false"`
+	// ShutdownDrain — пауза между SIGTERM и остановкой HTTP-сервера api: /readyz уже отвечает 503,
+	// прокси убирает экземпляр до закрытия соединений (07 §8, выпуск без простоя).
+	ShutdownDrain time.Duration `env:"HTTP_SHUTDOWN_DRAIN" envDefault:"0s"`
 
 	DatabaseURL string `env:"DATABASE_URL"`
 	// DBAppRole — роль, под которой работает приложение; миграции выдают ей права (04 §1).
@@ -389,6 +395,9 @@ func (c Config) Validate(mode string) error {
 		if c.Env == EnvProduction && !c.CookieSecure {
 			add("COOKIE_SECURE", "must be true in production")
 		}
+		if c.ShutdownDrain < 0 || c.ShutdownDrain > maxShutdownDrain {
+			add("HTTP_SHUTDOWN_DRAIN", "must be between 0s and 60s")
+		}
 		for _, cidr := range c.TrustedProxyCIDRs {
 			if _, err := netip.ParsePrefix(strings.TrimSpace(cidr)); err != nil {
 				add("TRUSTED_PROXY_CIDRS", "invalid CIDR")
@@ -567,6 +576,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("public_base_url", c.PublicBaseURL),
 		slog.Any("trusted_proxy_cidrs", c.TrustedProxyCIDRs),
 		slog.Bool("cookie_secure", c.CookieSecure),
+		slog.Duration("http_shutdown_drain", c.ShutdownDrain),
 		slog.String("database_url", redactURL(c.DatabaseURL)),
 		slog.String("db_app_role", c.DBAppRole),
 		slog.Int("db_max_conns", int(c.DBMaxConns)),

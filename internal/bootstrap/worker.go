@@ -51,7 +51,11 @@ func runWorker(ctx context.Context, cfg Config, log *slog.Logger) error {
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return w.Run(gctx) })
-	g.Go(func() error { return serve(gctx, log, metricsServer(cfg.MetricsAddr, reg)) })
+	// /readyz worker — для HEALTHCHECK compose при выпуске без простоя (07 §8).
+	ready := in.life.ready(readiness(pool))
+	g.Go(func() error {
+		return serve(gctx, log, stopPolicy{life: &in.life}, metricsServer(cfg.MetricsAddr, reg, log, ready))
+	})
 	return g.Wait()
 }
 
