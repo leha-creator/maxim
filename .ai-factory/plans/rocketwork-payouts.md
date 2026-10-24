@@ -253,7 +253,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 ### Phase 5: Проверка и документы
 
-- [ ] **Task 13: Сквозные тесты выплат** (depends on 12)
+- [x] **Task 13: Сквозные тесты выплат** (depends on 12)
   - `internal/bootstrap/payout_e2e_test.go` на собранных `api` и `worker` (PostgreSQL, `clock.Manual`, `storagefake`, `ordfake`, `maxfake`, `mailfake`, `rocketworkfake`):
     - S-10 → S-11: самозанятый блогер, `inviteRocketwork` → `202`, после `ensure_contractor` — ссылка, принятие размещения — `409 contractor_inactive`; подделка активирует, опрос через 5 мин — `active`, принятие проходит.
     - S-15: пополнение баланса рекламодателя и депозита (`deposit-topup`), заказ, публикация, снятие, `dev placement accept` с долей 10000 → выплата `created` → `send_payout` → `sent` → подписанный вебхук → `succeeded`, размещение `paid`, `receipt_url` в `listBloggerPayouts`, итоги сходятся; проводки `settlement` и `payout` (с комиссией сервиса) в журнале.

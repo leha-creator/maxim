@@ -83,8 +83,19 @@ type infra struct {
 }
 
 // newInfra подключает адаптеры, нужные режиму.
+// commandClockKey — часы команд maxim admin и maxim dev, запущенных в тестах рядом с собранным
+// приложением (clock.Manual): задания и переходы получают то же время, что api и worker.
+type commandClockKey struct{}
+
+func withCommandClock(ctx context.Context, clk clock.Clock) context.Context {
+	return context.WithValue(ctx, commandClockKey{}, clk)
+}
+
 func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, log *slog.Logger, reg *metrics.Registry) (*infra, error) {
 	in := &infra{pool: pool, clock: clock.System{}, log: log, reg: reg}
+	if clk, ok := ctx.Value(commandClockKey{}).(clock.Clock); ok {
+		in.clock = clk
+	}
 	in.alerter = newAlerter(cfg, in)
 	fakes := cfg.Env == EnvTest
 	// worker строит и публикует производные изображений (R-6, R-7): ему тоже нужно хранилище.

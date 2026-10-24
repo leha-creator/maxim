@@ -29,6 +29,7 @@ type payoutView struct {
 	Method      string `json:"method"`
 	Attempt     int    `json:"attempt"`
 	FailureCode string `json:"failure_code"`
+	ReceiptURL  string `json:"receipt_url"`
 }
 
 type payoutPage struct {

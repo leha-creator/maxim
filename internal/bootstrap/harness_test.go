@@ -81,7 +81,11 @@ func newTestAppWith(t *testing.T, cfg Config) *testApp {
 	fake := maxfake.New()
 	fake.SetNow(clk.Now)
 	ordFake := ordfake.New()
-	rwFake := rocketworkfake.New(cfg.RocketWorkWebhookSecret())
+	var rwOpts []rocketworkfake.Option
+	if cfg.RocketWork.FakeStatePath != "" { // общее состояние с командами maxim dev rocketwork
+		rwOpts = append(rwOpts, rocketworkfake.WithStatePath(cfg.RocketWork.FakeStatePath))
+	}
+	rwFake := rocketworkfake.New(cfg.RocketWorkWebhookSecret(), rwOpts...)
 	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: fake, box: box, ord: ordFake,
 		rocketwork: rwFake}
 	in.alerter = newAlerter(cfg, in)
