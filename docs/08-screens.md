@@ -73,6 +73,22 @@
 | 40 | `adv/campaign-new` | Единый пост для всех каналов: новая кампания | на разборе |
 | 41 | `adv/campaign-post` | Пост кампании, общие требования, токен креатива, оплата | на разборе |
 
+Операции экранов `adm/*` (этап «API администратора», роль каждой — в описании операции `api/openapi.yaml`; меню — `GET /admin/counters`, роль — `admin_role` в `/me`):
+
+| Экран | Операции |
+|---|---|
+| `adm/channels`, `adm/channel` | `GET /admin/channels`, `GET /admin/channels/{id}`, `approve`, `reject`, `rkn-check`, `block`, `unblock`; `/admin/channel-categories` |
+| `adm/orders`, `adm/order` | `GET /admin/orders`, `GET /admin/orders/{id}`, `approve`, `reject` |
+| `adm/placements`, `adm/placement` | `GET /admin/placements`, `GET /admin/placements/{id}`, `cancel`, `remove-post`, `mark-removed`, `open-dispute` |
+| `adm/disputes`, `adm/dispute` | `GET /admin/disputes`, `GET /admin/disputes/{id}`, `preview`, `resolve`, `messages` |
+| `adm/payments` | `/admin/bank-statements` (`latest`, загрузка), `/admin/bank-transactions` (`match`, `ignore`), `/admin/invoices` (`cancel`) |
+| `adm/payouts` | `GET /admin/payouts`, `summary`, `export` (CSV), `retry`, `mark-paid` |
+| `adm/ledger` | `GET /admin/ledger/summary`, `GET /admin/ledger/entries`, `POST /admin/ledger/manual`, `deposit-topups`, `balance-returns`; второе подтверждение — `/admin/approvals` |
+| `adm/ord-errors` | `GET /admin/ord/errors`, `GET /admin/ord/objects/{вид}/{id}`, `retry` |
+| `adm/ord-reports` | `GET /admin/ord/reports`, `GET /admin/ord/reports/{ГГГГ-ММ}`, `rebuild`, `send` |
+| `adm/orgs` | `GET /admin/organizations`, `GET`/`PATCH /admin/organizations/{id}`, `/admin/users/{id}/block`, `unblock` |
+| `adm/audit` | `GET /admin/audit-log` |
+
 ## 3. Карта переходов
 
 Показаны основные переходы. Меню кабинета доступно с любого экрана своей роли и на схеме не рисуется.

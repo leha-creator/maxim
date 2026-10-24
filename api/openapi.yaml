@@ -3199,14 +3199,14 @@ paths:
         Роль: senior. Новые первыми. `data` — как записано (ИНН, почта, телефон и ФИО маскируются при записи);
         IP-адрес не отдаётся. `manual_only` — только действия администраторов. Коды действий: `channel.approved`,
         `channel.rejected`, `channel.rkn_checked`, `channel.blocked`, `channel.unblocked`, `channel_category.created`,
-        `channel_category.updated`, `post_version.approved`, `post_version.rejected`, `placement.admin_cancel`,
+        `channel_category.updated`, `post.version_approved`, `post.version_rejected`, `placement.admin_cancel`,
         `placement.admin_mark_removed`, `dispute.opened`, `dispute.resolved`, `dispute.remove_post`,
-        `dispute.message`, `payout.retry`, `payout.mark_paid`, `payout.exported`, `ledger.manual`,
+        `payout.retry`, `payout.mark_paid`, `payout.exported`, `ledger.manual`,
         `ledger.balance_return`, `ledger.deposit_topup`, `admin_approval.requested`, `admin_approval.approved`,
         `admin_approval.rejected`, `bank_statement.imported`, `bank_transaction.matched`, `bank_transaction.ignored`,
         `invoice.cancelled`, `organization.admin_updated`, `user.blocked`, `user.unblocked`,
         `user.admin_role_changed`, `ord.retry`, `ord_report.built`, `ord_report.send_requested`,
-        `personal_data.exported`, `personal_data.anonymized` и действия кабинетов.
+        `personal_data.exported`, `user.anonymized` (команды `maxim admin pd`) и действия кабинетов. Переписка спора — в самом споре, отдельной записи журнала у сообщения нет.
       parameters:
         - name: actor_user_id
           in: query

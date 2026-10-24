@@ -44,7 +44,10 @@ docker compose -f compose.dev.yml up --build
 | `maxim admin grant --email <почта> --role moderator\|senior` | Роль администратора (до появления API администратора). Пользователя без учётной записи создаёт; повтор ничего не меняет |
 | `maxim admin revoke --email <почта>` | Снять роль администратора |
 | `maxim admin ord errors [--limit N]` | Объекты ОРД в `error` (S-20, до API администратора): вид и идентификатор, статус ОРД, попытки, ошибка с маскированным ИНН |
-| `maxim admin ord retry --object <вид>:<id> --reason <основание> --email <администратор>` | «Повторить» объект ОРД; вид — `organization`, `contract`, `platform`, `creative`. Пишется в журнал действий |
+| `maxim admin ord retry --object <вид>:<id> --reason <основание> --email <администратор>` | «Повторить» объект ОРД; вид — `organization`, `contract`, `platform`, `creative`, `statistics`, `invoice`. Пишется в журнал действий |
+| `maxim admin ord report show|build|send --period YYYY-MM [--reason … --email <senior>]` | Ежемесячный отчёт ОРД (S-31): состояние, строки статистики и акты; `build` — сформировать заново, `send` — поставить в очередь отправки (только `senior`, с основанием) |
+| `maxim admin pd export --email <субъект> --operator-email <senior>` | Данные субъекта ПДн в JSON для ответа на запрос доступа ([docs/launch/personal-data.md](docs/launch/personal-data.md)) |
+| `maxim admin pd anonymize --email <субъект> --reason … --operator-email <senior>` | Обезличить субъекта: почта, сессии, коды входа, контакты организации единственного участника; данные учёта сохраняются |
 | `maxim admin money statement import --file <путь> --email <администратор>` | Загрузить выписку «1С» (S-30): поступления сопоставляются со счетами и зачисляются, остальные — в `unmatched` с оповещением. Повтор того же файла — отказ |
 | `maxim admin money bank-tx list\|match\|ignore …` | Поступления по статусу (`--status unmatched`); ручное сопоставление `--id <id> --org <id\|ИНН> [--invoice MX-…] --reason …`; пометка «не наше» |
 | `maxim admin money invoice cancel --number MX-… --reason … --email …` | Отменить неоплаченный счёт |

@@ -84,13 +84,15 @@ maxim/
 │   │   ├── metrics/                 #   реестр Prometheus, HTTP-метрики (07 §5.5)
 │   │   ├── secretbox/               #   шифрование секретов в полезной нагрузке заданий (R-1)
 │   │   ├── dbtest/                  #   PostgreSQL в testcontainers для тестов
-│   │   ├── httpx/                   #   middleware: request_id, сессия, CSRF, лимиты, ошибки → JSON
+│   │   ├── httpx/                   #   middleware: request_id, сессия, CSRF, лимиты, ошибки → JSON; роли администратора (AdminContext, AdminGate)
+│   │   ├── adminpage/               #   курсор-смещение и limit списков администратора (total)
+│   │   ├── adminref/                #   ссылки на организацию и пользователя в ответах администратора (ИНН и почта с маской)
 │   │   └── storage/                 #   порт ObjectStorage на minio-go: закрытая и публичная корзины, подписанные ссылки; storagefake/
 │   │
 │   ├── integration/                 # ── АДАПТЕРЫ ВНЕШНИХ СИСТЕМ ──
 │   │   ├── max/                     #   клиент MAX Bot API через outbound и ratelimit (25 rps, 1/с на чат), разбор Webhook
 │   │   │   └── maxfake/             #   поддельная реализация для тестов и разработки
-│   │   ├── ord/                     #   Яндекс ОРД, API v8: контрагент, договор, площадки, креатив, статус; корзина ord:global
+│   │   ├── ord/                     #   Яндекс ОРД, API v8: контрагент, договор, площадки, креатив, статистика, акт и разбивка, статус; корзина ord:global
 │   │   │   └── ordfake/             #   ОРД в памяти: статусы по шагам, токен fake-erid-N, отказы по запросу
 │   │   ├── bank/clientbank/         #   разбор выписки «1С:Предприятие» (UTF-8, cp866, windows-1251): поступления, external_id; адаптер billing/domain.StatementParser
 │   │   ├── rocketwork/              #   клиент live по ПРЕДПОЛАГАЕМОМУ контракту (Q-10…Q-12), приведение статусов, подпись вебхука, disabled
@@ -131,10 +133,11 @@ maxim/
 │   │   ├── jobs/                    #   placement_timer, publish_placement, remove_placement, reconcile_publications, check_publication; события message_edited, message_removed
 │   │   └── placementtest/           #   поддельные удержания, уведомления, исполнитель; блогер с каналом
 │   ├── marking/                     # объекты ОРД, erid, отчётность (04 §6)
-│   │   ├── domain/                  #   состояния синхронизации, классификация статусов ОРД, расписание опроса, цепочки зависимостей, запросы v8 и хеш, порты
-│   │   ├── app/                     #   sync_ord_object, poll_ord_status, креатив и erid, площадки каналов, отклонение ЕРИР, ошибки S-20 и повтор, зависшие
-│   │   ├── postgres/                #   ord_organization, ord_contract, ord_platform, creative; выборки S-20; метрики maxim_ord_objects, maxim_ord_erid_wait_seconds
-│   │   ├── jobs/                    #   sync_ord_object, poll_ord_status
+│   │   ├── domain/                  #   состояния синхронизации, классификация статусов ОРД, расписание опроса, цепочки зависимостей, запросы v8 и хеш, месяц отчёта и правила статистики и актов, порты
+│   │   ├── app/                     #   sync_ord_object, poll_ord_status, креатив и erid, площадки каналов, отклонение ЕРИР, ошибки S-20 и повтор, зависшие, снимок, формирование и отправка отчёта месяца
+│   │   ├── postgres/                #   ord_organization, ord_contract, ord_platform, creative, ord_statistics, ord_invoice(_item), ord_report, publication_views_snapshot; выборки S-20; метрики maxim_ord_objects, maxim_ord_erid_wait_seconds
+│   │   ├── httpapi/                 #   операции администратора admin-ord: ошибки, объект, повтор, отчёты месяца; порты статуса ОРД для карточек организации и поста
+│   │   ├── jobs/                    #   sync_ord_object, poll_ord_status, ord_monthly_report, ord_report_check
 │   │   └── markingtest/             #   оферты и их принятие, организации с корректным ИНН
 │   ├── ledger/                      # счета учёта, проводки, удержания — ЕДИНСТВЕННЫЙ вход в ledger_* и hold (06 §2)
 │   │   ├── domain/                  #   виды счетов и транзакций, правила вида (06 §2.3), отпечаток и ключи идемпотентности, распределение, порты Store и Reports
@@ -156,6 +159,11 @@ maxim/
 │   │   ├── postgres/                #   rocketwork_contractor, payout; метрики maxim_payouts_*, maxim_rocketwork_*
 │   │   ├── httpapi/                 #   операции blogger-payouts; приём вебхука Рокет Ворк
 │   │   └── jobs/                    #   ensure_contractor, poll_contractor, send_payout, poll_payout, check_rocketwork_deposit, события Рокет Ворк
+│   ├── admin/                       # второе подтверждение денежных операций, журнал действий для экрана, счётчики меню (этап «API администратора»)
+│   │   ├── domain/                  #   запрос admin_approval: виды, срок, переходы, правило «не автор»
+│   │   ├── app/                     #   запрос, подтверждение (исполнитель операции — порт), отклонение и отзыв, истечение; audit_log без IP; счётчики по портам модулей
+│   │   ├── postgres/                #   admin_approval; чтение audit_log
+│   │   └── httpapi/                 #   admin-approvals, getAdminAuditLog, getAdminCounters
 │   └── notification/                # уведомления (04 §8, 07 §6)
 │       ├── domain/                  #   каталог шаблонов, адресаты и каналы по ролям, ссылки в кабинет, состояния
 │       ├── render/                  #   тексты из templates/notification: кабинет, бот MAX (Markdown), письмо
@@ -216,7 +224,7 @@ integration/* ──────────────────────
 - **Модуль → модуль, асинхронно.** Последствие перехода, которое не обязано выполниться в той же транзакции, ставится заданием в той же транзакции, что и переход. Обработчик задания в другом модуле идемпотентен (03 §11).
 - **Модуль → внешняя система.** Порт объявлен в `domain` модуля, например `placement/domain.ChannelPublisher`. Реализация — `integration/max`. Вызывает его только обработчик задания из `<module>/jobs` через `app`. Каждый вызов проходит через `platform/outbound`, который пишет `outbound_request`, повторяет запрос и маскирует секреты.
 - **Входящие события.** `httpapi` проверяет подлинность Webhook, записывает `inbound_event` и ставит задание `process_inbound_event`. Затем отвечает `200`. Разбор и действия выполняются в `jobs` (07 §7: ответ за 200 мс). Приём Webhook — обычный `http.Handler` модуля, который `bootstrap` монтирует перед strict server (`serverDeps.Routes`): ключ события — SHA-256 сырого тела, секрет — в заголовке. Обработчик события, решивший, что действий не нужно, возвращает `inbound.ErrIgnore` — событие получает `ignored`. `jobs` модуля может импортировать `integration/*` только ради чистого разбора тела события (`max.ParseUpdate`).
-- **Доступ по организации.** Методы репозиториев для данных организации принимают `organizationID` явным параметром. Выборки без него для кабинетных сценариев не пишутся (07 §4). Администраторские выборки — отдельные методы с суффиксом `ForAdmin`, вызываются только после проверки роли: `httpx.RequireAdmin(ctx, log, op, roles...)` в `httpapi` (`401` без сессии, `403` с `admin_required` без роли, WARN `admin access denied`). Выборка администратора может читать название и ИНН владельца из `organization` только для показа (ИНН в ответе маскируется).
+- **Доступ по организации.** Методы репозиториев для данных организации принимают `organizationID` явным параметром. Выборки без него для кабинетных сценариев не пишутся (07 §4). Администраторские выборки — отдельные методы с суффиксом `ForAdmin`, вызываются только после проверки роли: `httpx.RequireAdmin(ctx, log, op, roles...)` в `httpapi` (`401` без сессии, `403` с `admin_required` без роли, WARN `admin access denied`). Выборка администратора может читать название и ИНН владельца из `organization` только для показа (ИНН в ответе маскируется). Операции `/admin/*` (этап «API администратора»): `httpx.AdminContext(ctx, log, op, httpx.AdminAny|AdminSeniorOnly...)` проверяет роль и ставит действующее лицо `audit_log`; `httpx.AdminGate` до проверки по спецификации отказывает пользователю без роли (`403`, а не `422` о полях); матрица ролей — в описаниях операций контракта, её проверяет `bootstrap/admin_e2e_test.go`. Списки — `platform/adminpage` и `total`; ссылки на организацию — `platform/adminref` (ИНН всегда с маской). Денежная операция выше порога идёт через модуль `admin`: запрос `admin_approval`, исполнение после подтверждения другим `senior` через порт исполнителя модуля денег. Статусы ОРД в карточках организации и поста дают порты, реализованные `marking/httpapi` (подключаются при `ORD_ENABLED=true`).
 - **Реквизиты рекламодателя для поста.** `post/domain.AdvertiserRequisites` — название и ИНН текущей организации для плашки и снимка версии (этап «Медиатека и пост», R-14). Реализация — переходник `postRequisites` в `bootstrap` поверх `account/postgres` (чтение без блокировки).
 - **Версия поста для следующих этапов.** `post/app.CreateVersion(ctx, orgID, campaignID, userID, orderNumber)` работает в транзакции вызывающего: оформление заказа создаёт версию вместе с заказом. Переходы `ApproveVersion`, `RejectVersion`, `MarkVersionReady` — сервисные методы `post/app`; роль администратора и получение erid проверяют вызывающие этапы. Неизменяемость версии в `ready` закреплена триггером базы.
 - **Порты к будущим модулям.** Модуль, которого ещё нет, представлен портом с пустой реализацией в `bootstrap/bridge`; после сборки модуля порт подменяется его реализацией. Так `placement/domain.ContractorGate` и `Payouts` — `AllowAllContractors` и `NoPayouts`, пока `newPayoutService` не вызовет `SetPayoutPorts` (гейт и выплаты — модуль `payout`). Вызовы — в транзакции перехода (I-10).

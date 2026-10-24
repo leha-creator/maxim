@@ -341,7 +341,7 @@ Rationale: план реализует этап целиком: операции
   - `internal/bootstrap/ord_report_e2e_test.go`: публикация через границу месяца; 1-е число (`clock.Manual`) — снимок, формирование, отправка; опрос — `synced`; акты обеих сторон; повтор формирования после спора — правка.
   - Файлы: `internal/bootstrap/{admin_e2e_test.go,ord_report_e2e_test.go,harness_test.go}`.
 
-- [ ] **Task 24: Документы** (depends on 23)
+- [x] **Task 24: Документы** (depends on 23)
   - 02 S-16…S-20, S-30, S-31 — «Как сделано (этап API администратора)»; 04 §2 (`blocked_at`, `anonymized_at`), §5 (`dispute_message`), §6 (новые таблицы, исправить разрыв таблицы), новая §8-подраздел `admin_approval`; 05 §3.6, §3.7 (снимок, состояния, задания, допущения); 07 §2 (`ord_monthly_report` — 1 попытка, `ord_report_check`), §4 (матрица ролей R-1, второе подтверждение через HTTP, доступ по IP), §5.5 (новые метрики), §8 (переменные); 08 — экраны `adm/*` и их операции; `docs/open-questions.md` — Q-42 … Q-47, R-24; `docs/frontend-api-gaps.md` — закрытые пункты MAXI-51, MAXI-52; README — команды `maxim admin pd …`, `maxim admin ord report …`; `.ai-factory/ARCHITECTURE.md` — модуль `admin`, слой `marking/httpapi`; план — «Решения при реализации».
   - Журнал: не применимо.
   - Файлы: `docs/{02-scenarios.md,04-domain-model.md,05-integrations.md,07-non-functional.md,08-screens.md,open-questions.md,frontend-api-gaps.md}`, `README.md`, `.ai-factory/ARCHITECTURE.md`.

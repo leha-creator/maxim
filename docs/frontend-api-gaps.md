@@ -69,58 +69,40 @@
 
 ## Администратор: модерация каналов и постов (MAXI-51, ждёт бэкенд: MAXI-129)
 
-- **mockapi.** Все операции `admin-channels` отвечают `501`, в том числе на dev.plwedding.ru.
-- **Контракт.** Нет операций модерации постов и заказов, `adm/orders` и `adm/order` — заглушки.
+Закрыто этапом «API администратора и отчётность ОРД» (бэкенд и `mockapi`, без `501`):
+
+- ~~**mockapi.** Все операции `admin-channels` отвечают `501`.~~ Отвечают и `mockapi`, и бэкенд.
+- ~~**Контракт.** Нет операций модерации постов и заказов.~~ `GET /admin/orders`, `GET /admin/orders/{id}`, `POST /admin/orders/{id}/approve`, `…/reject` (S-17).
+- ~~Ручная блокировка канала.~~ `POST /admin/channels/{id}/block` и `…/unblock` (`senior`, с основанием).
+- ~~Счётчики для меню.~~ `GET /admin/counters`.
+
+Открыто:
+
 - **Контракт.** Нет:
-  - ручной блокировки канала («Ручная операция»);
-  - «Площадки в ОРД»;
-  - поиска по названию или ИНН;
-  - флагов аномалий в элементах списка;
+  - «Площадки в ОРД» в карточке канала (статус площадки виден в `GET /admin/ord/errors` и `GET /admin/ord/objects/platform/{id}`);
+  - поиска по названию или ИНН в списке каналов;
+  - флагов аномалий в элементах списка (есть только в карточке);
   - периода аномалии для графика;
-  - фильтра `unclaimed`;
-  - счётчиков для меню.
+  - фильтра `unclaimed` (такие каналы в список не попадают намеренно).
 - **Вопрос.** Какой адрес у ссылки «открыть реестр» для проверки РКН?
 
 ## Администратор: размещения, споры, деньги, ОРД (MAXI-52, ждёт бэкенд: MAXI-155)
 
-В `openapi.yaml` нет ни одной операции для этих 11 экранов. Фронт сверстан по прототипу и с `VITE_MOCK_TOOLS` на ответ 501 или 404 показывает демо-данные. Ниже — операции, под которые сделаны экраны; адреса предложены фронтом и могут поменяться.
+Закрыто этапом «API администратора и отчётность ОРД»: операции для всех 11 экранов есть в `openapi.yaml`, в бэкенде и в `mockapi`. Роль каждой операции — в её описании («Роль: moderator, senior» или «Роль: senior»); без нужной роли — `403` с `details.reason = admin_required`. Списки администратора отдают `total`.
 
-- **Общее.**
-  - Роль администратора `admin_role` (`moderator` / `senior`) в `/me`.
-  - Общее число записей в `PageMeta` и счётчики для меню.
-  - Какие действия доступны только `senior`.
-- **Размещения.**
-  - `GET /admin/placements`, `GET /admin/placements/{id}`.
-  - `POST /admin/placements/{id}/cancel`, `…/remove-post`, `…/mark-removed`, `…/open-dispute` (с причиной).
-  - `POST /admin/payouts/{id}/retry`.
-- **Споры.**
-  - `GET /admin/disputes?state`, `GET /admin/disputes/{id}`.
-  - `POST /admin/disputes/{id}/resolve` и предпросмотр того, как деньги распределятся по доле.
-  - `POST /admin/disputes/{id}/messages`.
-- **Оплаты.**
-  - `GET /admin/bank-statements/latest`, `POST /admin/bank-statements` (multipart).
-  - `GET /admin/bank-transactions?match_status=unmatched`, `POST /admin/bank-transactions/{id}/match` и `…/ignore`.
-  - `GET /admin/invoices`.
-  - Справочник организаций для зачисления платежа.
-- **Выплаты.** `GET /admin/payouts`, `GET /admin/payouts/summary`, `GET /admin/payouts/export` (CSV).
-- **Проводки.**
-  - `GET /admin/ledger/summary`, `GET /admin/ledger/accounts`, `GET /admin/ledger/entries`.
-  - `POST /admin/ledger/manual` с `Idempotency-Key`.
-  - Как работает второе подтверждение проводки свыше 100 000 ₽.
-- **ОРД.**
-  - `GET /admin/ord/errors`, `GET /admin/ord/errors/{id}`, `POST /admin/ord/errors/{id}/retry`.
-  - `GET /admin/ord/reports/{YYYY-MM}`, `POST …/rebuild`, `POST …/send`.
-- **Организации.**
-  - `GET /admin/organizations` с `query` и `role`. В ответе полный ИНН, `ord_status`, `ord_error`, `ord_error_field`.
-  - `PATCH /admin/organizations/{id}` (`inn`, `name`, `reason`), ошибки полей в `details.field`.
-  - Адреса для переходов «Заказы / Каналы / Проводки / Принятые документы» по организации.
-- **Журнал действий.**
-  - `GET /admin/audit-log` с фильтрами `actor`, `action`, `object`, `from`, `to`, `manual_only` и изменениями «до/после».
-  - Справочник кодов действий.
+- **Общее.** ~~`admin_role` в `/me`~~, ~~`total` в `PageMeta` и счётчики меню~~ (`GET /admin/counters`), ~~какие действия только у `senior`~~ (описания операций).
+- **Размещения.** ~~Список, карточка, `cancel`, `remove-post`, `mark-removed`, `open-dispute`, `POST /admin/payouts/{id}/retry`.~~
+- **Споры.** ~~Список с `state`, карточка, `resolve`, предпросмотр (`GET /admin/disputes/{id}/preview`), переписка (`POST /admin/disputes/{id}/messages`).~~
+- **Оплаты.** ~~Выписка (последняя и загрузка multipart), поступления с `match_status`, `match`, `ignore`, `GET /admin/invoices`.~~ Справочник организаций для зачисления — `GET /admin/organizations?query=`.
+- **Выплаты.** ~~`GET /admin/payouts`, `…/summary`, `…/export` (CSV)~~; отметка оплаты переводом — `POST /admin/payouts/{id}/mark-paid`.
+- **Проводки.** ~~`GET /admin/ledger/summary`, `GET /admin/ledger/entries`, `POST /admin/ledger/manual` с `Idempotency-Key`.~~ Отдельного `GET /admin/ledger/accounts` нет: остатки счетов — в `summary`. Второе подтверждение: операция выше порога отвечает `202` с запросом в `GET /admin/approvals`; его подтверждает (`POST /admin/approvals/{id}/approve`) или отклоняет другой `senior` в течение 72 ч, затем операция исполняется.
+- **ОРД.** ~~Ошибки, объект, повтор~~ — адреса другие: `GET /admin/ord/errors`, `GET /admin/ord/objects/{type}/{id}`, `POST /admin/ord/objects/{type}/{id}/retry`. ~~Отчёт месяца~~: `GET /admin/ord/reports`, `GET /admin/ord/reports/{YYYY-MM}`, `POST …/rebuild`, `POST …/send`.
+- **Организации.** ~~`GET /admin/organizations` с `query` и `role`, `PATCH /admin/organizations/{id}` с `reason`~~; статус контрагента ОРД — `ord_counterparty` в карточке (в списке его нет). Переходы: «Проводки» и «Выплаты» — фильтр `organization_id` у `GET /admin/ledger/entries` и `GET /admin/payouts`, действия — `organization_id` у `GET /admin/audit-log`; фильтра по организации у заказов, размещений и каналов и списка принятых документов нет (открыто).
+- **Журнал действий.** ~~`GET /admin/audit-log` с фильтрами `actor_user_id`, `actor_type`, `action`, `object_type`, `object_id`, `organization_id`, `from`, `to`, `manual_only`.~~ «До/после» — в `data` записи (у правки организации — изменённые поля); справочник кодов действий — в описании операции.
 
-Вопросы:
+Ответы на вопросы:
 
-- Кто может разрешать споры, править организации, повторять отправку в ОРД и отправлять отчёты?
-- Отдаёт ли список организаций полный ИНН? Сейчас в списках платежей и размещений ИНН замаскирован, а в карточке организации полный.
-- Номера счетов начинаются с `MX-` или `СЧ-`, как в макете?
-- Колонки `provider_fee` из 06 нет ни в макете, ни в вёрстке. Нужна ли она?
+- Споры разрешают `moderator` и `senior`; править организации, повторять отправку денег, формировать и отправлять отчёты ОРД — `senior`; повтор отправки объекта ОРД — обе роли.
+- Полный ИНН — у `senior` в списке и карточке организаций; у `moderator` и во всех ссылках на организацию (`AdminOrganizationRef` в платежах, размещениях, выплатах) — с маской.
+- Номера счетов — `MX-…`; номера актов ОРД — `MX-ГГГГММ-N` (`ORD_INVOICE_NUMBER_PREFIX`).
+- Открыто: колонка `provider_fee` (06) в API выплат не отдаётся; нужна ли она экрану — решение за фронтом и владельцем продукта.
