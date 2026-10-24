@@ -29,6 +29,7 @@ type Holds struct {
 	owner    map[uuid.UUID]uuid.UUID
 	released []uuid.UUID
 	settled  []uuid.UUID
+	settlers map[uuid.UUID]domain.Settler
 	// OutsideTx — вызовы вне транзакции; должно быть 0.
 	OutsideTx int
 }
@@ -102,7 +103,7 @@ func (h *Holds) HasActive(ctx context.Context, placementIDs []uuid.UUID) (map[uu
 	return out, nil
 }
 
-func (h *Holds) Settle(ctx context.Context, placementID, _ uuid.UUID, d domain.Distribution) error {
+func (h *Holds) Settle(ctx context.Context, placementID, _ uuid.UUID, d domain.Distribution, by domain.Settler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.checkTx(ctx)
@@ -115,7 +116,19 @@ func (h *Holds) Settle(ctx context.Context, placementID, _ uuid.UUID, d domain.D
 	}
 	delete(h.active, placementID)
 	h.settled = append(h.settled, placementID)
+	if h.settlers == nil {
+		h.settlers = map[uuid.UUID]domain.Settler{}
+	}
+	h.settlers[placementID] = by
 	return nil
+}
+
+// SettledBy — кто распределил удержание размещения (R-6 этапа приёмки); false — не распределено.
+func (h *Holds) SettledBy(placementID uuid.UUID) (domain.Settler, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	by, ok := h.settlers[placementID]
+	return by, ok
 }
 
 // Drop убирает активное удержание без снятия: нарушение I-03 для проверки R-7.

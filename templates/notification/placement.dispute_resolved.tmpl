@@ -1,3 +1,4 @@
 {{define "title"}}Спор по размещению в {{channel .}} решён{{end}}
-{{define "text"}}Администратор принял решение по спору о размещении в {{channel .}}, заказ {{order .}}.{{if has . "refund_amount"}}
+{{define "text"}}{{$r := printf "%v" .resolution}}Администратор принял решение по спору о размещении в {{channel .}}, заказ {{order .}}: {{if eq $r "full_payout"}}работа принята полностью{{else if eq $r "proportional"}}работа принята частично{{else if eq $r "full_refund"}}полный возврат рекламодателю{{else}}решение окончательное{{end}}.{{if has . "payout_amount"}}
+Выплата блогеру: {{rub .payout_amount}}.{{end}}{{if has . "refund_amount"}}
 Возврат рекламодателю: {{rub .refund_amount}}.{{end}}{{end}}

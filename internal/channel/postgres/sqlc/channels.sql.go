@@ -431,6 +431,31 @@ func (q *Queries) ListUnclaimedChannelsBefore(ctx context.Context, arg ListUncla
 	return items, nil
 }
 
+const lowerChannelRating = `-- name: LowerChannelRating :one
+WITH prev AS (SELECT c.id, c.rating FROM channel c WHERE c.id = $2 FOR UPDATE)
+UPDATE channel SET rating = greatest(channel.rating - $1::int, 0)
+FROM prev WHERE channel.id = prev.id
+RETURNING prev.rating AS from_rating, channel.rating AS to_rating
+`
+
+type LowerChannelRatingParams struct {
+	Points int32
+	ID     uuid.UUID
+}
+
+type LowerChannelRatingRow struct {
+	FromRating int16
+	ToRating   int16
+}
+
+// A-08: санкция по решению спора — рейтинг уменьшается, не ниже 0 (этап «Приёмка, споры и возвраты»).
+func (q *Queries) LowerChannelRating(ctx context.Context, arg LowerChannelRatingParams) (LowerChannelRatingRow, error) {
+	row := q.db.QueryRow(ctx, lowerChannelRating, arg.Points, arg.ID)
+	var i LowerChannelRatingRow
+	err := row.Scan(&i.FromRating, &i.ToRating)
+	return i, err
+}
+
 const saveChannel = `-- name: SaveChannel :execrows
 UPDATE channel SET
     organization_id = $1, title = $2, max_description = $3,

@@ -44,7 +44,7 @@ var catalog = []Template{
 	{Code: "placement.removed", Roles: both},
 	{Code: "placement.removal_overdue", Roles: blogger},
 	{Code: "placement.disputed", Roles: bothAdmin},
-	{Code: "placement.dispute_resolved", Roles: both, AwaitsModule: "dispute"},
+	{Code: "placement.dispute_resolved", Roles: both},
 	{Code: "payout.sent", Roles: blogger},
 	{Code: "payout.succeeded", Roles: blogger},
 	{Code: "payout.failed", Roles: blogger},

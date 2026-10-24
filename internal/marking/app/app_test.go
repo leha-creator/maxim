@@ -88,6 +88,8 @@ func (a *alerts) Raise(_ context.Context, al alert.Alert) error {
 	return nil
 }
 
+func (a *alerts) Resolve(context.Context, string, string) error { return nil }
+
 func (a *alerts) has(prefix string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()

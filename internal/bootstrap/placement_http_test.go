@@ -225,12 +225,12 @@ func TestPlacementOperationsHTTP(t *testing.T) {
 	if code, _ := r.errorCode(t); r.status != http.StatusConflict || code != "invalid_transition" {
 		t.Fatalf("cancel scheduled: %d %s", r.status, r.body)
 	}
-	// Операции следующих этапов — 501.
-	if r := adv.do(http.MethodPost, "/placements/"+pid+"/accept", nil); r.status != http.StatusNotImplemented {
-		t.Errorf("accept: %d", r.status)
-	}
-	if r := adv.do(http.MethodPost, "/placements/"+pid+"/claims", map[string]any{"reason": "other", "text": "Нет поста"}); r.status != http.StatusNotImplemented {
-		t.Errorf("claims: %d", r.status)
+	// Приёмка и претензия до публикации — 409 invalid_transition (этап «Приёмка, споры и возвраты»).
+	for _, path := range []string{"/accept", "/claims"} {
+		r := adv.do(http.MethodPost, "/placements/"+pid+path, map[string]any{"reason": "other", "text": "Нет поста"})
+		if code, _ := r.errorCode(t); r.status != http.StatusConflict || code != "invalid_transition" {
+			t.Errorf("%s scheduled: %d %s", path, r.status, r.body)
+		}
 	}
 }
 

@@ -36,10 +36,24 @@ func TestActions(t *testing.T) {
 	for _, s := range Statuses {
 		p := testPlacement(s)
 		p.PublishAt = ptrTime(now.Add(2 * time.Hour))
-		adv := AdvertiserActions(p)
+		p.ClaimDeadlineAt = ptrTime(now.Add(time.Hour))
+		adv := AdvertiserActions(p, false, now)
 		wantAdv := []string{}
-		if s == StatusCreated || s == StatusAwaitingBlogger {
+		switch s {
+		case StatusCreated, StatusAwaitingBlogger:
 			wantAdv = []string{ActionCancel}
+		case StatusPublished:
+			wantAdv = []string{ActionClaim}
+		case StatusRemoved:
+			wantAdv = []string{ActionAccept, ActionClaim}
+		}
+		if s == StatusRemoved {
+			if got := AdvertiserActions(p, true, now); !slices.Equal(got, []string{ActionAccept}) {
+				t.Errorf("removed with claim: %v", got)
+			}
+			if got := AdvertiserActions(p, false, now.Add(time.Hour)); !slices.Equal(got, []string{ActionAccept}) {
+				t.Errorf("removed after claim window: %v", got)
+			}
 		}
 		if !slices.Equal(adv, wantAdv) {
 			t.Errorf("%s: advertiser %v", s, adv)

@@ -185,15 +185,17 @@ func (r *Violations) Insert(ctx context.Context, v domain.Violation) error {
 func toDispute(r sqlc.Dispute) domain.Dispute {
 	return domain.Dispute{
 		ID: r.ID, PlacementID: r.PlacementID, Reason: r.Reason, OpenedBy: domain.OpenedBy(r.OpenedByType),
-		ViolationID: r.ViolationID, DeadlineAt: r.DeadlineAt, SuggestedShare: intPtr(r.SuggestedShare),
-		Resolution: str(r.Resolution), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ClaimID: r.ClaimID, ViolationID: r.ViolationID, DeadlineAt: r.DeadlineAt, SuggestedShare: intPtr(r.SuggestedShare),
+		Resolution: domain.Resolution(str(r.Resolution)), PerformanceShare: intPtr(r.PerformanceShare),
+		ResolutionComment: str(r.ResolutionComment), ResolvedBy: r.ResolvedBy, ResolvedAt: r.ResolvedAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
 func (r *Disputes) Insert(ctx context.Context, d domain.Dispute) error {
 	const op = "Placement.Disputes.Insert"
 	err := r.s.q(ctx).InsertDispute(ctx, sqlc.InsertDisputeParams{
-		ID: d.ID, PlacementID: d.PlacementID, Reason: d.Reason, OpenedByType: string(d.OpenedBy), ViolationID: d.ViolationID,
+		ID: d.ID, PlacementID: d.PlacementID, Reason: d.Reason, OpenedByType: string(d.OpenedBy), ClaimID: d.ClaimID, ViolationID: d.ViolationID,
 		DeadlineAt: d.DeadlineAt, SuggestedShare: int32Ptr(d.SuggestedShare), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	})
 	if uniqueOn(err, "dispute_placement_id_key") {

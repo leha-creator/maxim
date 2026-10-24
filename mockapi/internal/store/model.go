@@ -251,6 +251,9 @@ type Dispute struct {
 	OpenedByType string // advertiser | system | admin
 	OpenedAt     time.Time
 	DeadlineAt   time.Time
+	// Resolution и ResolvedAt — решение администратора (P-15); пусто — спор открыт.
+	Resolution string
+	ResolvedAt *time.Time
 }
 
 type HistoryEntry struct {

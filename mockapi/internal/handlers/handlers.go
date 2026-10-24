@@ -217,7 +217,12 @@ func disputeSummary(p *store.Placement) *api.PlacementDisputeSummary {
 	if p.Dispute == nil {
 		return nil
 	}
-	return &api.PlacementDisputeSummary{Reason: api.PlacementDisputeSummaryReason(p.Dispute.Reason),
+	out := &api.PlacementDisputeSummary{Reason: api.PlacementDisputeSummaryReason(p.Dispute.Reason),
 		OpenedByType: api.PlacementDisputeSummaryOpenedByType(p.Dispute.OpenedByType),
-		OpenedAt:     p.Dispute.OpenedAt, DeadlineAt: p.Dispute.DeadlineAt}
+		OpenedAt:     p.Dispute.OpenedAt, DeadlineAt: p.Dispute.DeadlineAt, ResolvedAt: p.Dispute.ResolvedAt}
+	if p.Dispute.Resolution != "" {
+		r := api.PlacementDisputeSummaryResolution(p.Dispute.Resolution)
+		out.Resolution = &r
+	}
+	return out
 }

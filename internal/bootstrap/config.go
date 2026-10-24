@@ -187,6 +187,10 @@ type PlacementControlConfig struct {
 	DisputeDeadline time.Duration `env:"DISPUTE_DEADLINE" envDefault:"72h"`
 	// TopViolationShare — предложение доли при top_violated, базисные пункты (03 §7).
 	TopViolationShare int `env:"DISPUTE_TOP_VIOLATION_SHARE" envDefault:"5000"`
+	// RatingPenaltyRefund, RatingPenaltyProportional — снижение рейтинга канала по решению спора
+	// full_refund и proportional (A-08, 03 §6; R-13 этапа приёмки); 0 — без санкции.
+	RatingPenaltyRefund       int `env:"DISPUTE_RATING_PENALTY_REFUND" envDefault:"10"`
+	RatingPenaltyProportional int `env:"DISPUTE_RATING_PENALTY_PROPORTIONAL" envDefault:"5"`
 	// ReconcileInterval — T-09: период сверки публикаций (A-27).
 	ReconcileInterval time.Duration `env:"RECONCILE_INTERVAL" envDefault:"5m"`
 	// ScheduledGrace — scheduled без публикации дольше этого после publish_at проверяется сверкой (05 §2.8).
@@ -780,5 +784,13 @@ func (c Config) validateControl(add func(field, reason string)) {
 	}
 	if k.TopViolationShare < 0 || k.TopViolationShare > 10000 {
 		add("DISPUTE_TOP_VIOLATION_SHARE", "must be between 0 and 10000")
+	}
+	for _, v := range []struct {
+		name string
+		val  int
+	}{{"DISPUTE_RATING_PENALTY_REFUND", k.RatingPenaltyRefund}, {"DISPUTE_RATING_PENALTY_PROPORTIONAL", k.RatingPenaltyProportional}} {
+		if v.val < 0 || v.val > 100 {
+			add(v.name, "must be between 0 and 100")
+		}
 	}
 }

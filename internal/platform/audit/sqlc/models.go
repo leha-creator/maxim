@@ -204,6 +204,15 @@ type ChannelUnavailability struct {
 	CreatedAt time.Time
 }
 
+type Claim struct {
+	ID          uuid.UUID
+	PlacementID uuid.UUID
+	Reason      string
+	Text        string
+	CreatedBy   uuid.UUID
+	CreatedAt   time.Time
+}
+
 type ClosingAct struct {
 	ID                  uuid.UUID
 	OrganizationID      uuid.UUID

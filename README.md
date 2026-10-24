@@ -56,13 +56,18 @@ docker compose -f compose.dev.yml up --build
 | `maxim admin payout list [--status] [--org <id\|ИНН>] [--from] [--to] [--limit]` | Реестр выплат: попытка, способ, сумма, состояние, код отказа |
 | `maxim admin payout retry --payout <id> --reason … --email …` | Новая попытка последней выплаты `failed` размещения в `accepted` (S-19 `retry_payout`) |
 | `maxim admin payout mark-paid --payout <id> --bank-ref <п/п> --reason … --email … [--approver-email …]` | Выплата блогеру-юрлицу переводом выполнена: `succeeded`, проводка из `bank`, размещение `paid` (A-36) |
-| `maxim admin payout contractor refresh --org <id\|ИНН>` | Внеочередной опрос исполнителя Рокет Ворк |
+| `maxim admin payout contractor refresh --org <id\| `maxim admin dispute list [--all] [--overdue] [--limit N]` | Споры: срок T-06, размещение, причина, кто открыл, предложенная доля, решение |
+| `maxim admin dispute show --placement <id>` | Спор целиком: претензия с текстом, нарушения, публикация, история, предпросмотр сумм |
+| `maxim admin dispute resolve --placement <id> --resolution full_payout|proportional|full_refund [--share 1…9999] --comment … --email …` | Решение спора (P-15, S-18): распределение, выплата или возврат, рейтинг канала, уведомления. Администратор `moderator` или `senior` |
+| `maxim admin dispute open --placement <id> --reason … --email …` | Открыть спор администратором (`admin_open_dispute`, P-14) |
+| `maxim admin dispute remove-post --placement <id> --reason … --email …` | Удалить пост сейчас (`admin_remove_post`); из `published` сначала открывает спор |
+|ИНН>` | Внеочередной опрос исполнителя Рокет Ворк |
 | `maxim dev balance deposit --email <пользователь> --amount <руб.коп>` | Пополнить баланс организации пользователя: счёт и выписка с оплатой по нему, тем же путём, что у администратора. Только `APP_ENV` `development` и `test` |
 | `maxim dev statement --invoice MX-… [--amount <руб.коп>] [--out <путь>]` | Файл выписки с оплатой счёта для `admin money statement import` (без `--out` — в вывод команды, где ещё и журнал). Только `development` и `test` |
 | `maxim dev rocketwork activate\|block --org <id\|ИНН> [--reason tax_status_lost] [--webhook <url>]` | Подделка Рокет Ворк: исполнитель прошёл онбординг или заблокирован. Только `ROCKETWORK_MODE=fake` |
 | `maxim dev rocketwork deposit --amount <руб.коп>` | Остаток депозита в подделке |
 | `maxim dev rocketwork complete\|fail --payout <id> [--fee <руб.коп>] [--reason <код>] [--webhook <url>]` | Подделка завершила или отклонила выплату; с `--webhook` на `api` уходит подписанный вебхук, без него изменение применяется сразу |
-| `maxim dev placement accept --placement <id> [--share <б.п.>]` | Приёмка размещения в `removed` (P-12 до этапа «Приёмка, споры и возвраты»): распределение удержания и выплата. Только `development` и `test` |
+| `maxim dev placement accept --placement <id> [--share <б.п.>]` | Приёмка размещения в `removed` с долей `--share` тем же путём, что P-12 (распределение удержания и выплата) — служебная. Только `development` и `test` |
 | `maxim dev post-version --order <номер> approve\|ready\|reject [--erid X] [--reason Y]` | Двинуть текущую версию поста заказа, как это сделает модерация (до API администратора). После `approve` erid выдаёт маркировка в `worker`; `ready` в обход маркировки — только при `ORD_ENABLED=false`. Только `APP_ENV` `development` и `test` |
 
 Виды документов: `advertiser_offer`, `blogger_offer`, `platform_rules`, `privacy_policy`. Публикация в локальном окружении:
@@ -94,9 +99,9 @@ docker compose -f compose.dev.yml run --rm --no-deps -v "$PWD/offer.pdf:/tmp/off
 | `build_media_derivative` | Сразу | Превью при загрузке, копия или копия с плашкой при сохранении черновика; не больше `MEDIA_BUILD_CONCURRENCY` построений одновременно |
 | `publish_media_derivative` | Сразу | Копия производной из версии поста в публичной корзине и её постоянная ссылка |
 | `purge_media` | 04:30 МСК | Удаляет из хранилища удалённые оригиналы и производные вне версий старше `MEDIA_RETENTION_DELETED` |
-| `placement_timer` | По сроку | Таймеры размещения: T-01, T-13, T-14 — истечение; T-05 ждёт этапа приёмки (повтор раз в час); T-06 — оповещение о нерешённом споре |
+| `placement_timer` | По сроку | Таймеры размещения: T-01, T-13, T-14 — истечение; T-05 — автоприёмка (P-13); T-06 — оповещение о нерешённом споре |
 | `publish_placement` | `publish_at` | Публикация поста в канал (S-21): повторы каждые 30 с до `PUBLISH_RETRY_WINDOW`, затем `failed`; взятое после простоя позже этого окна — `failed` без вызова MAX |
-| `remove_placement` | `remove_at` | Итоговые просмотры и удаление поста (S-22); ошибка — `removal_overdue` и повторы до `REMOVE_RETRY_WINDOW` |
+| `remove_placement` | `remove_at` | Итоговые просмотры и удаление поста (S-22; при полном возврате и `admin_remove_post` — сразу); ошибка — `removal_overdue` и повторы до `REMOVE_RETRY_WINDOW` |
 | `reconcile_publications` | Каждые `RECONCILE_INTERVAL` | Ставит `check_publication` на каждую живую публикацию; пересоздаёт пропавшее задание публикации |
 | `check_publication` | Внутри интервала сверки | Пост на месте, не изменён, «часы в топе» не нарушены; просмотры — не чаще `PUBLICATION_VIEWS_REFRESH` |
 
@@ -106,7 +111,7 @@ docker compose -f compose.dev.yml run --rm --no-deps -v "$PWD/offer.pdf:/tmp/off
 
 **Webhook MAX.** `POST /api/v1/webhooks/max/{MAX_WEBHOOK_PATH_SECRET}` с заголовком `X-Max-Bot-Api-Secret: {MAX_WEBHOOK_SECRET}`. Неверный секрет — `401`, повторные отказы — оповещение. Событие сохраняется в `inbound_event` и разбирается заданием; то же тело второй раз не обрабатывается. Секретная часть пути в журнал и метрики не попадает.
 
-**Метрики `worker`.** `maxim_jobs*` (очередь, просроченные, задержка `maxim_jobs_lag_seconds`), `maxim_placements{status}`, задержка публикации и снятия `maxim_placement_publish_delay_seconds` и `maxim_placement_remove_delay_seconds`, нарушения `maxim_placement_violations_total{kind,source}`, `maxim_outbound_requests_total` и `maxim_outbound_request_duration_seconds`, `maxim_outbound_circuit_open`, `maxim_ratelimit_wait_seconds`, `maxim_inbound_event_oldest_unprocessed_seconds`. У `api` — ещё `maxim_max_webhook_requests_total{outcome}`.
+**Метрики `worker`.** `maxim_jobs*` (очередь, просроченные, задержка `maxim_jobs_lag_seconds`), `maxim_placements{status}`, задержка публикации и снятия `maxim_placement_publish_delay_seconds` и `maxim_placement_remove_delay_seconds`, нарушения `maxim_placement_violations_total{kind,source}`, приёмки `maxim_placements_accepted_total{transition}`, споры `maxim_disputes_opened_total{opened_by,reason}` и `maxim_disputes_resolved_total{resolution}` (у `api` — приёмка и претензии рекламодателя), `maxim_outbound_requests_total` и `maxim_outbound_request_duration_seconds`, `maxim_outbound_circuit_open`, `maxim_ratelimit_wait_seconds`, `maxim_inbound_event_oldest_unprocessed_seconds`. У `api` — ещё `maxim_max_webhook_requests_total{outcome}`.
 
 ## Подключение канала в разработке
 
@@ -183,7 +188,7 @@ docker compose -f compose.dev.yml run --rm --no-deps api dev post-version --orde
 4. Блогер (S-14): `GET /api/v1/blogger/placements`, затем `POST .../{id}/accept`, `POST .../{id}/schedule` с `{"mode": "at", "publish_at": "…"}` или `{"mode": "now"}`, `.../decline`, `.../reschedule`.
 5. Рекламодатель: `GET /api/v1/orders/{id}`, отмена размещения — `POST /api/v1/placements/{id}/cancel`, заказа — `POST /api/v1/orders/{id}/cancel`, новая версия поста — `POST /api/v1/orders/{id}/post-versions`.
 
-Оплата удерживает сумму на балансе рекламодателя: перед `checkout` пополните баланс (раздел «Деньги в разработке»). Пока работают заглушки следующих этапов: исполнитель Рокет Ворк всегда допущен (`AllowAllContractors`, этап «Выплаты»). Публикацию и снятие выполняет `worker` — раздел «Публикация и контроль в разработке»; уведомления и отчёт — раздел «Уведомления и отчёт в разработке». `acceptPlacement` и `createPlacementClaim` отвечают `501`. Весь путь, включая таймеры и потерю канала, проверяет `internal/bootstrap/placement_e2e_test.go`.
+Оплата удерживает сумму на балансе рекламодателя: перед `checkout` пополните баланс (раздел «Деньги в разработке»). Пока работают заглушки следующих этапов: исполнитель Рокет Ворк всегда допущен (`AllowAllContractors`, этап «Выплаты»). Публикацию и снятие выполняет `worker` — раздел «Публикация и контроль в разработке»; уведомления и отчёт — раздел «Уведомления и отчёт в разработке». Приёмку (`acceptPlacement`) и претензии (`createPlacementClaim`) описывает раздел «Приёмка и споры в разработке». Весь путь, включая таймеры и потерю канала, проверяет `internal/bootstrap/placement_e2e_test.go`.
 
 ## Публикация и контроль в разработке
 
@@ -194,7 +199,7 @@ docker compose -f compose.dev.yml run --rm --no-deps api dev post-version --orde
 3. Через `duration_hours` формата (24, 48 или 72 ч) `remove_placement` снимает пост: размещение `removed`, `views` — итоговые, `claim_deadline_at` — конец окна претензий.
 4. Нарушения (чужой пост во время топа, удаление или правка поста) находят события MAX и сверка раз в `RECONCILE_INTERVAL`: размещение `disputed`, в ответах — `dispute` с причиной и сроком решения. С поддельным MAX их можно вызвать, отправив событие на Webhook (раздел «Фоновые задания и оповещения»), например `{"update_type":"message_removed","timestamp":…,"message_id":"mid.post.1","chat_id":…,"user_id":42}`.
 
-Границы этапа: автоприёмка по окну претензий (T-05, P-13) — этап «Приёмка, споры и возвраты», до него таймер ждёт и повторяется раз в час; решение спора и `admin_mark_removed` — этап API администратора. Все пути, включая неизвестный исход отправки, простой и потерю прав бота, проверяют `internal/bootstrap/autoposting_e2e_test.go` и тесты `internal/placement/app`.
+Границы этапа: автоприёмка по окну претензий (T-05, P-13) и решение спора — этап «Приёмка, споры и возвраты»; `admin_mark_removed` — этап API администратора. Все пути, включая неизвестный исход отправки, простой и потерю прав бота, проверяют `internal/bootstrap/autoposting_e2e_test.go` и тесты `internal/placement/app`.
 
 ## Маркировка в разработке
 
@@ -249,9 +254,21 @@ docker compose -f compose.dev.yml run --rm --no-deps api dev rocketwork complete
 
 ## Уведомления и отчёт в разработке
 
-События заказа, размещений, оплаты, закрывающих документов и каналов создают уведомления в той же транзакции (07 §6). Кабинет получает их сразу: `GET /api/v1/notifications` (`?unread=true`, курсор `cursor`), `POST /api/v1/notifications/{id}/read`, `POST /api/v1/notifications/read-all`. Письма и сообщения бота отправляет `worker` заданием `send_notification`: блогеру — бот MAX (по `added_by_max_user_id` канала) и почта, рекламодателю — почта. Письма видно в Mailpit (http://localhost:8025); с поддельным MAX сообщения бота остаются в памяти `worker`, в журнале — `notification sent` с шаблоном и каналом, без адресов и текста. Ссылки в письмах и боте ведут на `CABINET_BASE_URL` (в разработке `http://localhost:5173`). Тексты — `templates/notification/{код}.tmpl`, каталог кодов — `internal/notification/domain/catalog.go`; коды выплат и решения спора уже есть, их подключат этапы «Выплаты» и «Приёмка, споры и возвраты».
+События заказа, размещений, оплаты, закрывающих документов и каналов создают уведомления в той же транзакции (07 §6). Кабинет получает их сразу: `GET /api/v1/notifications` (`?unread=true`, курсор `cursor`), `POST /api/v1/notifications/{id}/read`, `POST /api/v1/notifications/read-all`. Письма и сообщения бота отправляет `worker` заданием `send_notification`: блогеру — бот MAX (по `added_by_max_user_id` канала) и почта, рекламодателю — почта. Письма видно в Mailpit (http://localhost:8025); с поддельным MAX сообщения бота остаются в памяти `worker`, в журнале — `notification sent` с шаблоном и каналом, без адресов и текста. Ссылки в письмах и боте ведут на `CABINET_BASE_URL` (в разработке `http://localhost:5173`). Тексты — `templates/notification/{код}.tmpl`, каталог кодов — `internal/notification/domain/catalog.go`; все коды каталога подключены (`TestCatalogCodesHaveCallers`).
 
 Отчёт по заказу (S-09): `GET /api/v1/orders/{id}/report` — строки по размещениям с просмотрами, ссылкой на пост, суммами и CPV, итог, ссылки поста с UTM-метками; `GET /api/v1/orders/{id}/report.csv` — то же для Excel. Весь путь от оформления до отчёта проверяет `internal/bootstrap/notification_e2e_test.go`.
+
+## Приёмка и споры в разработке
+
+После снятия поста по сроку (`removed`) рекламодатель принимает работу — `POST /api/v1/placements/{id}/accept` — или подаёт претензию — `POST /api/v1/placements/{id}/claims` с `{"reason": "removed_early|top_violated|content_mismatch|other", "text": "…"}`; оба принимают `Idempotency-Key`. Претензия из `published` возможна сразу после публикации. Без действий через `PLACEMENT_CLAIM_WINDOW` (24 ч) `worker` принимает размещение сам (T-05, P-13). Приёмка распределяет удержание и создаёт выплату в одной транзакции. Спор решает администратор (`moderator` или `senior`):
+
+```bash
+docker compose -f compose.dev.yml run --rm --no-deps api admin dispute list --overdue
+docker compose -f compose.dev.yml run --rm --no-deps api admin dispute show --placement <id>
+docker compose -f compose.dev.yml run --rm --no-deps api admin dispute resolve --placement <id> --resolution proportional --share 7500 --comment "пост снят раньше срока" --email admin.local
+```
+
+`full_refund` возвращает удержание на баланс рекламодателя и, если пост ещё в канале, `worker` удаляет его сразу; `proportional` и `full_refund` снижают рейтинг канала (`DISPUTE_RATING_PENALTY_PROPORTIONAL`, `DISPUTE_RATING_PENALTY_REFUND`). Обе стороны получают `placement.dispute_resolved`. Переписка по спору, отмена и блокировка канала администратором — этап API администратора. Весь путь проверяет `internal/bootstrap/acceptance_e2e_test.go`.
 
 ## Конфигурация
 

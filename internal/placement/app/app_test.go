@@ -87,6 +87,7 @@ type env struct {
 	holds       *placementtest.Holds
 	notices     *placementtest.Notifier
 	contractors *placementtest.Contractors
+	payouts     *placementtest.Payouts
 	worker      *job.Worker
 	dispatcher  *inbound.Dispatcher
 	recorder    *inbound.Recorder
@@ -108,7 +109,7 @@ func newEnv(t *testing.T) *env {
 	queue := job.NewQueue(d.Pool, clk, log)
 	auditLog := audit.New(d.Pool, clk, log)
 	e := &env{t: t, d: d, clk: clk, logs: logs, holds: placementtest.NewHolds(), notices: &placementtest.Notifier{},
-		contractors: &placementtest.Contractors{}, tx: txr, max: maxfake.New(), alerts: &alerts{}, files: storagefake.New()}
+		contractors: &placementtest.Contractors{}, payouts: &placementtest.Payouts{}, tx: txr, max: maxfake.New(), alerts: &alerts{}, files: storagefake.New()}
 	e.max.SetNow(clk.Now)
 
 	cs := channelpg.New(d.Pool, log)
@@ -130,11 +131,12 @@ func newEnv(t *testing.T) *env {
 		Carts: e.store.Carts(), Orders: e.store.Orders(), Placements: e.store.Placements(), History: e.store.History(),
 		Channels: bridge.PlacementChannels{Svc: e.channels}, Campaigns: bridge.PlacementCampaigns{Svc: e.post},
 		Versions: bridge.PlacementVersions{Svc: e.post},
-		Holds:    e.holds, Contractors: e.contractors, Notifier: e.notices,
+		Holds:    e.holds, Contractors: e.contractors, Notifier: e.notices, Payouts: e.payouts,
 		Publications: e.store.Publications(), Violations: e.store.Violations(), Disputes: e.store.Disputes(),
+		Claims: e.store.Claims(), Ratings: bridge.PlacementChannelRatings{Svc: e.channels},
 		Publisher: bridge.PlacementPublisher{API: e.max}, Content: bridge.PlacementContent{Svc: e.post}, Alerts: e.alerts,
 		Tx: txr, Jobs: queue, Audit: auditLog, Clock: clk, Log: log,
-		Config: app.Config{FeeRateBP: 1500},
+		Config: app.Config{FeeRateBP: 1500, Control: domain.ControlRules{RatingPenaltyRefund: 10, RatingPenaltyProportional: 5}},
 	})
 	e.post.SetVersionListener(bridge.VersionListener{Svc: e.svc})
 	link := bridge.ChannelPlacements{Svc: e.svc}
@@ -315,14 +317,22 @@ func (e *env) logged(msg string) []map[string]any {
 
 // alerts — запись оповещений администратору.
 type alerts struct {
-	mu   sync.Mutex
-	list []alert.Alert
+	mu       sync.Mutex
+	list     []alert.Alert
+	resolved []string
 }
 
 func (a *alerts) Raise(_ context.Context, al alert.Alert) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.list = append(a.list, al)
+	return nil
+}
+
+func (a *alerts) Resolve(_ context.Context, reason, objectKey string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.resolved = append(a.resolved, reason+":"+objectKey)
 	return nil
 }
 

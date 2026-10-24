@@ -76,6 +76,14 @@ func (pub *Publication) MarkRemoving(now time.Time) {
 	pub.RemovedAt, pub.RemovalReason, pub.UpdatedAt = &now, RemovalSchedule, now
 }
 
+// MarkRemovingFor — то же с причиной reason (refund, admin); пустая — schedule.
+func (pub *Publication) MarkRemovingFor(reason RemovalReason, now time.Time) {
+	if reason == "" {
+		reason = RemovalSchedule
+	}
+	pub.RemovedAt, pub.RemovalReason, pub.UpdatedAt = &now, reason, now
+}
+
 // RollbackRemoving — удаление не удалось: намерение снято, публикация removal_overdue (05 §2.6 шаг 4).
 func (pub *Publication) RollbackRemoving(now time.Time) {
 	pub.RemovedAt, pub.RemovalReason, pub.RemovalOverdue, pub.UpdatedAt = nil, "", true, now

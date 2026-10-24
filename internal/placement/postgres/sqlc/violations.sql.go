@@ -48,3 +48,36 @@ func (q *Queries) InsertViolation(ctx context.Context, arg InsertViolationParams
 	}
 	return result.RowsAffected(), nil
 }
+
+const listViolationsByPlacement = `-- name: ListViolationsByPlacement :many
+SELECT id, placement_id, kind, occurred_at, source, inbound_event_id, details, created_at FROM violation WHERE placement_id = $1 ORDER BY occurred_at, id
+`
+
+func (q *Queries) ListViolationsByPlacement(ctx context.Context, placementID uuid.UUID) ([]Violation, error) {
+	rows, err := q.db.Query(ctx, listViolationsByPlacement, placementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Violation{}
+	for rows.Next() {
+		var i Violation
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlacementID,
+			&i.Kind,
+			&i.OccurredAt,
+			&i.Source,
+			&i.InboundEventID,
+			&i.Details,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

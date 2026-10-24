@@ -87,8 +87,11 @@ func TestPlacementWiring(t *testing.T) {
 	if _, ok := a.mods.placement.Holds.(bridge.LedgerHolds); !ok {
 		t.Fatalf("holds %T", a.mods.placement.Holds)
 	}
+	if _, ok := a.mods.placement.Ratings.(bridge.PlacementChannelRatings); !ok || a.mods.placement.Claims == nil {
+		t.Fatalf("ratings %T claims %T", a.mods.placement.Ratings, a.mods.placement.Claims)
+	}
 
-	// Операции этапа отвечают не 501; приёмка и претензия — 501 до своего этапа.
+	// Операции этапа отвечают не 501, включая приёмку и претензию (этап «Приёмка, споры и возвраты»).
 	c := a.client()
 	c.login("anyone-orders@example.ru")
 	id := "0190a000-0000-7000-8000-000000000999"
@@ -97,14 +100,12 @@ func TestPlacementWiring(t *testing.T) {
 		{http.MethodPost, "/orders/" + id + "/cancel"}, {http.MethodPost, "/orders/" + id + "/post-versions"},
 		{http.MethodPost, "/placements/" + id + "/cancel"}, {http.MethodGet, "/blogger/placements"},
 		{http.MethodGet, "/blogger/placements/" + id}, {http.MethodPost, "/blogger/placements/" + id + "/accept"},
-		{http.MethodPost, "/campaigns/" + id + "/checkout"},
+		{http.MethodPost, "/campaigns/" + id + "/checkout"}, {http.MethodPost, "/placements/" + id + "/accept"},
+		{http.MethodPost, "/placements/" + id + "/claims"},
 	} {
 		if r := c.do(op.method, op.path, nil); r.status == http.StatusNotImplemented {
 			t.Errorf("%s %s: 501", op.method, op.path)
 		}
-	}
-	if r := c.do(http.MethodPost, "/placements/"+id+"/accept", nil); r.status != http.StatusNotImplemented {
-		t.Errorf("acceptPlacement: %d", r.status)
 	}
 }
 
@@ -156,7 +157,8 @@ func TestPlacementControlConfig(t *testing.T) {
 		k.ScheduledGrace != 5*time.Minute || k.ViewsRefresh != time.Hour || k.StuckRemovalOverdueAge != time.Hour {
 		t.Fatalf("control defaults: %+v", k)
 	}
-	if r := controlRules(k); r.MaxImages != 10 || r.TopViolationShare != 5000 || r.PublishRetryWindow != 30*time.Minute {
+	if r := controlRules(k); r.MaxImages != 10 || r.TopViolationShare != 5000 || r.PublishRetryWindow != 30*time.Minute ||
+		r.RatingPenaltyRefund != 10 || r.RatingPenaltyProportional != 5 {
 		t.Fatalf("rules %+v", r)
 	}
 	for _, tc := range []struct {
@@ -170,6 +172,10 @@ func TestPlacementControlConfig(t *testing.T) {
 		{"PUBLISH_MAX_IMAGES", "11", "PUBLISH_MAX_IMAGES", false},
 		{"DISPUTE_TOP_VIOLATION_SHARE", "10000", "", true},
 		{"DISPUTE_TOP_VIOLATION_SHARE", "10001", "DISPUTE_TOP_VIOLATION_SHARE", false},
+		{"DISPUTE_RATING_PENALTY_REFUND", "0", "", true},
+		{"DISPUTE_RATING_PENALTY_REFUND", "101", "DISPUTE_RATING_PENALTY_REFUND", false},
+		{"DISPUTE_RATING_PENALTY_PROPORTIONAL", "100", "", true},
+		{"DISPUTE_RATING_PENALTY_PROPORTIONAL", "-1", "DISPUTE_RATING_PENALTY_PROPORTIONAL", false},
 		{"RECONCILE_INTERVAL", "0s", "RECONCILE_INTERVAL", false},
 		{"REMOVE_RETRY_WINDOW", "-1h", "REMOVE_RETRY_WINDOW", false},
 		{"MAX_BOT_USER_ID", "123", "", true},

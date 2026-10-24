@@ -187,9 +187,16 @@ type Holds interface {
 	Release(ctx context.Context, placementID uuid.UUID, reason string) error
 	// HasActive — у каких размещений есть активное удержание (R-7, проверка P-02).
 	HasActive(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]bool, error)
-	// Settle распределяет удержание по Distribute (R-8): блогеру, комиссия, возврат.
-	// Вызывается из P-12, P-13, P-15 на этапе приёмки.
-	Settle(ctx context.Context, placementID, bloggerOrgID uuid.UUID, d Distribution) error
+	// Settle распределяет удержание по Distribute (R-8): блогеру, комиссия, возврат. Вызывается в
+	// транзакции P-12, P-13, P-15 с исходом accepted; by — актор проводки settlement (R-6 этапа приёмки).
+	Settle(ctx context.Context, placementID, bloggerOrgID uuid.UUID, d Distribution, by Settler) error
+}
+
+// Settler — кто распределил удержание (актор проводки settlement, R-6 этапа приёмки): P-12 —
+// рекламодатель, P-13 — система, P-15 — администратор.
+type Settler struct {
+	Actor  ActorType
+	UserID *uuid.UUID
 }
 
 // ContractorGate — блогер может принять запрос (A-36, R-3): исполнитель Рокет Ворк active
@@ -301,6 +308,8 @@ type Publications interface {
 type Violations interface {
 	// Insert — новое нарушение; повтор того же события — ErrDuplicateViolation.
 	Insert(ctx context.Context, v Violation) error
+	// ListByPlacement — нарушения размещения по времени (карточка спора).
+	ListByPlacement(ctx context.Context, placementID uuid.UUID) ([]Violation, error)
 }
 
 // Disputes — споры (04 §5).
@@ -311,6 +320,37 @@ type Disputes interface {
 	GetByPlacement(ctx context.Context, placementID uuid.UUID) (Dispute, error)
 	// ListByPlacements — споры размещений (ответы кабинетов).
 	ListByPlacements(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]Dispute, error)
+	// GetByPlacementForUpdate — спор размещения с блокировкой; ErrNotFound, если нет.
+	GetByPlacementForUpdate(ctx context.Context, placementID uuid.UUID) (Dispute, error)
+	// Resolve сохраняет решение (S-18) один раз; решение уже есть — ErrDisputeResolved.
+	Resolve(ctx context.Context, d Dispute) error
+	// ListAdmin — споры для администратора по сроку T-06 (команда admin dispute list).
+	ListAdmin(ctx context.Context, f DisputeFilter) ([]Dispute, error)
+}
+
+// DisputeFilter — выборка споров администратора: открытые (по умолчанию) или все, только
+// просроченные к OverdueAt.
+type DisputeFilter struct {
+	All       bool
+	OverdueAt *time.Time
+	Limit     int
+}
+
+// Claims — претензии (04 §5). Только добавление (R-1 этапа приёмки).
+type Claims interface {
+	// Insert — новая претензия; по размещению уже есть — ErrClaimExists.
+	Insert(ctx context.Context, c Claim) error
+	// GetByPlacement — претензия размещения; ErrNotFound, если нет.
+	GetByPlacement(ctx context.Context, placementID uuid.UUID) (Claim, error)
+	// ListByPlacements — претензии размещений (ответы кабинетов).
+	ListByPlacements(ctx context.Context, placementIDs []uuid.UUID) (map[uuid.UUID]Claim, error)
+}
+
+// ChannelRatings — рейтинг канала (A-08, R-13 этапа приёмки). Реализация — модуль каналов
+// (bootstrap/bridge.PlacementChannelRatings), в транзакции вызывающего.
+type ChannelRatings interface {
+	// Lower уменьшает рейтинг на points, не ниже 0; возвращает прежнее и новое значения.
+	Lower(ctx context.Context, channelID uuid.UUID, points int) (from, to int, err error)
 }
 
 // ScheduledRef — запланированное размещение и его время публикации.

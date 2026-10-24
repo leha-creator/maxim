@@ -62,3 +62,10 @@ LIMIT @lim;
 -- R-14 этапа «Маркировка»: площадка в ОРД зарегистрирована; первая отметка остаётся.
 UPDATE channel SET ord_platform_ready_at = @at
 WHERE id = @id AND ord_platform_ready_at IS NULL;
+
+-- name: LowerChannelRating :one
+-- A-08: санкция по решению спора — рейтинг уменьшается, не ниже 0 (этап «Приёмка, споры и возвраты»).
+WITH prev AS (SELECT c.id, c.rating FROM channel c WHERE c.id = @id FOR UPDATE)
+UPDATE channel SET rating = greatest(channel.rating - @points::int, 0)
+FROM prev WHERE channel.id = prev.id
+RETURNING prev.rating AS from_rating, channel.rating AS to_rating;

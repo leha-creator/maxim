@@ -189,3 +189,13 @@ func (r *Channels) SetOrdPlatformReady(ctx context.Context, id uuid.UUID, at tim
 	r.s.debug(ctx, op, "channel_id", id, "updated", n > 0)
 	return n > 0, nil
 }
+
+func (r *Channels) LowerRating(ctx context.Context, id uuid.UUID, points int) (int, int, error) {
+	const op = "Channel.Channels.LowerRating"
+	row, err := r.s.q(ctx).LowerChannelRating(ctx, sqlc.LowerChannelRatingParams{ID: id, Points: int32(points)})
+	if err != nil {
+		return 0, 0, r.s.fail(ctx, op, err)
+	}
+	r.s.debug(ctx, op, "channel_id", id, "from", row.FromRating, "to", row.ToRating)
+	return int(row.FromRating), int(row.ToRating), nil
+}

@@ -65,14 +65,23 @@ const (
 	ActionDecline    = "decline"
 	ActionSchedule   = "schedule"
 	ActionReschedule = "reschedule"
+	// ActionClaim — подать претензию (S-08).
+	ActionClaim = "claim"
 )
 
-// AdvertiserActions — действия рекламодателя, допустимые сейчас и реализованные этапом (R-22).
-// accept и claim добавит этап приёмки.
-func AdvertiserActions(p *Placement) []string {
+// AdvertiserActions — действия рекламодателя, допустимые сейчас (R-22, R-15 этапа приёмки): cancel —
+// из created и awaiting_blogger; accept — из removed; claim — из published и из removed до
+// claim_deadline_at, если претензии ещё нет.
+func AdvertiserActions(p *Placement, hasClaim bool, now time.Time) []string {
 	out := []string{}
 	if Allowed(P06Cancel, ActorAdvertiser, p.Status) {
 		out = append(out, ActionCancel)
+	}
+	if Allowed(P12AcceptByAdvertiser, ActorAdvertiser, p.Status) {
+		out = append(out, ActionAccept)
+	}
+	if !hasClaim && ClaimWindowOpen(p, now) {
+		out = append(out, ActionClaim)
 	}
 	return out
 }

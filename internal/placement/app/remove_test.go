@@ -55,14 +55,14 @@ func TestRemoveOnSchedule(t *testing.T) {
 		t.Fatal("removal not logged")
 	}
 
-	// T-05 ждёт этапа приёмки: размещение не меняется, таймер повторится через час (R-14).
+	// T-05: окно претензий истекло — P-13, полная доля, расчёт от имени системы.
 	e.clk.Set(claim.Add(time.Second))
 	e.runJobs()
-	if p := e.placement(pid); p.Status != domain.StatusRemoved {
+	if p := e.placement(pid); p.Status != domain.StatusAccepted || *p.PerformanceShare != 10000 {
 		t.Fatalf("T-05: %s", p.Status)
 	}
-	if at := e.jobRunAt(domain.TimerKey(pid, domain.TimerClaim)); !at.Equal(e.clk.Now().Add(time.Hour)) {
-		t.Fatalf("T-05 retry at %v", at)
+	if by, ok := e.holds.SettledBy(pid); !ok || by.Actor != domain.ActorSystem {
+		t.Fatalf("settled by %+v %t", by, ok)
 	}
 }
 

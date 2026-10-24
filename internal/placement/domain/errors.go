@@ -103,3 +103,40 @@ var (
 	// ErrDisputeExists — у размещения уже есть спор (I-11).
 	ErrDisputeExists = errors.New("placement: dispute already exists")
 )
+
+// TransitionError — переход недопустим по правилу этапа (03 §4): app отвечает 409
+// invalid_transition с фактическим состоянием и details.reason.
+type TransitionError struct {
+	Code   TransitionCode
+	Status Status
+	Reason string
+}
+
+func (e *TransitionError) Error() string {
+	return "placement: transition " + string(e.Code) + " from " + string(e.Status) + ": " + e.Reason
+}
+
+// Причины отказа приёмки, претензии и решения спора (этап «Приёмка, споры и возвраты»).
+const (
+	// ReasonClaimWindowClosed — окно претензий T-05 истекло (R-2).
+	ReasonClaimWindowClosed = "claim_window_closed"
+	// ReasonPublicationLive — accepted при живой публикации (I-02, R-9).
+	ReasonPublicationLive = "publication_live"
+)
+
+var (
+	// ErrClaimExists — претензия по размещению уже подана (S-08): 409 conflict.
+	ErrClaimExists = &ConflictError{Reason: "claim_exists"}
+	// ErrDisputeResolved — решение уже принято, оно окончательное (S-18): 409 conflict.
+	ErrDisputeResolved = &ConflictError{Reason: "dispute_resolved"}
+	// ErrPublicationNotLive — удалять нечего: публикации нет или она снята (admin_remove_post).
+	ErrPublicationNotLive = &ConflictError{Reason: "publication_not_live"}
+	ErrClaimReason        = &RuleError{Field: "reason", Reason: "unknown"}
+	ErrClaimText          = &RuleError{Field: "text", Reason: "length"}
+	ErrUnknownResolution  = &RuleError{Field: "resolution", Reason: "unknown"}
+	// ErrShareRequired — proportional без доли и без предложения системы (R-8).
+	ErrShareRequired     = &RuleError{Field: "performance_share", Reason: "share_required"}
+	ErrShareOutOfRange   = &RuleError{Field: "performance_share", Reason: "out_of_range"}
+	ErrResolutionComment = &RuleError{Field: "comment", Reason: "length"}
+	ErrReasonRequired    = &RuleError{Field: "reason", Reason: "required"}
+)

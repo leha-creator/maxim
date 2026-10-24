@@ -112,6 +112,9 @@ type TimerPayload struct {
 // PlacementPayload — полезная нагрузка publish_placement и remove_placement (R-12).
 type PlacementPayload struct {
 	PlacementID uuid.UUID `json:"placement_id"`
+	// Reason — причина снятия для remove_placement (publication.removal_reason): пусто — по сроку
+	// (schedule); refund — полный возврат по спору, admin — admin_remove_post (R-10, R-11 этапа приёмки).
+	Reason RemovalReason `json:"reason,omitempty"`
 }
 
 // TimerKey — dedupe_key таймера: timer:{placement_id}:{номер} (07 §2).
@@ -139,6 +142,12 @@ func PublishJob(id uuid.UUID, at time.Time) Job {
 // RemoveJob — задание remove_placement на remove_at (R-12).
 func RemoveJob(id uuid.UUID, at time.Time) Job {
 	return Job{Kind: KindRemovePlacement, DedupeKey: RemoveKey(id), RunAt: at, Payload: PlacementPayload{PlacementID: id}}
+}
+
+// RemoveNowJob — снятие живой публикации сейчас с причиной reason (refund, admin): прежнее задание
+// снятия отменяется в той же транзакции (R-10, R-11 этапа приёмки).
+func RemoveNowJob(id uuid.UUID, reason RemovalReason, now time.Time) Job {
+	return Job{Kind: KindRemovePlacement, DedupeKey: RemoveKey(id), RunAt: now, Payload: PlacementPayload{PlacementID: id, Reason: reason}}
 }
 
 // CheckPublicationPayload — полезная нагрузка check_publication.

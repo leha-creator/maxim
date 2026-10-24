@@ -73,6 +73,13 @@ func TestFormatting(t *testing.T) {
 	if !strings.Contains(text, "11 500 ₽") {
 		t.Fatalf("money %q", text)
 	}
+	d := sample()
+	d["resolution"], d["payout_amount"], d["performance_share"] = "proportional", int64(750000), 7500
+	_, text, _ = r.Cabinet(domain.Notification{Template: "placement.dispute_resolved", Payload: d})
+	if !strings.Contains(text, "принята частично") || !strings.Contains(text, "Выплата блогеру: "+rub(int64(750000))) ||
+		!strings.Contains(text, "Возврат рекламодателю: "+rub(int64(287500))) {
+		t.Fatalf("dispute resolved %q", text)
+	}
 	if got := rub(int64(1050)); got != "10,50 ₽" {
 		t.Fatalf("rub %q", got)
 	}

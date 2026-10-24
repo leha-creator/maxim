@@ -122,3 +122,20 @@ func TestAdminChannels(t *testing.T) {
 		t.Fatalf("history %+v %v", h, err)
 	}
 }
+
+func TestLowerRating(t *testing.T) {
+	st, d := newStore(t)
+	ctx := context.Background()
+	id := seed(t, d, spec{status: "moderation"})
+	from, to, err := st.Channels().LowerRating(ctx, id, 10)
+	if err != nil || from != 100 || to != 90 {
+		t.Fatalf("lower: %d %d %v", from, to, err)
+	}
+	// Не ниже 0.
+	if from, to, err = st.Channels().LowerRating(ctx, id, 95); err != nil || from != 90 || to != 0 {
+		t.Fatalf("floor: %d %d %v", from, to, err)
+	}
+	if _, _, err := st.Channels().LowerRating(ctx, ids.New(), 5); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("unknown channel: %v", err)
+	}
+}

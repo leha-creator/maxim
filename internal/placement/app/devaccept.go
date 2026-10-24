@@ -14,8 +14,8 @@ import (
 const ReasonDevAccept = "dev_accept"
 
 // DevAccept — приёмка размещения без кабинета (R-4 этапа выплат, только development и test:
-// команда maxim dev placement accept). Одна транзакция, как будет у P-12 этапа «Приёмка, споры и
-// возвраты»: распределение удержания по доле share (03 §7), removed → accepted, расчёт удержания
+// команда maxim dev placement accept). Служебная: настоящие P-12, P-13 и P-15 —
+// AcceptPlacement, autoAccept и ResolveDispute; путь тот же (settle): распределение удержания по доле share (03 §7), removed → accepted, расчёт удержания
 // (settlement) и создание выплаты через порт Payouts. Возвращает идентификатор выплаты или uuid.Nil,
 // если выплачивать нечего.
 func (s *Service) DevAccept(ctx context.Context, placementID uuid.UUID, share int) (uuid.UUID, error) {
@@ -42,20 +42,10 @@ func (s *Service) DevAccept(ctx context.Context, placementID uuid.UUID, share in
 		if err != nil {
 			return s.rejected(ctx, op, p, domain.P12AcceptByAdvertiser, err)
 		}
-		if err := s.Placements.SetDistribution(ctx, p.ID, d); err != nil {
+		change.CancelJobs = []string{domain.TimerKey(p.ID, domain.TimerClaim)}
+		if payoutID, err = s.settle(ctx, op, o, &p, change, d, source{Key: "dev_accept:" + p.ID.String()},
+			domain.Settler{Actor: domain.ActorSystem}); err != nil {
 			return err
-		}
-		if err := s.apply(ctx, op, o, p, change, source{Key: "dev_accept:" + p.ID.String()}); err != nil {
-			return err
-		}
-		if err := s.Holds.Settle(ctx, p.ID, p.BloggerOrgID, d); err != nil {
-			return err
-		}
-		if d.PayoutAmount > 0 && s.Payouts != nil {
-			if payoutID, err = s.Payouts.Create(ctx, domain.PayoutRequest{PlacementID: p.ID, BloggerOrgID: p.BloggerOrgID,
-				Amount: d.PayoutAmount}); err != nil {
-				return err
-			}
 		}
 		s.log.WarnContext(ctx, "placement accepted by dev command", logx.KeyOp, op, KeyPlacementID, p.ID,
 			"performance_share", share, "payout_amount", int64(d.PayoutAmount), "payout_id", payoutID)

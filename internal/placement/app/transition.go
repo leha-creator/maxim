@@ -98,10 +98,6 @@ func toJob(j domain.Job) job.Job {
 	switch j.Kind {
 	case domain.KindPlacementTimer:
 		attempts = timerAttempts
-		// T-05 ждёт этапа приёмки, повторяясь раз в час: предела нет (R-14).
-		if p, ok := j.Payload.(domain.TimerPayload); ok && p.Timer == domain.TimerClaim {
-			attempts = unboundedAttempts
-		}
 	case domain.KindCheckPublication:
 		attempts = checkAttempts
 	case domain.KindPlacementReminder:

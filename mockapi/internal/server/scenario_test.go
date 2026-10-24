@@ -191,3 +191,24 @@ func TestAccessIsolation(t *testing.T) {
 	// Канал другого блогера — как будто его нет.
 	expect(t, e.do(e.client(blg), http.MethodGet, "/blogger/channels/"+seed.ChannelFree.String(), nil, ""), http.StatusNotFound, "foreign channel")
 }
+
+// TestClaimReasons — повторная претензия: 409 conflict с details.reason = claim_exists (как бэкенд).
+func TestClaimReasons(t *testing.T) {
+	e := newEnv(t)
+	a := e.client(adv)
+	path := "/placements/" + seed.PlacementPublished.String() + "/claims"
+	body := map[string]any{"reason": "top_violated", "text": "Чужой пост в первый час"}
+	expect(t, e.do(a, http.MethodPost, path, body, ""), http.StatusCreated, "claim")
+	r := e.do(a, http.MethodPost, path, body, "")
+	expect(t, r, http.StatusConflict, "second claim")
+	var errBody struct {
+		Error struct {
+			Code    string         `json:"code"`
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	r.json(t, &errBody)
+	if errBody.Error.Code != "conflict" || errBody.Error.Details["reason"] != "claim_exists" {
+		t.Fatalf("second claim error: %+v", errBody.Error)
+	}
+}

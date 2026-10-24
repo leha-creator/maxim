@@ -19,6 +19,7 @@ import (
 //	maxim admin ord errors|retry … — ошибки ОРД (S-20, этап «Маркировка»), см. runAdminORD
 //	maxim admin money … — деньги (этап «Приём оплаты и учёт денег»), см. runAdminMoney
 //	maxim admin payout … — выплаты блогерам (этап «Выплаты блогерам через Рокет Ворк»), см. runAdminPayout
+//	maxim admin dispute … — споры (этап «Приёмка, споры и возвраты»), см. runAdminDispute
 //
 // Пользователя без учётной записи grant создаёт. Действие пишется в audit_log с актором system.
 func runAdmin(ctx context.Context, cfg Config, log *slog.Logger, args []string, out io.Writer) error {
@@ -33,6 +34,9 @@ func runAdmin(ctx context.Context, cfg Config, log *slog.Logger, args []string, 
 	}
 	if args[0] == "payout" {
 		return runAdminPayout(ctx, cfg, log, args[1:], out)
+	}
+	if args[0] == "dispute" {
+		return runAdminDispute(ctx, cfg, log, args[1:], out)
 	}
 	var role *domain.AdminRole
 	fs := flag.NewFlagSet("admin "+args[0], flag.ContinueOnError)
