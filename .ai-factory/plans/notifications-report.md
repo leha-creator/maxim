@@ -223,15 +223,15 @@ Rationale: план реализует этап целиком: задание `
 
 ### Phase 5: Сборка, сквозной сценарий, документы
 
-- [ ] **Task 11: Конфигурация, сборка, очистка, метрики (R-16, R-17)** (depends on 6, 7, 9, 10)
+- [x] **Task 11: Конфигурация, сборка, очистка, метрики (R-16, R-17)** (depends on 6, 7, 9, 10)
   - `internal/bootstrap/config_notification.go`: `CABINET_BASE_URL`, `NOTIFICATION_RETENTION` (8760h), `NOTIFICATION_SEND_ATTEMPTS` (5); проверки (абсолютный адрес, `https` в `production`).
-  - `internal/bootstrap/notification.go`: сборка `notification/app`, рендер, переходники; маршруты httpapi; задания `send_notification`, `placement_reminder`; задача очистки; метрики `maxim_notifications_total{channel,status}` (счётчик исходов отправки) и `maxim_notifications_pending{channel}`.
-  - `.env.example`, `deploy/.env.example`, `compose.dev.yml`.
+  - `internal/bootstrap/notification.go`: сборка `notification/app`, рендер, переходники; маршруты httpapi; задания `send_notification`, `placement_reminder`; задача очистки; метрика `maxim_notifications{channel,status}` — число строк по каналу и состоянию, снимается из базы при сборе (один сборщик вместо счётчика и отдельного `pending`: состояние видно из базы и после перезапуска worker).
+  - `.env.example`, `compose.dev.yml` (`deploy/` — только mockapi, отдельного примера окружения бэкенда там нет).
   - Журнал: INFO `notifications configured` (`cabinet_base_url`, `retention`).
   - Тесты: конфигурация на границах; виды заданий зарегистрированы; операции уведомлений больше не `501`.
   - Файлы: `internal/bootstrap/{config.go,config_notification.go,config_notification_test.go,notification.go,modules.go,placement.go,billing.go,channel.go,worker.go}`, `.env.example`, `deploy/.env.example`, `compose.dev.yml`.
 
-- [ ] **Task 12: Сквозной сценарий** (depends on 11)
+- [x] **Task 12: Сквозной сценарий** (depends on 11)
   - `internal/bootstrap/notification_e2e_test.go` на собранных `api` и `worker`: оформление → одобрение версии (`order.post_approved` рекламодателю), P-02 — блогеру бот MAX (`maxfake`), письмо (`mailfake`), кабинет; планирование, публикация — рекламодателю письмо со ссылкой; снятие — просмотры в письме; отчёт и CSV с просмотрами, ссылкой и `utm_campaign`; `read-all`; в журнале нет почты без маски и текста уведомлений.
   - Журнал: проверка сборщиком записей.
   - Файлы: `internal/bootstrap/notification_e2e_test.go`, при необходимости `internal/bootstrap/harness_test.go`.

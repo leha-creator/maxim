@@ -41,5 +41,7 @@ func newNotificationService(cfg Config, in *infra, txRunner tx.Runner, queue job
 	if in.mail != nil {
 		deps.Mailer = in.mail
 	}
+	log.Info("notifications configured", "cabinet_base_url", cfg.CabinetBaseURL(), "retention", cfg.Notification.Retention.String(),
+		"send_attempts", cfg.Notification.SendAttempts, "max_bot", deps.Messenger != nil, "email", deps.Mailer != nil)
 	return notificationapp.New(deps), store
 }
