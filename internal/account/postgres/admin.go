@@ -16,12 +16,12 @@ func (r *Organizations) AdminList(ctx context.Context, f domain.AdminOrganizatio
 	r.s.debug(ctx, op, "cabinet", f.Cabinet, "offset", f.Offset, "limit", f.Limit)
 	q := r.s.q(ctx)
 	rows, err := q.AdminListOrganizations(ctx, sqlc.AdminListOrganizationsParams{
-		Query: f.Query, Cabinet: string(f.Cabinet), Off: int32(f.Offset), Lim: int32(f.Limit),
+		Query: f.Query, ExactInn: f.ExactINN, Cabinet: string(f.Cabinet), Off: int32(f.Offset), Lim: int32(f.Limit),
 	})
 	if err != nil {
 		return nil, 0, r.s.fail(ctx, op, err)
 	}
-	total, err := q.AdminCountOrganizations(ctx, sqlc.AdminCountOrganizationsParams{Query: f.Query, Cabinet: string(f.Cabinet)})
+	total, err := q.AdminCountOrganizations(ctx, sqlc.AdminCountOrganizationsParams{Query: f.Query, ExactInn: f.ExactINN, Cabinet: string(f.Cabinet)})
 	if err != nil {
 		return nil, 0, r.s.fail(ctx, op, err)
 	}

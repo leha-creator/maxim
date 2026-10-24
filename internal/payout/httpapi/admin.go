@@ -214,15 +214,24 @@ func (h *Handlers) ExportAdminPayouts(ctx context.Context, req apigen.ExportAdmi
 	_ = w.Write(csvHeader)
 	for _, it := range items {
 		o := refs.Org(it.BloggerOrganizationID)
-		_ = w.Write([]string{mskTime(&it.CreatedAt), o.Name, logx.MaskINN(o.INN), strconv.FormatInt(it.Brief.OrderNumber, 10),
-			it.Brief.ChannelTitle, strconv.Itoa(it.Attempt), string(it.Method), rubles(it.Amount), string(it.Status),
-			string(it.FailureCode), it.BankReference, mskTime(it.CompletedAt), it.ID.String(), it.PlacementID.String()})
+		_ = w.Write([]string{mskTime(&it.CreatedAt), csvSafe(o.Name), logx.MaskINN(o.INN), strconv.FormatInt(it.Brief.OrderNumber, 10),
+			csvSafe(it.Brief.ChannelTitle), strconv.Itoa(it.Attempt), string(it.Method), rubles(it.Amount), string(it.Status),
+			string(it.FailureCode), csvSafe(it.BankReference), mskTime(it.CompletedAt), it.ID.String(), it.PlacementID.String()})
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
 		return nil, err
 	}
 	return apigen.ExportAdminPayouts200TextcsvResponse{Body: &buf, ContentLength: int64(buf.Len())}, nil
+}
+
+// csvSafe — текст пользователя в ячейке не исполняется таблицей как формула (CSV injection):
+// значение, начинающееся с = + - @ или управляющего символа, получает ведущий апостроф.
+func csvSafe(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
 
 func mskTime(t *time.Time) string {

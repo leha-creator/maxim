@@ -150,6 +150,10 @@ func (s *Service) setBlocked(ctx context.Context, op string, adminID, userID uui
 				return err
 			}
 		} else {
+			if u.AnonymizedAt != nil {
+				// Обезличенную учётную запись не вернуть: отказ, а не «успех» без изменений (R-26).
+				return apperr.Conflict("user is anonymized").WithDetail("reason", "anonymized")
+			}
 			changed = u.Unblock(now)
 		}
 		out = u

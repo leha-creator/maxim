@@ -77,7 +77,9 @@ func (h *Handlers) ListAdminOrganizations(ctx context.Context, req api.ListAdmin
 		}
 		if q.Query != nil {
 			s := strings.ToLower(*q.Query)
-			hit := strings.Contains(o.INN, s) || strings.Contains(strings.ToLower(o.Name), s)
+			// ИНН: senior — по началу, moderator — только целиком (под маской подбор по началу запрещён).
+			innHit := o.INN == s || (isSenior(u) && strings.HasPrefix(o.INN, s))
+			hit := innHit || strings.Contains(strings.ToLower(o.Name), s)
 			for _, m := range tx.OrgUsers(o.ID) {
 				hit = hit || strings.Contains(m.Email, s)
 			}
@@ -450,7 +452,8 @@ func (h *Handlers) SendOrdReport(ctx context.Context, req api.SendOrdReportReque
 func (h *Handlers) GetAdminCounters(ctx context.Context, req api.GetAdminCountersRequestObject) (api.GetAdminCountersResponseObject, error) {
 	tx, done := h.st.Begin(ctx)
 	defer done()
-	if _, err := admin(ctx, tx); err != nil {
+	u, err := admin(ctx, tx)
+	if err != nil {
 		return nil, err
 	}
 	tx.ExpireApprovals()
@@ -495,5 +498,8 @@ func (h *Handlers) GetAdminCounters(ctx context.Context, req api.GetAdminCounter
 	}
 	prev := tx.Now.In(store.MSK).AddDate(0, -1, 0).Format("2006-01")
 	out.OrdReportPending = store.ReportState(tx.OrdReportFor(prev)) != "sent"
+	if !isSenior(u) {
+		out.BankTransactionsUnmatched, out.PayoutsFailed, out.ApprovalsPending = 0, 0, 0
+	}
 	return out, nil
 }

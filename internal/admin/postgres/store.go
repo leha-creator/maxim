@@ -49,6 +49,9 @@ func (s *Store) Insert(ctx context.Context, a domain.Approval) error {
 		Amount: a.Amount, Summary: a.Summary, Reason: a.Reason, IdempotencyKey: a.IdempotencyKey, RequestedBy: a.RequestedBy,
 		Status: string(a.Status), ExpiresAt: a.ExpiresAt, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt})
 	if err != nil {
+		if db.UniqueViolation(err, "admin_approval_idempotency_key_key") {
+			return domain.ErrDuplicateKey
+		}
 		return s.fail(ctx, "Admin.InsertApproval", err)
 	}
 	return nil

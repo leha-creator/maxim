@@ -33,7 +33,7 @@ func (h *Handlers) ListAdminOrganizations(ctx context.Context, req apigen.ListAd
 	if err != nil {
 		return nil, err
 	}
-	f := domain.AdminOrganizationFilter{Offset: pg.Offset, Limit: pg.Limit}
+	f := domain.AdminOrganizationFilter{Offset: pg.Offset, Limit: pg.Limit, ExactINN: !httpx.IsSenior(p)}
 	if req.Params.Query != nil {
 		f.Query = *req.Params.Query
 	}

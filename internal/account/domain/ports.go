@@ -128,6 +128,9 @@ func (NopOrganizationListener) OrganizationChanged(context.Context, uuid.UUID) e
 type AdminOrganizationFilter struct {
 	// Query — начало ИНН, часть наименования или точная почта участника; пусто — все.
 	Query string
+	// ExactINN — ИНН совпадает целиком, а не началом: модератор видит ИНН под маской и не
+	// должен восстанавливать его подбором по началу (R-14).
+	ExactINN bool
 	// Cabinet — открытый кабинет; пусто — любой.
 	Cabinet Cabinet
 	Offset  int

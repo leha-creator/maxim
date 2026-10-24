@@ -71,6 +71,11 @@ func TestAdminApprovalsHTTP(t *testing.T) {
 	if repeat.ID != req.ID {
 		t.Fatalf("repeat key created another approval: %s %s", repeat.ID, req.ID)
 	}
+	// Тот же ключ с другой суммой — отказ, а не старый запрос под видом нового.
+	r = s1.doKey(http.MethodPost, "/admin/ledger/manual", "m-2", manual(16_000_000))
+	if _, d := r.errorCode(t); r.status != http.StatusConflict || d["reason"] != "idempotency_conflict" {
+		t.Fatalf("key reuse: %d %s", r.status, r.body)
+	}
 	var pending page[approvalView]
 	s2.do(http.MethodGet, "/admin/approvals", nil).json(t, &pending)
 	if len(pending.Items) != 1 || pending.Items[0].ID != req.ID || *pending.Total != 1 {
@@ -155,11 +160,18 @@ func TestAdminApprovalsHTTP(t *testing.T) {
 	// Срок запроса: после ADMIN_APPROVAL_TTL — expired, подтвердить нельзя.
 	var late approvalView
 	s1.doKey(http.MethodPost, "/admin/ledger/manual", "m-3", manual(12_000_000)).json(t, &late)
+	var late2 approvalView
+	s1.doKey(http.MethodPost, "/admin/ledger/manual", "m-4", manual(13_000_000)).json(t, &late2)
 	a.clk.Advance(73 * time.Hour)
 	s3 := a.adminClient("senior-c@example.ru", accountdomain.AdminSenior)
+	// Срок проверяется при подтверждении, а не только при чтении списка.
+	r = s3.do(http.MethodPost, "/admin/approvals/"+late2.ID+"/approve", nil)
+	if _, d := r.errorCode(t); r.status != http.StatusConflict || d["reason"] != "approval_expired" {
+		t.Fatalf("expired approve without list: %d %s", r.status, r.body)
+	}
 	var expired page[approvalView]
 	s3.do(http.MethodGet, "/admin/approvals?status=expired", nil).json(t, &expired)
-	if len(expired.Items) != 1 || expired.Items[0].ID != late.ID {
+	if len(expired.Items) != 2 {
 		t.Fatalf("expired: %+v", expired)
 	}
 	r = s3.do(http.MethodPost, "/admin/approvals/"+late.ID+"/approve", nil)
@@ -175,7 +187,7 @@ func TestAdminApprovalsHTTP(t *testing.T) {
 	if counters.ApprovalsPending != 0 {
 		t.Fatalf("counters: %+v", counters)
 	}
-	if n := a.count(`SELECT count(*) FROM admin_approval WHERE status = 'expired'`); n != 1 {
+	if n := a.count(`SELECT count(*) FROM admin_approval WHERE status = 'expired'`); n != 2 {
 		t.Fatalf("expired rows %d", n)
 	}
 }

@@ -62,6 +62,8 @@ var (
 	ErrInvalidApproval = errors.New("admin: invalid approval request")
 	// ErrNotFound — запроса нет.
 	ErrNotFound = errors.New("admin: not found")
+	// ErrDuplicateKey — запрос с тем же ключом вставлен одновременно (409 idempotency_conflict).
+	ErrDuplicateKey = errors.New("admin: duplicate idempotency key")
 	// ErrNoExecutor — для вида не подключён исполнитель (ошибка сборки).
 	ErrNoExecutor = errors.New("admin: no executor for approval kind")
 )

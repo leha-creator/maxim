@@ -4,8 +4,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,12 +92,21 @@ func (s *Service) RequestApproval(ctx context.Context, r domain.Request) (a doma
 		prev, err := s.Store.ByKey(ctx, a.IdempotencyKey)
 		switch {
 		case err == nil:
+			// Повтор ключа — тот же запрос; другой запрос под тем же ключом — отказ, а не подмена.
+			if !sameRequest(prev, a) {
+				s.log.WarnContext(ctx, "admin approval key reused", logx.KeyOp, op, "approval_id", prev.ID, "admin_user_id", r.AdminID)
+				return apperr.Conflict("idempotency key reused for another request").WithDetail("reason", "idempotency_conflict")
+			}
 			a = prev
 			return nil
 		case !errors.Is(err, domain.ErrNotFound):
 			return err
 		}
 		if err := s.Store.Insert(ctx, a); err != nil {
+			if errors.Is(err, domain.ErrDuplicateKey) {
+				// Одновременный запрос с тем же ключом: повторить — получить его.
+				return apperr.Conflict("request with this idempotency key is in progress").WithDetail("reason", "idempotency_conflict")
+			}
 			return err
 		}
 		created = true
@@ -276,4 +287,16 @@ func reasonOf(err error) string {
 
 func conflict(err error) error {
 	return apperr.Conflict("approval cannot be decided").WithDetail("reason", reasonOf(err)).WithCause(err)
+}
+
+// sameRequest — повтор ключа описывает ту же операцию: вид, сумма, автор и содержимое.
+func sameRequest(prev, next domain.Approval) bool {
+	if prev.Kind != next.Kind || prev.Amount != next.Amount || prev.RequestedBy != next.RequestedBy {
+		return false
+	}
+	var a, b any
+	if json.Unmarshal(prev.Payload, &a) != nil || json.Unmarshal(next.Payload, &b) != nil {
+		return false
+	}
+	return reflect.DeepEqual(a, b)
 }

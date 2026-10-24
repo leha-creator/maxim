@@ -32,7 +32,7 @@ func TestAdminPersonalData(t *testing.T) {
 	const email = "subject.pd@example.ru"
 	adv := a.newAdvertiser(email)
 	a.acceptOffers(adv)
-	a.adminClient("senior.pd@example.ru", accountdomain.AdminSenior)
+	senior := a.adminClient("senior.pd@example.ru", accountdomain.AdminSenior)
 	a.adminClient("mod.pd@example.ru", accountdomain.AdminModerator)
 	orgID := a.orgOf(email)
 	var inn, name string
@@ -84,6 +84,15 @@ func TestAdminPersonalData(t *testing.T) {
 		t.Fatalf("anonymize: %v %s", err, out)
 	}
 	expectStatus(t, adv.do(http.MethodGet, "/me", nil), http.StatusUnauthorized, "anonymized session")
+	// Разблокировать обезличенного нельзя: 409, а не 200 без изменений.
+	var subjectID string
+	if err := a.db.Pool.QueryRow(context.Background(), `SELECT user_id::text FROM organization_member WHERE organization_id = $1`, orgID).Scan(&subjectID); err != nil {
+		t.Fatal(err)
+	}
+	r := senior.do(http.MethodPost, "/admin/users/"+subjectID+"/unblock", map[string]any{"reason": "ошибка"})
+	if _, d := r.errorCode(t); r.status != http.StatusConflict || d["reason"] != "anonymized" {
+		t.Fatalf("unblock anonymized: %d %s", r.status, r.body)
+	}
 	if n := a.count(`SELECT count(*) FROM "user" WHERE email = $1`, email); n != 0 {
 		t.Fatalf("old email kept: %d", n)
 	}

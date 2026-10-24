@@ -205,13 +205,17 @@ func (h *Handlers) ListAuditLog(ctx context.Context, req apigen.ListAuditLogRequ
 }
 
 func (h *Handlers) GetAdminCounters(ctx context.Context, _ apigen.GetAdminCountersRequestObject) (apigen.GetAdminCountersResponseObject, error) {
-	ctx, _, err := httpx.AdminContext(ctx, h.log, "Admin.Counters", httpx.AdminAny...)
+	ctx, p, err := httpx.AdminContext(ctx, h.log, "Admin.Counters", httpx.AdminAny...)
 	if err != nil {
 		return nil, err
 	}
 	c, err := h.svc.Counters(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if !httpx.IsSenior(p) {
+		// Очереди только senior (выписка, выплаты, подтверждения) модератору не показываются.
+		c.BankTransactionsUnmatched, c.PayoutsFailed, c.ApprovalsPending = 0, 0, 0
 	}
 	return apigen.GetAdminCounters200JSONResponse{ChannelsModeration: c.ChannelsModeration, OrdersModeration: c.OrdersModeration,
 		DisputesOpen: c.DisputesOpen, DisputesOverdue: c.DisputesOverdue, OrdErrors: c.OrdErrors,

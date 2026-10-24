@@ -98,9 +98,18 @@ func TestAdminOrganizationsAndOrdHTTP(t *testing.T) {
 	expectStatus(t, mod.do(http.MethodPost, "/admin/ord/objects/contract/"+contract+"/retry", map[string]string{"reason": "ещё раз"}),
 		http.StatusConflict, "retry not in error")
 
-	// Поиск по началу ИНН и по почте участника; ИНН полный только у senior (R-14).
+	// Поиск по ИНН и по почте участника; ИНН полный только у senior (R-14). Модератор ищет
+	// только по ИНН целиком: по началу скрытая часть подбиралась бы перебором.
 	var found page[adminOrgView]
 	mod.do(http.MethodGet, "/admin/organizations?query="+inn[:6], nil).json(t, &found)
+	if len(found.Items) != 0 {
+		t.Fatalf("moderator search by INN prefix: %+v", found.Items)
+	}
+	senior.do(http.MethodGet, "/admin/organizations?query="+inn[:6], nil).json(t, &found)
+	if len(found.Items) != 1 || found.Items[0].ID != orgID {
+		t.Fatalf("senior search by INN prefix: %+v", found.Items)
+	}
+	mod.do(http.MethodGet, "/admin/organizations?query="+inn, nil).json(t, &found)
 	if len(found.Items) != 1 || found.Items[0].ID != orgID || found.Items[0].INN == inn || !strings.Contains(found.Items[0].INN, "*") {
 		t.Fatalf("moderator search by INN: %+v", found.Items)
 	}

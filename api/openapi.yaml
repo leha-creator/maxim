@@ -3066,7 +3066,8 @@ paths:
       summary: Организации
       description: |
         Роль: moderator, senior. Поиск по ИНН, наименованию или почте участника. ИНН полный у `senior`,
-        маскированный у `moderator`.
+        маскированный у `moderator`. `senior` ищет по началу ИНН, `moderator` — только по ИНН целиком
+        (иначе подбором по началу восстанавливается скрытая часть, R-14).
       parameters:
         - name: query
           in: query
@@ -3168,7 +3169,8 @@ paths:
       tags: [admin-organizations]
       operationId: unblockUser
       summary: Разблокировать пользователя
-      description: 'Роль: senior.'
+      description: |
+        Роль: senior. Обезличенного пользователя (R-26) не разблокировать: `409`, `details.reason = anonymized`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -4907,6 +4909,9 @@ components:
         decided_at: { type: string, format: date-time }
     AdminCounters:
       type: object
+      description: |
+        Счётчики меню. У `moderator` очереди только для `senior` (`bank_transactions_unmatched`,
+        `payouts_failed`, `approvals_pending`) всегда 0.
       required: [channels_moderation, orders_moderation, disputes_open, disputes_overdue, ord_errors, bank_transactions_unmatched, payouts_failed, approvals_pending, ord_report_pending]
       properties:
         channels_moderation: { type: integer, minimum: 0 }

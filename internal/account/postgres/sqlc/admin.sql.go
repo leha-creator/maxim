@@ -18,20 +18,21 @@ FROM organization o
 LEFT JOIN advertiser_profile ap ON ap.organization_id = o.id
 LEFT JOIN blogger_profile bp ON bp.organization_id = o.id
 WHERE NOT o.is_platform
-  AND ($1::text = '' OR o.inn LIKE $1 || '%' OR lower(o.name) LIKE '%' || lower($1) || '%'
+  AND ($1::text = '' OR (CASE WHEN $2::boolean THEN o.inn = $1 ELSE o.inn LIKE $1 || '%' END) OR lower(o.name) LIKE '%' || lower($1) || '%'
        OR EXISTS (SELECT 1 FROM organization_member m JOIN "user" u ON u.id = m.user_id
                   WHERE m.organization_id = o.id AND u.email = lower($1)))
-  AND ($2::text = '' OR ($2 = 'advertiser' AND ap.organization_id IS NOT NULL)
-       OR ($2 = 'blogger' AND bp.organization_id IS NOT NULL))
+  AND ($3::text = '' OR ($3 = 'advertiser' AND ap.organization_id IS NOT NULL)
+       OR ($3 = 'blogger' AND bp.organization_id IS NOT NULL))
 `
 
 type AdminCountOrganizationsParams struct {
-	Query   string
-	Cabinet string
+	Query    string
+	ExactInn bool
+	Cabinet  string
 }
 
 func (q *Queries) AdminCountOrganizations(ctx context.Context, arg AdminCountOrganizationsParams) (int32, error) {
-	row := q.db.QueryRow(ctx, adminCountOrganizations, arg.Query, arg.Cabinet)
+	row := q.db.QueryRow(ctx, adminCountOrganizations, arg.Query, arg.ExactInn, arg.Cabinet)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -99,20 +100,21 @@ FROM organization o
 LEFT JOIN advertiser_profile ap ON ap.organization_id = o.id
 LEFT JOIN blogger_profile bp ON bp.organization_id = o.id
 WHERE NOT o.is_platform
-  AND ($1::text = '' OR o.inn LIKE $1 || '%' OR lower(o.name) LIKE '%' || lower($1) || '%'
+  AND ($1::text = '' OR (CASE WHEN $2::boolean THEN o.inn = $1 ELSE o.inn LIKE $1 || '%' END) OR lower(o.name) LIKE '%' || lower($1) || '%'
        OR EXISTS (SELECT 1 FROM organization_member m JOIN "user" u ON u.id = m.user_id
                   WHERE m.organization_id = o.id AND u.email = lower($1)))
-  AND ($2::text = '' OR ($2 = 'advertiser' AND ap.organization_id IS NOT NULL)
-       OR ($2 = 'blogger' AND bp.organization_id IS NOT NULL))
+  AND ($3::text = '' OR ($3 = 'advertiser' AND ap.organization_id IS NOT NULL)
+       OR ($3 = 'blogger' AND bp.organization_id IS NOT NULL))
 ORDER BY o.created_at DESC, o.id DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type AdminListOrganizationsParams struct {
-	Query   string
-	Cabinet string
-	Off     int32
-	Lim     int32
+	Query    string
+	ExactInn bool
+	Cabinet  string
+	Off      int32
+	Lim      int32
 }
 
 type AdminListOrganizationsRow struct {
@@ -127,11 +129,12 @@ type AdminListOrganizationsRow struct {
 }
 
 // Организации и пользователи для администратора (этап «API администратора», R-12, R-13).
-// Поиск по началу ИНН, части наименования или точной почте участника; организация-платформа не
+// Поиск по началу ИНН (модератору — только по ИНН целиком, R-14), части наименования или точной почте участника; организация-платформа не
 // показывается. Кабинет — по профилю.
 func (q *Queries) AdminListOrganizations(ctx context.Context, arg AdminListOrganizationsParams) ([]AdminListOrganizationsRow, error) {
 	rows, err := q.db.Query(ctx, adminListOrganizations,
 		arg.Query,
+		arg.ExactInn,
 		arg.Cabinet,
 		arg.Off,
 		arg.Lim,

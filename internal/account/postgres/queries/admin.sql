@@ -1,7 +1,7 @@
 -- Организации и пользователи для администратора (этап «API администратора», R-12, R-13).
 
 -- name: AdminListOrganizations :many
--- Поиск по началу ИНН, части наименования или точной почте участника; организация-платформа не
+-- Поиск по началу ИНН (модератору — только по ИНН целиком, R-14), части наименования или точной почте участника; организация-платформа не
 -- показывается. Кабинет — по профилю.
 SELECT o.id, o.name, o.inn, o.legal_type, o.status, o.created_at,
        (ap.organization_id IS NOT NULL)::boolean AS is_advertiser,
@@ -10,7 +10,7 @@ FROM organization o
 LEFT JOIN advertiser_profile ap ON ap.organization_id = o.id
 LEFT JOIN blogger_profile bp ON bp.organization_id = o.id
 WHERE NOT o.is_platform
-  AND (@query::text = '' OR o.inn LIKE @query || '%' OR lower(o.name) LIKE '%' || lower(@query) || '%'
+  AND (@query::text = '' OR (CASE WHEN @exact_inn::boolean THEN o.inn = @query ELSE o.inn LIKE @query || '%' END) OR lower(o.name) LIKE '%' || lower(@query) || '%'
        OR EXISTS (SELECT 1 FROM organization_member m JOIN "user" u ON u.id = m.user_id
                   WHERE m.organization_id = o.id AND u.email = lower(@query)))
   AND (@cabinet::text = '' OR (@cabinet = 'advertiser' AND ap.organization_id IS NOT NULL)
@@ -24,7 +24,7 @@ FROM organization o
 LEFT JOIN advertiser_profile ap ON ap.organization_id = o.id
 LEFT JOIN blogger_profile bp ON bp.organization_id = o.id
 WHERE NOT o.is_platform
-  AND (@query::text = '' OR o.inn LIKE @query || '%' OR lower(o.name) LIKE '%' || lower(@query) || '%'
+  AND (@query::text = '' OR (CASE WHEN @exact_inn::boolean THEN o.inn = @query ELSE o.inn LIKE @query || '%' END) OR lower(o.name) LIKE '%' || lower(@query) || '%'
        OR EXISTS (SELECT 1 FROM organization_member m JOIN "user" u ON u.id = m.user_id
                   WHERE m.organization_id = o.id AND u.email = lower(@query)))
   AND (@cabinet::text = '' OR (@cabinet = 'advertiser' AND ap.organization_id IS NOT NULL)
