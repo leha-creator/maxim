@@ -80,6 +80,57 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 	return err
 }
 
+const listAdminUserIDs = `-- name: ListAdminUserIDs :many
+SELECT id FROM "user" WHERE admin_role IS NOT NULL AND status = 'active' ORDER BY created_at, id
+`
+
+func (q *Queries) ListAdminUserIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listAdminUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrganizationMemberIDs = `-- name: ListOrganizationMemberIDs :many
+SELECT m.user_id FROM organization_member m JOIN "user" u ON u.id = m.user_id
+WHERE m.organization_id = $1 AND u.status = 'active'
+ORDER BY (m.role = 'owner') DESC, m.created_at, m.user_id
+`
+
+// Адресаты уведомлений организации (модуль notification, R-1): владелец первым.
+func (q *Queries) ListOrganizationMemberIDs(ctx context.Context, organizationID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listOrganizationMemberIDs, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setUserAdminRole = `-- name: SetUserAdminRole :exec
 UPDATE "user" SET admin_role = $1, updated_at = $2::timestamptz WHERE id = $3
 `

@@ -10,6 +10,7 @@ import (
 	billingpg "github.com/leha-creator/maxim/internal/billing/postgres"
 	ledgerpg "github.com/leha-creator/maxim/internal/ledger/postgres"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
+	notificationpg "github.com/leha-creator/maxim/internal/notification/postgres"
 	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/inbound"
@@ -46,6 +47,7 @@ func runWorker(ctx context.Context, cfg Config, log *slog.Logger) error {
 	reg.MustRegister(markingpg.NewCollector(m.markingStore))
 	reg.MustRegister(ledgerpg.NewCollector(m.ledgerStore))
 	reg.MustRegister(billingpg.NewCollector(m.billingStore))
+	reg.MustRegister(notificationpg.NewCollector(m.notificationStore))
 	log.InfoContext(ctx, "worker configured", logx.KeyOp, "Bootstrap.Worker", "kinds", w.Kinds(),
 		"max_mode", maxMode(cfg), "ord_enabled", cfg.ORD.Enabled, "ord_fake", cfg.ORDFake(), "alert_emails", len(cfg.Alert.Emails), "alert_chat", cfg.Alert.MAXChatID != 0)
 

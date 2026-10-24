@@ -279,3 +279,27 @@ func TestCircuitBreaker(t *testing.T) {
 		t.Fatalf("calls after open period %d, want 11", calls.Load())
 	}
 }
+
+// Ожидаемый отказ: без повторов, Permanent, без оповещения.
+func TestExpectedRejectionNoAlert(t *testing.T) {
+	h, calls := sequence(403)
+	e, srv := newEnv(t, h)
+	call := get(srv.URL)
+	call.ExpectedRejections = []int{403, 404}
+	_, err := e.client.Do(context.Background(), call)
+	var rejected *outbound.RejectedError
+	if !job.IsPermanent(err) || !errors.As(err, &rejected) || rejected.Status != 403 || calls.Load() != 1 {
+		t.Fatalf("err %v, calls %d", err, calls.Load())
+	}
+	if len(e.alerts.reasons) != 0 {
+		t.Fatalf("alerts %v", e.alerts.reasons)
+	}
+	// Другой отказ того же вызова — по-прежнему с оповещением.
+	h2, _ := sequence(400)
+	e2, srv2 := newEnv(t, h2)
+	call2 := get(srv2.URL)
+	call2.ExpectedRejections = []int{403}
+	if _, err := e2.client.Do(context.Background(), call2); !job.IsPermanent(err) || len(e2.alerts.reasons) != 1 {
+		t.Fatalf("400: %v alerts %v", err, e2.alerts.reasons)
+	}
+}

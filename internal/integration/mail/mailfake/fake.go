@@ -22,6 +22,9 @@ type Sender struct {
 	sent    []LoginCodeMessage
 	alerts  []AlertMessage
 	failErr error
+
+	notifications []NotificationMessage
+	notifyErr     error
 }
 
 // New создаёт пустой Sender.
@@ -86,4 +89,41 @@ func (s *Sender) Alerts() []AlertMessage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]AlertMessage(nil), s.alerts...)
+}
+
+// NotificationMessage — отправленное письмо уведомления.
+type NotificationMessage struct {
+	To      string
+	Subject string
+	Text    string
+	HTML    string
+}
+
+// SendNotification запоминает письмо уведомления или возвращает ошибку FailNotificationsWith
+// (или общую FailWith).
+func (s *Sender) SendNotification(_ context.Context, to, subject, text, html string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.notifyErr != nil {
+		return s.notifyErr
+	}
+	if s.failErr != nil {
+		return s.failErr
+	}
+	s.notifications = append(s.notifications, NotificationMessage{To: to, Subject: subject, Text: text, HTML: html})
+	return nil
+}
+
+// FailNotificationsWith ломает только письма уведомлений; nil — снова отправлять.
+func (s *Sender) FailNotificationsWith(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notifyErr = err
+}
+
+// Notifications — копия отправленных писем уведомлений.
+func (s *Sender) Notifications() []NotificationMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]NotificationMessage(nil), s.notifications...)
 }

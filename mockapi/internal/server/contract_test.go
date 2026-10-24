@@ -134,6 +134,7 @@ var cases = map[string]opCase{
 	"getOrder":               {user: adv, params: id(seed.OrderActive)},
 	"createOrderPostVersion": {user: adv, params: id(seed.OrderActive), noBody: true},
 	"getOrderReport":         {user: adv, params: id(seed.OrderPast)},
+	"getOrderReportCsv":      {user: adv, params: id(seed.OrderPast)},
 	"cancelPlacement":        {user: adv, params: id(seed.PlacementAwaitingBlogger), noBody: true},
 	"cancelOrder":            {user: adv, params: id(seed.OrderActive), noBody: true},
 	"acceptPlacement":        {user: adv, params: id(seed.PlacementRemoved), noBody: true},

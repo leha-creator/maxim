@@ -3,7 +3,7 @@ package templates
 
 import "embed"
 
-// FS — шаблоны.
+// FS — шаблоны: письма (email/) и уведомления по кодам каталога (notification/).
 //
-//go:embed email/*.tmpl
+//go:embed email/*.tmpl notification/*.tmpl
 var FS embed.FS

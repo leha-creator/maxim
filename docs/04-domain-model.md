@@ -745,19 +745,27 @@ erDiagram
 | `instance` | `text` | да | Первичный ключ: хост и номер процесса |
 | `started_at`, `seen_at` | `timestamptz` | да | Отметка — раз в 30 секунд |
 
-Сроки хранения служебных таблиц (задание `cleanup`, параметры конфигурации): `outbound_request` — 180 суток; `job` в `succeeded` и `cancelled` — 30 суток, в `failed` — 180 суток; `inbound_event` в `processed` и `ignored` — 180 суток; `auth_code` и `session` — 7 суток после истечения; `worker_heartbeat` — сутки.
+Сроки хранения служебных таблиц (задание `cleanup`, параметры конфигурации): `outbound_request` — 180 суток; `job` в `succeeded` и `cancelled` — 30 суток, в `failed` — 180 суток; `inbound_event` в `processed` и `ignored` — 180 суток; `auth_code` и `session` — 7 суток после истечения; `worker_heartbeat` — сутки; `notification` в `sent`, `failed` и `read` — 365 суток (`NOTIFICATION_RETENTION`).
 
 ### notification
 
+Одна строка на адресата и канал доставки. Строка кабинета создаётся сразу в `sent` (доставлена в момент создания); `max_bot` и `email` — в `pending` и отправляются заданием `send_notification` в той же транзакции, что и событие (07 §6).
+
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
-| `user_id` | `uuid` | да | |
+| `user_id` | `uuid` | да | Адресат: член организации стороны или администратор |
+| `organization_id` | `uuid` | нет | Пусто у уведомлений администратора |
 | `channel` | `text` | да | `max_bot`, `email`, `cabinet` |
-| `template` | `text` | да | Код шаблона |
-| `payload` | `jsonb` | да | |
-| `status` | `text` | да | `pending`, `sent`, `failed`, `read` |
-| `object_type`, `object_id` | | нет | |
-| `sent_at`, `read_at` | | нет | |
+| `template` | `text` | да | Код шаблона из каталога (07 §6) |
+| `payload` | `jsonb` | да | Данные шаблона и ссылка в кабинет (`link`); почта адресата сюда не пишется — читается при отправке |
+| `status` | `text` | да | `pending`, `sent`, `failed`, `read`; `read` — только у `cabinet` |
+| `object_type`, `object_id` | | нет | Задаются вместе |
+| `dedupe_key` | `text` | нет | Уникален вместе с `user_id` и `channel`: повтор события второго уведомления не создаёт |
+| `max_user_id` | `bigint` | нет | Только у `max_bot` и обязателен для него: `channel.added_by_max_user_id` |
+| `attempts` | `integer` | да | Попытки отправки |
+| `last_error` | `text` | нет | Последняя ошибка отправки без персональных данных |
+| `sent_at`, `read_at` | | нет | `read_at` есть тогда и только тогда, когда `status = read` |
+| `created_at`, `updated_at` | | да | |
 
 ### audit_log
 

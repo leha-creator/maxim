@@ -1,0 +1,2 @@
+{{define "title"}}Публикация в {{channel .}} перенесена{{end}}
+{{define "text"}}Блогер перенёс публикацию по заказу {{order .}}{{if has . "publish_at"}} на {{msk .publish_at}} МСК{{end}}{{if has . "remove_at"}}, снятие — {{msk .remove_at}} МСК{{end}}.{{end}}

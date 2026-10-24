@@ -22,7 +22,18 @@ func TestMigrationsDownAndUp(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	log := logx.Discard()
-	for range 10 { // откат 00010, 00009, 00008, 00007, 00006, 00005, 00004, 00003, 00002 и 00001
+	// Откат всех миграций по одной: число миграций не зашито в тест.
+	for step := 0; ; step++ {
+		var version int64
+		if err := d.Owner.QueryRow(ctx, `SELECT coalesce(max(version_id), 0) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		if version == 0 {
+			break
+		}
+		if step > 1000 {
+			t.Fatalf("migrations did not roll back, version %d", version)
+		}
 		if err := db.MigrateURL(ctx, d.OwnerURL, dbtest.AppRole, db.MigrateDown, log); err != nil {
 			t.Fatalf("down: %v", err)
 		}

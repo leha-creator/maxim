@@ -1,0 +1,3 @@
+{{define "title"}}Спор по размещению в {{channel .}} решён{{end}}
+{{define "text"}}Администратор принял решение по спору о размещении в {{channel .}}, заказ {{order .}}.{{if has . "refund_amount"}}
+Возврат рекламодателю: {{rub .refund_amount}}.{{end}}{{end}}

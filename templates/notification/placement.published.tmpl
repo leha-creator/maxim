@@ -1,0 +1,4 @@
+{{define "title"}}Пост опубликован в {{channel .}}{{end}}
+{{define "text"}}Пост по заказу {{order .}} вышел в {{channel .}}{{if has . "published_at"}} {{msk .published_at}} МСК{{end}}.{{if has . "publication_url"}}
+Ссылка на пост: {{.publication_url}}{{end}}{{if has . "remove_at"}}
+Снятие — {{msk .remove_at}} МСК.{{end}}{{end}}

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="ru">
+<body style="font-family: Arial, sans-serif; color: #222;">
+  <p style="font-weight: bold; font-size: 16px;">{{.Title}}</p>
+  {{range .Paragraphs}}<p style="white-space: pre-line;">{{.}}</p>
+  {{end}}{{if .Link}}<p><a href="{{.Link}}">Открыть в кабинете</a></p>{{end}}
+  <p style="color: #777;">Письмо отправлено автоматически, отвечать на него не нужно.</p>
+</body>
+</html>

@@ -357,3 +357,26 @@ func TestLinkCode(t *testing.T) {
 		t.Fatal("consumed code is live")
 	}
 }
+
+func TestStatusChangeNoticeTemplate(t *testing.T) {
+	for _, tc := range []struct {
+		from, to Status
+		reason   string
+		want     string
+	}{
+		{StatusModeration, StatusActive, "", NoticeApproved},
+		{StatusSuspended, StatusActive, "", NoticeRestored},
+		{StatusModeration, StatusRejected, "Нет описания", NoticeRejected},
+		{StatusActive, StatusSuspended, ReasonMissingRights, NoticeSuspended},
+		{StatusActive, StatusDisconnected, "", NoticeDisconnected},
+		{StatusUnclaimed, StatusDisconnected, ReasonUnclaimedExpired, ""},
+		{StatusPendingRights, StatusModeration, "", ""},
+		{StatusActive, StatusActive, "", ""},
+		{StatusActive, StatusBlocked, "", ""},
+	} {
+		got, ok := StatusChange{From: tc.from, To: tc.to, Reason: tc.reason}.NoticeTemplate()
+		if got != tc.want || ok != (tc.want != "") {
+			t.Errorf("%s → %s (%s): %q %v, want %q", tc.from, tc.to, tc.reason, got, ok, tc.want)
+		}
+	}
+}

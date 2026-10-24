@@ -7,6 +7,7 @@ Caddyfile text eol=lf
 *.tmpl text eol=lf
 go.mod text eol=lf
 go.sum text eol=lf
+<<<<<<< HEAD
 # Файлы, которые читают контейнеры и скрипты: с CRLF ломаются env-файлы, crontab и Caddy.
 *.caddy text eol=lf
 *.env.example text eol=lf
@@ -18,3 +19,5 @@ Dockerfile text eol=lf
 **/testdata/*.txt text eol=lf
 deploy/local/*.env text eol=lf
 *.dockerignore text eol=lf
+*.txt text eol=lf
+*.json text eol=lf

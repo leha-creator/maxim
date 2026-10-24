@@ -1,0 +1,3 @@
+{{define "title"}}Баланс пополнен на {{rub .amount}}{{end}}
+{{define "text"}}На баланс зачислено {{rub .amount}}{{if has . "invoice_number"}} по счёту {{.invoice_number}}{{end}}.
+Деньги можно сразу использовать для оплаты кампаний.{{end}}

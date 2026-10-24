@@ -119,25 +119,42 @@ func (tx *Tx) notifyTransition(p *Placement, code string) {
 	if c, err := tx.Channel(p.ChannelID); err == nil {
 		title = c.Title
 	}
-	adv := func(tpl, head, text string) { tx.Notify(o.OrgID, tpl, head, text, "placement", p.ID) }
-	blg := func(tpl, head, text string) { tx.Notify(p.BloggerOrgID, tpl, head, text, "placement", p.ID) }
+	// Ссылки — как у бэкенда (notification/domain.Link): рекламодателю — заказ, блогеру — размещение.
+	orderID := o.ID
+	adv := func(tpl, head, text string) {
+		tx.Notify(o.OrgID, tpl, head, text, "placement", p.ID, &orderID, "/adv/orders/"+o.ID.String())
+	}
+	blg := func(tpl, head, text string) {
+		tx.Notify(p.BloggerOrgID, tpl, head, text, "placement", p.ID, &orderID, "/blg/placements?placement="+p.ID.String())
+	}
+	ch := "«" + title + "»"
 	switch code {
 	case "P-02":
-		blg("placement.awaiting_blogger", "Новый запрос на размещение",
-			fmt.Sprintf("Заказ %d, канал «%s». Примите или откажитесь до %s МСК.", o.Number, title, fmtMSK(p.AcceptDeadlineAt)))
+		blg("placement.request", "Новый запрос на размещение в "+ch,
+			fmt.Sprintf("Рекламодатель хочет разместить пост в %s, заказ № %d.\nОтветьте до %s МСК, иначе запрос истечёт.", ch, o.Number, fmtMSK(p.AcceptDeadlineAt)))
 	case "P-03":
-		adv("placement.accepted_by_blogger", "Блогер принял размещение", fmt.Sprintf("Канал «%s», заказ %d.", title, o.Number))
+		adv("placement.accepted", "Блогер принял размещение в "+ch,
+			fmt.Sprintf("Размещение в %s по заказу № %d принято в работу. Блогер выберет время публикации.", ch, o.Number))
 	case "P-04":
-		adv("placement.declined", "Блогер отказался", fmt.Sprintf("Канал «%s», заказ %d. Деньги вернулись на баланс.", title, o.Number))
+		adv("placement.declined", "Блогер отказался от размещения в "+ch,
+			fmt.Sprintf("Размещение в %s по заказу № %d отклонено блогером. Деньги вернулись на баланс.", ch, o.Number))
 	case "P-05", "P-18":
-		adv("placement.expired", "Размещение не состоялось", fmt.Sprintf("Канал «%s»: блогер не ответил вовремя. Деньги вернулись на баланс.", title))
-		blg("placement.expired", "Запрос истёк", fmt.Sprintf("Заказ %d, канал «%s».", o.Number, title))
+		text := fmt.Sprintf("Срок ответа или планирования публикации в %s по заказу № %d прошёл. Размещение завершено, деньги возвращены рекламодателю.", ch, o.Number)
+		adv("placement.expired", "Размещение в "+ch+" истекло", text)
+		blg("placement.expired", "Размещение в "+ch+" истекло", text)
+	case "P-07", "P-17":
+		adv("placement.scheduled", "Публикация в "+ch+" запланирована",
+			fmt.Sprintf("Пост по заказу № %d выйдет в %s %s МСК.", o.Number, ch, fmtMSK(p.PublishAt)))
 	case "P-08":
-		adv("placement.published", "Пост опубликован", fmt.Sprintf("Канал «%s», заказ %d.", title, o.Number))
+		adv("placement.published", "Пост опубликован в "+ch, fmt.Sprintf("Пост по заказу № %d вышел в %s.", o.Number, ch))
 	case "P-10":
-		adv("placement.removed", "Пост снят", fmt.Sprintf("Канал «%s». Примите размещение или подайте претензию в течение 24 часов.", title))
+		adv("placement.removed", "Пост снят из "+ch,
+			fmt.Sprintf("Размещение по заказу № %d завершено: пост снят из %s.\nПретензию можно открыть до %s МСК, после этого размещение будет принято автоматически.", o.Number, ch, fmtMSK(p.ClaimDeadlineAt)))
+	case "P-14":
+		blg("placement.disputed", "Претензия по размещению в "+ch,
+			fmt.Sprintf("Рекламодатель открыл претензию по заказу № %d. Платформа рассмотрит её и сообщит решение.", o.Number))
 	case "P-16":
-		blg("payout.succeeded", "Выплата прошла", fmt.Sprintf("Заказ %d, канал «%s».", o.Number, title))
+		blg("payout.succeeded", "Выплата получена", fmt.Sprintf("Деньги за размещение в %s, заказ № %d, выплачены.", ch, o.Number))
 	}
 }
 

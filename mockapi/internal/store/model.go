@@ -70,6 +70,8 @@ type Notification struct {
 	Text       string
 	ObjectType *string
 	ObjectID   *uuid.UUID
+	OrderID    *uuid.UUID
+	Link       string
 	ReadAt     *time.Time
 	CreatedAt  time.Time
 }

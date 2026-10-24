@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,6 +32,8 @@ const (
 	KindReconcilePublications = "reconcile_publications"
 	// KindCheckPublication — проверка одной живой публикации по сверке (R-12).
 	KindCheckPublication = "check_publication"
+	// KindPlacementReminder — напоминание блогеру о сроке ответа T-01 (R-8 этапа уведомлений).
+	KindPlacementReminder = "placement_reminder"
 )
 
 // Timing — сроки и правила времени (A-10, 07 §8); значения — из конфигурации.
@@ -154,5 +157,32 @@ func CheckPublicationJob(id uuid.UUID, runAt time.Time) Job {
 
 // allJobKeys — все задания размещения до публикации: таймеры, публикация и снятие.
 func allJobKeys(id uuid.UUID) []string {
-	return []string{TimerKey(id, TimerAccept), TimerKey(id, TimerSchedule), TimerKey(id, TimerWindow), PublishKey(id), RemoveKey(id)}
+	return []string{TimerKey(id, TimerAccept), TimerKey(id, TimerSchedule), TimerKey(id, TimerWindow), PublishKey(id), RemoveKey(id), ReminderKey(id)}
+}
+
+// ReminderLead — за сколько до T-01 блогеру напоминают о запросе (R-8 этапа уведомлений).
+const ReminderLead = 3 * time.Hour
+
+// ReminderKey — dedupe_key напоминания о T-01; он же ключ повтора уведомления.
+func ReminderKey(id uuid.UUID) string { return "reminder:" + id.String() + ":T-01" }
+
+// ReminderJob — напоминание за ReminderLead до срока ответа; срок ближе — без напоминания.
+func ReminderJob(id uuid.UUID, deadline, now time.Time) (Job, bool) {
+	at := deadline.Add(-ReminderLead)
+	if !at.After(now) {
+		return Job{}, false
+	}
+	return Job{Kind: KindPlacementReminder, DedupeKey: ReminderKey(id), RunAt: at, Payload: PlacementPayload{PlacementID: id}}, true
+}
+
+// AcceptReminder — уведомление-напоминание блогеру, если запрос всё ещё ждёт ответа и срок не
+// прошёл; иначе false (напоминание устарело).
+func (p *Placement) AcceptReminder(now time.Time) (NoticeTo, bool) {
+	if p.Status != StatusAwaitingBlogger || p.AcceptDeadlineAt == nil || !p.AcceptDeadlineAt.After(now) {
+		return NoticeTo{}, false
+	}
+	// Ключ повтора с концом срока: после P-11 и нового P-02 напоминание о новом сроке не
+	// совпадает с прежним (R-10).
+	key := ReminderKey(p.ID) + ":" + strconv.FormatInt(p.AcceptDeadlineAt.Unix(), 10)
+	return NoticeTo{Template: NoticeAcceptReminder, Role: ActorBlogger, Key: key}, true
 }

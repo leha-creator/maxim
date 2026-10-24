@@ -107,13 +107,15 @@ type Deps struct {
 	Availability domain.AvailabilityListener
 	// PostListener — сообщения каналов для контроля топа; nil — пустая реализация.
 	PostListener domain.ChannelPostListener
-	Alerts       Alerter
-	Tx           tx.Runner
-	Jobs         job.Enqueuer
-	Audit        audit.Recorder
-	Clock        clock.Clock
-	Log          *slog.Logger
-	Config       Config
+	// Notifier — уведомления блогеру о смене состояния канала; nil — пустая реализация.
+	Notifier domain.Notifier
+	Alerts   Alerter
+	Tx       tx.Runner
+	Jobs     job.Enqueuer
+	Audit    audit.Recorder
+	Clock    clock.Clock
+	Log      *slog.Logger
+	Config   Config
 }
 
 // Service — сценарии модуля каналов.
@@ -139,6 +141,9 @@ func New(d Deps) *Service {
 	if d.PostListener == nil {
 		d.PostListener = NopPostListener{Log: d.Log}
 	}
+	if d.Notifier == nil {
+		d.Notifier = NopNotifier{Log: d.Log}
+	}
 	return &Service{Deps: d, log: d.Log.With(logx.KeyModule, "channel")}
 }
 
@@ -152,6 +157,14 @@ func (s *Service) SetPlacementPorts(availability domain.AvailabilityListener, pl
 func (s *Service) SetPostListener(l domain.ChannelPostListener) { s.PostListener = l }
 
 // NopPostListener — пустая реализация ChannelPostListener до модуля размещений.
+// NopNotifier — уведомления без модуля уведомлений (тесты модуля).
+type NopNotifier struct{ Log *slog.Logger }
+
+func (n NopNotifier) Notify(ctx context.Context, notice domain.Notice) error {
+	n.Log.DebugContext(ctx, "notification skipped", logx.KeyOp, "Channel.Notify", "template", notice.Template, KeyChannelID, notice.ChannelID)
+	return nil
+}
+
 type NopPostListener struct{ Log *slog.Logger }
 
 func (n NopPostListener) ChannelPostCreated(ctx context.Context, p domain.ChannelPost) error {
@@ -201,6 +214,9 @@ func (s *Service) save(ctx context.Context, op string, c *domain.Channel, change
 		Data:           map[string]any{"from": change.From, "to": change.To, "reason": change.Reason},
 		OrganizationID: c.OrganizationID,
 	}); err != nil {
+		return err
+	}
+	if err := s.notify(ctx, c, change); err != nil {
 		return err
 	}
 	level := slog.LevelInfo
@@ -254,4 +270,21 @@ func ruleError(err error) error {
 // notEditable — 409 для канала, который блогер не правит в его состоянии.
 func notEditable(c *domain.Channel) error {
 	return apperr.Conflict("channel cannot be edited in its current status").WithDetail("status", string(c.Status))
+}
+
+// notify — уведомление блогеру о смене состояния канала в транзакции смены. Причина отклонения —
+// текст администратора для блогера: в уведомление он попадает, в журнал приложения — нет.
+func (s *Service) notify(ctx context.Context, c *domain.Channel, change domain.StatusChange) error {
+	tpl, ok := change.NoticeTemplate()
+	if !ok || c.OrganizationID == nil {
+		return nil
+	}
+	data := map[string]any{"channel_id": c.ID.String()}
+	if c.Title != "" {
+		data["channel_title"] = c.Title
+	}
+	if change.To == domain.StatusRejected && change.Reason != "" {
+		data["reason"] = change.Reason
+	}
+	return s.Notifier.Notify(ctx, domain.Notice{Template: tpl, OrganizationID: *c.OrganizationID, ChannelID: c.ID, Data: data})
 }

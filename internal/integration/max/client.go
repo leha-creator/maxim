@@ -139,6 +139,8 @@ type request struct {
 	// не создан ли он (03 §11).
 	create        bool
 	checkExisting func(ctx context.Context) (bool, error)
+	// expected — коды отказа, ожидаемые для вызова (outbound.Call.ExpectedRejections).
+	expected []int
 }
 
 func (c *Client) do(ctx context.Context, r request) (outbound.Response, error) {
@@ -156,17 +158,18 @@ func (c *Client) do(ctx context.Context, r request) (outbound.Response, error) {
 		u += "?" + r.query.Encode()
 	}
 	return c.out.Do(ctx, outbound.Call{
-		Operation:     r.operation,
-		Method:        r.method,
-		URL:           u,
-		Header:        http.Header{"Authorization": {c.opts.Token}},
-		Body:          r.body,
-		ObjectType:    r.object,
-		ObjectID:      r.objectID,
-		ValidateBody:  validateSuccess,
-		Redact:        r.redact,
-		Create:        r.create,
-		CheckExisting: r.checkExisting,
+		Operation:          r.operation,
+		Method:             r.method,
+		URL:                u,
+		Header:             http.Header{"Authorization": {c.opts.Token}},
+		Body:               r.body,
+		ObjectType:         r.object,
+		ObjectID:           r.objectID,
+		ValidateBody:       validateSuccess,
+		Redact:             r.redact,
+		Create:             r.create,
+		CheckExisting:      r.checkExisting,
+		ExpectedRejections: r.expected,
 	})
 }
 

@@ -1,0 +1,2 @@
+{{define "title"}}Публикация в {{channel .}} запланирована{{end}}
+{{define "text"}}Пост по заказу {{order .}} выйдет в {{channel .}}{{if has . "publish_at"}} {{msk .publish_at}} МСК{{end}}{{if has . "remove_at"}} и будет снят {{msk .remove_at}} МСК{{end}}.{{end}}

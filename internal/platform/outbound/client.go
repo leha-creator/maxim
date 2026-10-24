@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -145,6 +146,9 @@ type Call struct {
 	// маскирует поля, которые нельзя просто скрыть (ИНН маскированным, длина текста).
 	// Поля Redact к нему тоже применяются.
 	RecordBody []byte
+	// ExpectedRejections — коды отказа, которые для вызова — ожидаемый ответ, а не сбой: без
+	// повторов, WARN вместо ERROR и без оповещения (бот не может писать пользователю, Q-38).
+	ExpectedRejections []int
 }
 
 // Response — ответ внешней системы.
@@ -223,6 +227,11 @@ func (c *Client) Do(ctx context.Context, call Call) (Response, error) {
 			}
 		} else if !last.retryable {
 			c.circuit.success(ctx) // система ответила по существу — она работает
+		}
+		if !last.retryable && slices.Contains(call.ExpectedRejections, last.resp.Status) {
+			log.WarnContext(ctx, "outbound call rejected as expected", "attempt", attempt, "status", last.resp.Status,
+				logx.KeyError, last.err.Error())
+			return last.resp, job.Permanent(last.err)
 		}
 		if !last.retryable {
 			log.ErrorContext(ctx, "outbound call rejected", "attempt", attempt, "status", last.resp.Status,

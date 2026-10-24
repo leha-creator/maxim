@@ -324,6 +324,7 @@ paths:
                         items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /notifications/read-all:
     post:
       tags: [notifications]
@@ -986,6 +987,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrderReport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /orders/{id}/report.csv:
+    get:
+      tags: [orders]
+      operationId: getOrderReportCsv
+      summary: Отчёт по кампании в CSV (S-09)
+      description: |
+        Те же строки и итог, что в `getOrderReport`, для Excel: UTF-8 с BOM, разделитель `;`,
+        суммы в рублях с запятой (`11500,00`), время по Москве (`21.10.2026 10:00`). Последняя
+        строка — итог. Имя файла — `order-{номер}-report.csv`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2304,11 +2327,21 @@ components:
       required: [id, template, title, text, created_at, is_read]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
-        template: { type: string, example: placement.awaiting_blogger }
+        template:
+          type: string
+          example: placement.request
+          description: Код шаблона из каталога уведомлений (04 §8)
         title: { type: string }
-        text: { type: string }
+        text: { type: string, description: Текст без разметки }
         object_type: { type: string, example: placement }
         object_id: { $ref: '#/components/schemas/Uuid' }
+        order_id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Заказ, к которому относится уведомление (размещение, пост, маркировка)
+        link:
+          type: string
+          example: /adv/orders/0190a000-0000-7000-8000-000000000101
+          description: Путь в кабинете к объекту уведомления; нет — объект без своей страницы
         is_read: { type: boolean }
         created_at: { type: string, format: date-time }
 
@@ -2701,24 +2734,48 @@ components:
         text: { type: string, minLength: 1, maxLength: 2000 }
     OrderReport:
       type: object
-      required: [order_id, order_number, campaign_name, totals, rows]
+      required: [order_id, order_number, campaign_name, totals, rows, links, utm]
       properties:
         order_id: { $ref: '#/components/schemas/Uuid' }
         order_number: { type: integer, format: int64 }
         campaign_name: { type: string }
+        links:
+          type: array
+          description: |
+            Адреса ссылок текущей версии поста с UTM-метками — как ушли в канал. Переходы платформа не
+            считает (A-21): их видит аналитика рекламодателя по `utm_campaign`.
+          items: { type: string, format: uri }
+          example: ['https://shop.example.test/sale?utm_source=max&utm_medium=channel_ad&utm_campaign=order_1001']
+        utm: { $ref: '#/components/schemas/OrderReportUtm' }
         totals: { $ref: '#/components/schemas/OrderReportTotals' }
         rows:
           type: array
           items: { $ref: '#/components/schemas/OrderReportRow' }
     OrderReportTotals:
       type: object
-      required: [placements, published, views, spent_amount, refunded_amount]
+      required: [placements, published, views, spent_amount, refunded_amount, held_amount]
       properties:
         placements: { type: integer }
         published: { type: integer, description: 'Размещения, которые выходили в канал' }
         views: { type: integer }
         spent_amount: { $ref: '#/components/schemas/Money' }
         refunded_amount: { $ref: '#/components/schemas/Money' }
+        held_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Ещё удержано — сумма `held_amount` строк
+        cpv_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: |
+            Цена одного просмотра (D-28): `spent_amount`, делённое на `views`, в копейках с округлением
+            вниз. Нет — просмотров нет
+    OrderReportUtm:
+      type: object
+      description: UTM-метки ссылок поста заказа (A-21)
+      required: [source, medium, campaign]
+      properties:
+        source: { type: string, example: max }
+        medium: { type: string, example: channel_ad }
+        campaign: { type: string, example: order_1001 }
     OrderReportRow:
       type: object
       description: |
@@ -2743,6 +2800,9 @@ components:
         views: { type: integer }
         publication_url: { type: string, format: uri }
         utm_campaign: { type: string, example: order_1001 }
+        cpv_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Цена одного просмотра — `spent_amount`, делённое на `views`, с округлением вниз; нет — просмотров нет или ничего не списано
 
     # ------------------------------------------------ balance
     Balance:

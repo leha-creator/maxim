@@ -118,12 +118,20 @@ const (
 	NoticeRemoved        = "placement.removed"
 	NoticeRemovalOverdue = "placement.removal_overdue"
 	NoticeDisputed       = "placement.disputed"
+	// NoticeAcceptReminder — до T-01 осталось ReminderLead (R-8 этапа уведомлений).
+	NoticeAcceptReminder = "placement.accept_reminder"
+	// NoticePostApproved — модератор одобрил версию поста заказа.
+	NoticePostApproved = "order.post_approved"
 )
 
 // NoticeTo — уведомление стороне размещения; организацию подставляет app.
 type NoticeTo struct {
 	Template string
 	Role     ActorType
+	// Key — ключ повтора уведомления; пусто — без проверки.
+	Key string
+	// Data — данные перехода для текста поверх данных размещения (адрес публикации).
+	Data map[string]any
 }
 
 // StateChange — результат перехода: запись истории, задания и уведомления, которые app

@@ -1,0 +1,3 @@
+{{define "title"}}Закрывающие документы{{if has . "period"}} за {{.period}}{{end}}{{end}}
+{{define "text"}}Сформированы отчёт агента и акт{{if has . "number"}} {{.number}}{{end}}{{if has . "period"}} за {{.period}}{{end}}.
+Документы можно скачать в разделе «Баланс».{{end}}

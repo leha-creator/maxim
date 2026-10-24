@@ -32,6 +32,12 @@ var unescaper = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&qu
 // EscapeHTML экранирует `& < > "`.
 func EscapeHTML(s string) string { return escaper.Replace(s) }
 
+// Постоянные UTM-метки ссылок поста (A-21); utm_campaign — номер заказа.
+const (
+	UTMSource = "max"
+	UTMMedium = "channel_ad"
+)
+
 // UTM — метки ссылок поста (A-21). Campaign — значение utm_campaign.
 type UTM struct {
 	Campaign string
@@ -45,7 +51,7 @@ func UTMForOrder(orderNumber int64) UTM { return UTM{Campaign: fmt.Sprintf("orde
 var PreviewUTM = UTM{Campaign: "order_0000000000"}
 
 func (u UTM) params() [][2]string {
-	return [][2]string{{"utm_source", "max"}, {"utm_medium", "channel_ad"}, {"utm_campaign", u.Campaign}}
+	return [][2]string{{"utm_source", UTMSource}, {"utm_medium", UTMMedium}, {"utm_campaign", u.Campaign}}
 }
 
 // Serialize превращает нормализованный документ в текст формата html MAX (05 §2.5):

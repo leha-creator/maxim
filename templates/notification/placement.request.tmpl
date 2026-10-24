@@ -1,0 +1,3 @@
+{{define "title"}}Новый запрос на размещение в {{channel .}}{{end}}
+{{define "text"}}Рекламодатель хочет разместить пост в {{channel .}}{{if has . "order_number"}}, заказ {{order .}}{{end}}.
+{{if has . "accept_deadline_at"}}Ответьте до {{msk .accept_deadline_at}} МСК, иначе запрос истечёт.{{else}}Примите запрос или откажитесь в кабинете.{{end}}{{end}}
