@@ -50,6 +50,9 @@ func (p *Placement) SendToBlogger(channelActive, holdActive bool, version Versio
 	deadline := AcceptDeadline(now, p.Window(), t)
 	p.AcceptDeadlineAt = &deadline
 	change.Jobs = []Job{TimerJob(p.ID, TimerAccept, deadline, StatusAwaitingBlogger)}
+	if r, ok := ReminderJob(p.ID, deadline, now); ok {
+		change.Jobs = append(change.Jobs, r)
+	}
 	change.Notices = []NoticeTo{{Template: NoticeRequest, Role: ActorBlogger}}
 	return change, nil
 }
@@ -64,7 +67,7 @@ func (p *Placement) Accept(userID uuid.UUID, now time.Time, t Timing) (StateChan
 	deadline := ScheduleDeadline(now, p.Window(), t)
 	p.ScheduleDeadlineAt = &deadline
 	change.UserID = &userID
-	change.CancelJobs = []string{TimerKey(p.ID, TimerAccept)}
+	change.CancelJobs = []string{TimerKey(p.ID, TimerAccept), ReminderKey(p.ID)}
 	change.Jobs = []Job{TimerJob(p.ID, TimerSchedule, deadline, StatusAwaitingSchedule)}
 	change.Notices = []NoticeTo{{Template: NoticeAccepted, Role: ActorAdvertiser}}
 	return change, nil
@@ -77,7 +80,7 @@ func (p *Placement) Decline(userID uuid.UUID, comment string, now time.Time) (St
 		return StateChange{}, err
 	}
 	change.UserID, change.ReasonText = &userID, comment
-	change.CancelJobs = []string{TimerKey(p.ID, TimerAccept)}
+	change.CancelJobs = []string{TimerKey(p.ID, TimerAccept), ReminderKey(p.ID)}
 	change.Notices = []NoticeTo{{Template: NoticeDeclined, Role: ActorAdvertiser}}
 	return change, nil
 }
@@ -135,7 +138,7 @@ func (p *Placement) ReturnToCreated(actor ActorType, reason string, versionID uu
 	}
 	p.PostVersionID = versionID
 	p.PublishAt, p.RemoveAt, p.AcceptDeadlineAt, p.ScheduleDeadlineAt = nil, nil, nil, nil
-	change.CancelJobs = []string{TimerKey(p.ID, TimerAccept), TimerKey(p.ID, TimerSchedule), PublishKey(p.ID), RemoveKey(p.ID)}
+	change.CancelJobs = []string{TimerKey(p.ID, TimerAccept), TimerKey(p.ID, TimerSchedule), PublishKey(p.ID), RemoveKey(p.ID), ReminderKey(p.ID)}
 	change.Jobs = []Job{TimerJob(p.ID, TimerWindow, WindowDeadline(p.Window(), t), StatusCreated)}
 	change.Notices = []NoticeTo{{Template: NoticeReturned, Role: ActorBlogger}}
 	return change, nil

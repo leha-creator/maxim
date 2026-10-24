@@ -31,6 +31,10 @@ import (
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	markingjobs "github.com/leha-creator/maxim/internal/marking/jobs"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
+	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
+	notificationhttp "github.com/leha-creator/maxim/internal/notification/httpapi"
+	notificationjobs "github.com/leha-creator/maxim/internal/notification/jobs"
+	notificationpg "github.com/leha-creator/maxim/internal/notification/postgres"
 	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
 	payouthttp "github.com/leha-creator/maxim/internal/payout/httpapi"
 	payoutjobs "github.com/leha-creator/maxim/internal/payout/jobs"
@@ -80,6 +84,8 @@ type infra struct {
 	// на процесс, сколько бы адаптеров ни подключилось.
 	outMetrics   *outbound.Metrics
 	limitMetrics *ratelimit.Metrics
+	// life — признак остановки процесса для /readyz (выпуск без простоя).
+	life lifecycle
 }
 
 // newInfra подключает адаптеры, нужные режиму.
@@ -181,7 +187,11 @@ type modules struct {
 	payout      *payoutapp.Service
 	payoutStore *payoutpg.Store
 	payoutHTTP  *payouthttp.Handlers
-	platform    *platformJobs
+	// notification — уведомления; notificationStore — для метрики.
+	notification      *notificationapp.Service
+	notificationHTTP  *notificationhttp.Handlers
+	notificationStore *notificationpg.Store
+	platform          *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
 	queue    *job.Queue
@@ -214,11 +224,13 @@ func newModules(cfg Config, in *infra) *modules {
 	}
 	svc := accountapp.New(deps)
 	channelSvc, channelStore := newChannelService(cfg, in, txRunner, queue, auditLog)
+	notificationSvc, notificationStore := newNotificationService(cfg, in, txRunner, queue, accountStore, channelStore)
+	channelSvc.Notifier = bridge.ChannelNotifier{Svc: notificationSvc}
 	postSvc := newPostService(cfg, in, txRunner, queue, auditLog, accountStore)
 	ledgerSvc, ledgerStore := newLedgerService(cfg, in, txRunner, auditLog)
-	billingSvc, billingStore := newBillingService(cfg, in, txRunner, auditLog, accountStore, ledgerSvc)
-	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc, ledgerSvc)
-	payoutSvc, payoutStore := newPayoutService(cfg, in, txRunner, queue, auditLog, accountStore, ledgerSvc, placementSvc, placementStore)
+	billingSvc, billingStore := newBillingService(cfg, in, txRunner, auditLog, accountStore, ledgerSvc, notificationSvc)
+	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc, ledgerSvc, notificationSvc)
+	payoutSvc, payoutStore := newPayoutService(cfg, in, txRunner, queue, auditLog, accountStore, ledgerSvc, placementSvc, placementStore, notificationSvc)
 	// Описания операций баланса — номера заказов и счетов (R-9).
 	ledgerSvc.References = bridge.LedgerReferences{Placements: placementStore.Placements(), Invoices: billingStore}
 	billingSvc.Placements = bridge.BillingPlacements{Placements: placementStore.Placements()}
@@ -232,32 +244,36 @@ func newModules(cfg Config, in *infra) *modules {
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
 	})
+	platform.cleaner.Add(cleanup.Task{Name: "notification", Retention: cfg.Notification.Retention, Delete: notificationStore.DeleteBefore})
 	m := &modules{
-		cfg:            cfg,
-		in:             in,
-		account:        svc,
-		accountHTTP:    accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
-		channel:        channelSvc,
-		channelHTTP:    channelhttp.New(channelSvc, log),
-		post:           postSvc,
-		postHTTP:       newPostHandlers(cfg, postSvc, in),
-		placement:      placementSvc,
-		placementHTTP:  placementhttp.New(placementSvc, log),
-		placementStore: placementStore,
-		ledger:         ledgerSvc,
-		billing:        billingSvc,
-		billingHTTP:    billinghttp.New(billingSvc, log),
-		billingStore:   billingStore,
-		ledgerHTTP:     ledgerhttp.New(ledgerSvc, log),
-		ledgerStore:    ledgerStore,
-		marking:        markingSvc,
-		markingStore:   markingStore,
-		payout:         payoutSvc,
-		payoutStore:    payoutStore,
-		payoutHTTP:     payouthttp.New(payoutSvc, log),
-		platform:       platform,
-		txRunner:       txRunner,
-		queue:          queue,
+		cfg:               cfg,
+		in:                in,
+		account:           svc,
+		accountHTTP:       accounthttp.New(svc, accounthttp.Options{CookieSecure: cfg.CookieSecure}, log),
+		channel:           channelSvc,
+		channelHTTP:       channelhttp.New(channelSvc, log),
+		post:              postSvc,
+		postHTTP:          newPostHandlers(cfg, postSvc, in),
+		placement:         placementSvc,
+		placementHTTP:     placementhttp.New(placementSvc, log),
+		placementStore:    placementStore,
+		ledger:            ledgerSvc,
+		billing:           billingSvc,
+		billingHTTP:       billinghttp.New(billingSvc, log),
+		billingStore:      billingStore,
+		ledgerHTTP:        ledgerhttp.New(ledgerSvc, log),
+		ledgerStore:       ledgerStore,
+		marking:           markingSvc,
+		markingStore:      markingStore,
+		notification:      notificationSvc,
+		notificationHTTP:  notificationhttp.New(notificationSvc, log),
+		notificationStore: notificationStore,
+		payout:            payoutSvc,
+		payoutStore:       payoutStore,
+		payoutHTTP:        payouthttp.New(payoutSvc, log),
+		platform:          platform,
+		txRunner:          txRunner,
+		queue:             queue,
 	}
 	if cfg.ORD.Enabled {
 		m.wireMarking()
@@ -281,6 +297,7 @@ func (m *modules) registerJobs(w *job.Worker) {
 		ClosingDay: m.cfg.Billing.ClosingActsDay, ClosingHour: closingHour, ClosingMinute: closingMinute})
 	ledgerjobs.Register(w, m.ledger, m.cfg.Billing.LedgerCheckInterval)
 	payoutjobs.Register(w, m.platform.dispatcher, m.payout, payoutjobs.Options{DepositCheckInterval: m.cfg.RocketWork.DepositCheckInterval})
+	notificationjobs.Register(w, m.notification)
 	if m.cfg.ORD.Enabled {
 		markingjobs.Register(w, m.marking)
 	}
@@ -296,6 +313,7 @@ type apiImpl struct {
 	*billingHandlers
 	*ledgerHandlers
 	*payoutHandlers
+	*notificationHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -311,13 +329,13 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Metrics: reg,
 		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
 			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP,
-			payoutHandlers: m.payoutHTTP},
+			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
 			rocketworkWebhookPattern: newRocketWorkWebhook(in, m.payout, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
 		},
-		Ready:         readiness(in.pool),
+		Ready:         in.life.ready(readiness(in.pool)),
 		Authenticated: httpx.Authenticated,
 		Before: []httpx.Middleware{
 			httpx.ClientInfo(trusted),

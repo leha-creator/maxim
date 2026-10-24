@@ -7,6 +7,7 @@ import (
 	"github.com/leha-creator/maxim/internal/bootstrap/bridge"
 	"github.com/leha-creator/maxim/internal/integration/rocketwork"
 	ledgerapp "github.com/leha-creator/maxim/internal/ledger/app"
+	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
 	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
 	payouthttp "github.com/leha-creator/maxim/internal/payout/httpapi"
 	payoutpg "github.com/leha-creator/maxim/internal/payout/postgres"
@@ -29,12 +30,12 @@ type payoutHandlers = payouthttp.Handlers
 
 // newPayoutService собирает модуль выплат (этап «Выплаты блогерам через Рокет Ворк»).
 // Порты: размещения и P-16 — bridge.PayoutPlacements, проводки — bridge.PayoutLedger,
-// организации — account, Рокет Ворк — адаптер infra (R-1). Уведомления — NopNotifier до
-// этапа «Уведомления и отчёт по кампании» (R-15). После сборки модуль подключается к
-// размещениям: гейт исполнителя P-03 и создание выплаты при переходе в accepted (I-1).
+// организации — account, Рокет Ворк — адаптер infra (R-1), уведомления — bridge.PayoutNotifier
+// (R-15). После сборки модуль подключается к размещениям: гейт исполнителя P-03 и создание
+// выплаты при переходе в accepted (I-1).
 func newPayoutService(cfg Config, in *infra, txRunner tx.Runner, queue job.Scheduler, auditLog *audit.Log,
 	accounts *accountpg.Store, ledger *ledgerapp.Service, placements *placementapp.Service,
-	placementStore *placementpg.Store) (*payoutapp.Service, *payoutpg.Store) {
+	placementStore *placementpg.Store, notifier *notificationapp.Service) (*payoutapp.Service, *payoutpg.Store) {
 	log := in.log.With(logx.KeyModule, "payout")
 	store := payoutpg.New(in.pool, log)
 	api := in.rocketwork
@@ -47,8 +48,9 @@ func newPayoutService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sched
 		Placements:    bridge.PayoutPlacements{Svc: placements, Placements: placementStore.Placements()},
 		Organizations: bridge.PayoutOrganizations{Orgs: accounts.Organizations()},
 		Tx:            txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,
-		Limits: auditLog,
-		Config: cfg.PayoutAppConfig(),
+		Limits:   auditLog,
+		Notifier: bridge.PayoutNotifier{Svc: notifier},
+		Config:   cfg.PayoutAppConfig(),
 	}
 	if in.alerter != nil {
 		deps.Alerts = in.alerter

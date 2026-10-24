@@ -20,6 +20,7 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/mail"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/clock"
+	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
 
@@ -149,5 +150,17 @@ func TestRenderAlert(t *testing.T) {
 				t.Fatalf("body has no %q:\n%s", want, body)
 			}
 		}
+	}
+}
+
+// Неверный адрес — отказ без повторов: письмо не уходит, сервер не нужен.
+func TestSendNotificationInvalidAddressIsPermanent(t *testing.T) {
+	s, err := mail.New(mail.Options{Host: "127.0.0.1", Port: 1, TLS: "none", From: "noreply@maxim.test"}, clock.System{}, logx.Discard())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.SendNotification(context.Background(), "not an address", "Тема", "текст", "<p>текст</p>")
+	if !job.IsPermanent(err) {
+		t.Fatalf("invalid address must be permanent: %v", err)
 	}
 }

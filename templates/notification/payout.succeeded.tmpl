@@ -1,0 +1,3 @@
+{{define "title"}}Выплата{{if has . "amount"}} {{rub .amount}}{{end}} получена{{end}}
+{{define "text"}}Деньги за размещение в {{channel .}}, заказ {{order .}}, выплачены.{{if has . "receipt_url"}}
+Чек: {{.receipt_url}}{{end}}{{end}}

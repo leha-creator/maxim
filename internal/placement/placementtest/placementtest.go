@@ -184,6 +184,18 @@ func (n *Notifier) Count(template string) int {
 	return c
 }
 
+// Last — последнее уведомление шаблона и роли.
+func (n *Notifier) Last(template string, role domain.ActorType) (domain.Notice, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for i := len(n.list) - 1; i >= 0; i-- {
+		if n.list[i].Template == template && n.list[i].Role == role {
+			return n.list[i], true
+		}
+	}
+	return domain.Notice{}, false
+}
+
 // Contractors — исполнитель Рокет Ворк: Deny запрещает принятие организации.
 type Contractors struct {
 	mu   sync.Mutex

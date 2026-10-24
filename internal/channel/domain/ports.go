@@ -233,3 +233,17 @@ type ApprovedChannel struct {
 type ChannelApprovalListener interface {
 	ChannelApproved(ctx context.Context, ch ApprovedChannel) error
 }
+
+// Notice — уведомление блогеру о смене состояния канала (этап «Уведомления и отчёт по кампании»).
+type Notice struct {
+	Template       string
+	OrganizationID uuid.UUID
+	ChannelID      uuid.UUID
+	Data           map[string]any
+}
+
+// Notifier — уведомления; вызывается в транзакции смены состояния. Реализация — модуль
+// notification (bootstrap/bridge.ChannelNotifier); без него — NopNotifier в app.
+type Notifier interface {
+	Notify(ctx context.Context, n Notice) error
+}

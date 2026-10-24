@@ -172,6 +172,7 @@ func versionInfo(v postapp.VersionView) domain.VersionInfo {
 		FinalText: v.Version.FinalText, AdvertiserName: v.Version.AdvertiserName, Erid: v.Version.Erid, MediaURLs: urls,
 		TokenCarrier: string(v.Version.TokenCarrier), TokenPosition: string(v.Version.TokenPosition),
 		RejectionReason: v.Version.RejectionReason, CreatedAt: v.Version.CreatedAt,
+		Links: postdomain.BodyLinkURLs(v.Version.Body), UTMSource: postdomain.UTMSource, UTMMedium: postdomain.UTMMedium,
 	}
 }
 
@@ -228,7 +229,7 @@ func (b ChannelPlacements) InCart(ctx context.Context, orgID uuid.UUID, ids []uu
 
 // ---------------------------------------------------------------- будущие модули (R-3, R-4)
 
-// AllowAllContractors — проверка исполнителя Рокет Ворк до этапа «Выплаты блогерам» (R-3, A-36).
+// AllowAllContractors — проверка исполнителя до подключения модуля выплат (SetPayoutPorts, R-3, A-36).
 type AllowAllContractors struct{ Log *slog.Logger }
 
 var _ domain.ContractorGate = AllowAllContractors{}
@@ -237,15 +238,4 @@ func (g AllowAllContractors) CanAccept(ctx context.Context, bloggerOrgID uuid.UU
 	g.Log.DebugContext(ctx, "contractor check skipped, no payouts yet", logx.KeyOp, "Placement.Contractors",
 		logx.KeyOrganizationID, bloggerOrgID)
 	return true, nil
-}
-
-// NopNotifier — уведомления до этапа «Уведомления и отчёт по кампании» (R-4).
-type NopNotifier struct{ Log *slog.Logger }
-
-var _ domain.Notifier = NopNotifier{}
-
-func (n NopNotifier) Notify(ctx context.Context, notice domain.Notice) error {
-	n.Log.DebugContext(ctx, "notification skipped", logx.KeyOp, "Placement.Notify", "template", notice.Template,
-		"role", notice.Role, "object_id", notice.ObjectID)
-	return nil
 }

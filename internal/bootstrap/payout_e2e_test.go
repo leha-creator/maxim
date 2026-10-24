@@ -346,6 +346,25 @@ func TestPayoutEndToEnd(t *testing.T) {
 		t.Fatalf("summary %+v, want received %d", sum, want)
 	}
 
+	// Уведомления блогеру (R-15): все коды выплат и статуса исполнителя, ссылка на выплаты, у
+	// выплат — заказ и канал, у прошедшей через Рокет Ворк — чек.
+	if n := a.count(`SELECT count(DISTINCT template)::int FROM notification WHERE organization_id = $1 AND channel = 'cabinet'
+		AND template IN ('payout.sent', 'payout.succeeded', 'payout.failed', 'rocketwork.active', 'rocketwork.blocked')
+		AND payload->>'link' = '/blg/payouts'`, blgOrg); n != 5 {
+		t.Fatalf("payout notice templates %d, want 5", n)
+	}
+	if n := a.count(`SELECT count(*)::int FROM notification WHERE organization_id = $1 AND channel = 'cabinet'
+		AND template LIKE 'payout.%' AND (payload->>'order_number' IS NULL OR payload->>'channel_id' IS NULL)`, blgOrg); n != 0 {
+		t.Fatalf("payout notices without order or channel: %d", n)
+	}
+	if n := a.count(`SELECT count(*)::int FROM notification WHERE organization_id = $1 AND template = 'payout.succeeded'
+		AND payload->>'receipt_url' = $2`, blgOrg, receipt); n == 0 {
+		t.Fatal("payout.succeeded without receipt_url")
+	}
+	if page := blg.notifications(t, "?limit=100"); !hasTemplate(page, "payout.succeeded") || !hasTemplate(page, "rocketwork.active") {
+		t.Fatalf("cabinet notices %+v", page.Items)
+	}
+
 	// Сверки после всех шагов: журнал сходится, депозит покрывает обязательства и совпадает с сервисом.
 	if rep, err := a.mods.ledger.CheckBalance(ctx); err != nil || !rep.OK() {
 		t.Fatalf("ledger check %+v: %v", rep, err)

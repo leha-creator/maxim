@@ -150,6 +150,10 @@ type VersionInfo struct {
 	TokenPosition   string
 	RejectionReason string
 	CreatedAt       time.Time
+	// Links — адреса ссылок поста по порядку, с UTM-метками заказа (как ушли в канал).
+	Links []string
+	// UTMSource, UTMMedium — постоянные UTM-метки ссылок (A-21); utm_campaign — order_{номер}.
+	UTMSource, UTMMedium string
 }
 
 // PostNotReadyError — черновик поста не готов к версии: коды проблем (R-6).
@@ -189,7 +193,7 @@ type Holds interface {
 }
 
 // ContractorGate — блогер может принять запрос (A-36, R-3): исполнитель Рокет Ворк active
-// (юрлицо не проверяется). Реализация — модуль payout; до него — AllowAllContractors.
+// (юрлицо не проверяется). Реализация — модуль payout (SetPayoutPorts); до сборки — AllowAllContractors.
 type ContractorGate interface {
 	CanAccept(ctx context.Context, bloggerOrgID uuid.UUID) (bool, error)
 }
@@ -201,11 +205,13 @@ type Notice struct {
 	Role           ActorType
 	ObjectType     string
 	ObjectID       string
-	Data           map[string]any
+	// Key — ключ повтора (напоминание T-01): одно уведомление на ключ; пусто — без проверки.
+	Key  string
+	Data map[string]any
 }
 
 // Notifier — уведомления (R-4): вызывается в транзакции перехода и только ставит работу.
-// Реализация — модуль notification; до него — NopNotifier.
+// Реализация — модуль notification (bootstrap/bridge.PlacementNotifier).
 type Notifier interface {
 	Notify(ctx context.Context, n Notice) error
 }

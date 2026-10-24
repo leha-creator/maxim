@@ -417,3 +417,41 @@ func nextRknStatus(cur RknStatus, numberChanged bool, subscribers, threshold int
 	}
 	return cur
 }
+
+// Шаблоны уведомлений блогеру о канале (каталог модуля notification).
+const (
+	NoticeApproved     = "channel.approved"
+	NoticeRejected     = "channel.rejected"
+	NoticeSuspended    = "channel.suspended"
+	NoticeDisconnected = "channel.disconnected"
+	NoticeRestored     = "channel.restored"
+)
+
+// NoticeTemplate — шаблон уведомления блогеру о смене состояния; false — уведомлять не о чем.
+// Отключение непривязанного канала (unclaimed_expired) — без уведомления: у канала нет
+// организации.
+func (c StatusChange) NoticeTemplate() (string, bool) {
+	if !c.Changed() {
+		return "", false
+	}
+	switch c.To {
+	case StatusActive:
+		switch c.From {
+		case StatusModeration:
+			return NoticeApproved, true
+		case StatusSuspended:
+			return NoticeRestored, true
+		}
+	case StatusRejected:
+		return NoticeRejected, true
+	case StatusSuspended:
+		if c.From == StatusActive {
+			return NoticeSuspended, true
+		}
+	case StatusDisconnected:
+		if c.Reason != ReasonUnclaimedExpired {
+			return NoticeDisconnected, true
+		}
+	}
+	return "", false
+}

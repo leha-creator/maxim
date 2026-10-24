@@ -23,6 +23,8 @@ type Client struct {
 	mu      sync.Mutex
 	sent    []Message
 	failErr error
+	// userErr — отказ только личных сообщений (Q-38: бот не может писать пользователю).
+	userErr error
 	seq     int
 
 	chats   map[int64]max.Chat
@@ -64,7 +66,20 @@ func (c *Client) SendChatMessage(_ context.Context, chatID int64, text string) (
 
 // SendUserMessage запоминает сообщение пользователю.
 func (c *Client) SendUserMessage(_ context.Context, userID int64, text string) (string, error) {
+	c.mu.Lock()
+	err := c.userErr
+	c.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
 	return c.add(Message{UserID: userID, Text: text})
+}
+
+// FailUserMessagesWith ломает только личные сообщения; nil — снова отправлять.
+func (c *Client) FailUserMessagesWith(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.userErr = err
 }
 
 func (c *Client) add(m Message) (string, error) {

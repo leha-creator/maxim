@@ -165,7 +165,7 @@ type NopObserver struct{}
 func (NopObserver) PayoutFinished(domain.Status, domain.Method, money.Kopecks) {}
 func (NopObserver) Deposit(string, money.Kopecks)                              {}
 
-// NopNotifier — уведомлений нет до этапа «Уведомления» (R-15).
+// NopNotifier — без уведомлений (сервис без модуля уведомлений, тесты).
 type NopNotifier struct{ Log *slog.Logger }
 
 func (n NopNotifier) Notify(ctx context.Context, x domain.Notice) error {
@@ -229,8 +229,27 @@ func (s *Service) resolve(ctx context.Context, reason, objectKey string) {
 	}
 }
 
-// notify — уведомление блогеру; сбой не мешает сценарию.
+// notify — уведомление блогеру; сбой не мешает сценарию. У уведомления о выплате в данные
+// добавляются размещение, номер заказа и канал (шаблоны payout.*, R-15).
 func (s *Service) notify(ctx context.Context, n domain.Notice) {
+	if n.PlacementID != uuid.Nil {
+		data := map[string]any{"placement_id": n.PlacementID.String()}
+		briefs, err := s.Placements.Brief(ctx, []uuid.UUID{n.PlacementID})
+		if err != nil {
+			s.log.WarnContext(ctx, "payout notice placement lookup failed", logx.KeyOp, "Payout.Notify", "template", n.Template,
+				KeyPlacementID, n.PlacementID, logx.KeyError, err.Error())
+		} else if b, ok := briefs[n.PlacementID]; ok {
+			data["order_number"] = b.OrderNumber
+			data["channel_id"] = b.ChannelID.String()
+			if b.ChannelTitle != "" {
+				data["channel_title"] = b.ChannelTitle
+			}
+		}
+		for k, v := range n.Data {
+			data[k] = v
+		}
+		n.Data = data
+	}
 	if err := s.Notifier.Notify(ctx, n); err != nil {
 		s.log.WarnContext(ctx, "payout notice failed", logx.KeyOp, "Payout.Notify", "template", n.Template, logx.KeyError, err.Error())
 	}

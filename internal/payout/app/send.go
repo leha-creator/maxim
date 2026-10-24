@@ -113,7 +113,7 @@ func (s *Service) sent(ctx context.Context, log *slog.Logger, p domain.Payout, p
 		return err
 	}
 	log.InfoContext(ctx, "payout sent", KeyExternalID, pp.ExternalID, KeyAmount, int64(p.Amount))
-	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSent, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID,
+	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSent, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID, PlacementID: p.PlacementID,
 		Data: map[string]any{"amount": int64(p.Amount)}})
 	s.resolve(ctx, AlertDepositInsufficient, payoutObject(p.ID))
 	if _, err := s.apply(ctx, p.ID, pp); err != nil {

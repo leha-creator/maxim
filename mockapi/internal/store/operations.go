@@ -236,7 +236,10 @@ func (tx *Tx) RejectPost(o *Order, reason string) error {
 		}
 	}
 	tx.log.Info("post version rejected", "op", "Post.Reject", "order_id", o.ID, "post_version_id", v.ID)
-	tx.Notify(o.OrgID, "post.rejected", "Пост отклонён", fmt.Sprintf("Заказ %d: %s", o.Number, reason), "order", o.ID)
+	orderID := o.ID
+	tx.Notify(o.OrgID, "order.post_rejected", fmt.Sprintf("Пост заказа № %d отклонён", o.Number),
+		fmt.Sprintf("Модератор отклонил пост заказа № %d: %s\nИсправьте пост и отправьте новую версию на модерацию.", o.Number, reason),
+		"order", o.ID, &orderID, "/adv/orders/"+o.ID.String())
 	tx.recalcOrder(o)
 	return nil
 }

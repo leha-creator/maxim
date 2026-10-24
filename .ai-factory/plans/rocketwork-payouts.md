@@ -146,6 +146,18 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 Не исправлено (замечания): проверка депозита перед отправкой сравнивает с суммой без комиссии сервиса — недостача на комиссию видна в `check_rocketwork_deposit` (тариф не известен, Q-12); подпись вебхука без метки времени — повтор старого события лишь вызывает лишний `GET` (формат подписи — Q-12).
 
+## Слияние с master (2026-10-24)
+
+В master уже слиты «Эксплуатационная готовность» и «Уведомления и отчёт по кампании».
+
+| # | Что | Решение |
+|---|---|---|
+| M-1 | Номер миграции: в master `00011_notifications.sql` | Миграция выплат — `migrations/00012_payouts.sql` |
+| M-2 | Уведомления о выплатах (раздел «Подключение выплат и споров» плана `notifications-report.md`) | `bridge.PayoutNotifier` над `notification/app.Notify`: роль `blogger`, объект `payout` с ключом `{код}:{payout_id}` или `rocketwork_contractor` без ключа; ссылка `/blg/payouts`. Сервис выплат добавляет в данные `placement_id`, `order_number`, `channel_id`, `channel_title` (`Placements.Brief`); `payout.failed` — `reason` кодом. Коды выплат в каталоге больше не «ждут модуль»; тест `TestCatalogCodesHaveCallers` |
+| M-3 | Переменные `ROCKETWORK_*`, `PAYOUT_*` | В блоке «Модули в разработке» `.env.example`; в шаблонах `deploy/app/env/{staging,production}` — `ROCKETWORK_MODE=disabled` |
+| M-4 | Тестовое окружение: подделка или `disabled` | `disabled`: состоянию `rocketworkfake` нужен общий файл для `api` и `worker`, а в стеке сервера общего тома нет. Тестовая среда Рокет Ворк (Q-12) — `live` |
+| M-5 | Эксплуатация | Таблицы `payout` и `rocketwork_contractor` — в обязательных `restore-check.sh`; адрес вебхука — `deploy/app/README.md`; пометка «после этапа выплат» снята в `docs/launch/pilot-plan.md` |
+
 ## Commit Plan
 - **Commit 1** (после задач 1–3a): `feat(payout): payout schema, domain rules and rocket work adapter contract`
 - **Commit 2** (после задач 4–7): `feat(payout): contractors, payouts, send and poll jobs, P-16`
@@ -158,14 +170,14 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 ### Phase 1: Данные, правила, контракт адаптера
 
 - [x] **Task 1: Миграция выплат (R-3, R-6, R-10)**
-  - `migrations/00011_payouts.sql` по 04 §7:
+  - `migrations/00012_payouts.sql` по 04 §7:
     - `rocketwork_contractor` (`organization_id unique not null`, `external_id unique`, `status check in (invited, pending, active, blocked)`, `blocked_reason`, `onboarding_url`, `status_checked_at`, `last_error`, `created_at`, `updated_at`).
     - `payout` (`placement_id`, `blogger_organization_id`, `method check in (rocketwork, bank_transfer)`, `rocketwork_contractor_id` — обязателен при `rocketwork`, пуст при `bank_transfer`, `amount > 0`, `attempt >= 1`, `status check in (created, sent, succeeded, failed)`, `external_id`, `provider_fee >= 0`, `receipt_url`, `bank_reference`, `failure_code check in (contractor_not_active, tax_status_lost, income_limit_exceeded, insufficient_deposit, provider_error)`, `failure_message`, `sent_at`, `completed_at`, `idempotency_key unique`, `lock_version`, `created_by`); `UNIQUE (placement_id, attempt)`; частичный уникальный индекс `(placement_id) WHERE status in (created, sent, succeeded)`; `check`: `succeeded` ⇒ `completed_at`, `failed` ⇒ `failure_code`; индексы `(blogger_organization_id, created_at DESC, id DESC)`, `(status, created_at)`.
     - `ledger_transaction.payout_id` — внешний ключ на `payout(id)` (`NOT VALID` + `VALIDATE`).
   - Права роли: `REVOKE DELETE` на `rocketwork_contractor`, `payout`.
   - Журнал: не применимо (INFO `migrations applied` пишет `migrate`).
   - Тесты: `up` → `down` → `up`; две живые выплаты размещения не вставляются; после `failed` вставляется попытка 2; `rocketwork` без исполнителя и `bank_transfer` с исполнителем не проходят; `failed` без кода не проходит; роль приложения не может `DELETE payout`.
-  - Файлы: `migrations/00011_payouts.sql`.
+  - Файлы: `migrations/00012_payouts.sql`.
 
 - [x] **Task 2: `payout/domain` (R-2, R-3, R-8, R-10, R-13)** (depends on 1)
   - `internal/payout/domain/contractor.go`: `ContractorStatus`, `Contractor`, `Required(legalType) bool` (юрлицо — нет), `CanAccept()`, `Apply(ProviderContractor) (changed bool)`.

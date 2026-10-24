@@ -408,6 +408,26 @@ type MediaFile struct {
 	PurgedAt       *time.Time
 }
 
+type Notification struct {
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	OrganizationID *uuid.UUID
+	Channel        string
+	Template       string
+	Payload        []byte
+	Status         string
+	ObjectType     *string
+	ObjectID       *string
+	DedupeKey      *string
+	MaxUserID      *int64
+	Attempts       int32
+	LastError      *string
+	SentAt         *time.Time
+	ReadAt         *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type OrdContract struct {
 	ID                       uuid.UUID
 	Kind                     string

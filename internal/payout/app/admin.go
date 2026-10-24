@@ -110,7 +110,7 @@ func (s *Service) MarkLegalPaid(ctx context.Context, payoutID, adminID, approver
 	}
 	if changed {
 		s.Metrics.PayoutFinished(p.Status, p.Method, p.Amount)
-		s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSucceeded, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID,
+		s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSucceeded, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID, PlacementID: p.PlacementID,
 			Data: map[string]any{"amount": int64(p.Amount)}})
 	}
 	s.log.WarnContext(ctx, "admin payout marked paid", logx.KeyOp, op, KeyPayoutID, p.ID, KeyPlacementID, p.PlacementID,

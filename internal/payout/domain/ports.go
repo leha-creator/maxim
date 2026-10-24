@@ -179,11 +179,13 @@ type Organizations interface {
 	ForPayout(ctx context.Context, orgID uuid.UUID) (Payee, error)
 }
 
-// Notice — уведомление блогеру (R-15).
+// Notice — уведомление блогеру (R-15). PlacementID — размещение выплаты: заказ и канал для
+// текста подставляет сервис; у статуса исполнителя пусто.
 type Notice struct {
 	Template       string
 	OrganizationID uuid.UUID
 	ObjectID       uuid.UUID
+	PlacementID    uuid.UUID
 	Data           map[string]any
 }
 
@@ -196,7 +198,7 @@ const (
 	NoticeRocketworkBlocked = "rocketwork.blocked"
 )
 
-// Notifier — уведомления. До этапа «Уведомления» — пустая реализация.
+// Notifier — уведомления. Реализация — модуль уведомлений через bootstrap/bridge.
 type Notifier interface {
 	Notify(ctx context.Context, n Notice) error
 }

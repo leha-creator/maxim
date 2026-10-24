@@ -181,53 +181,6 @@ func (h *Handlers) CancelOrder(ctx context.Context, req api.CancelOrderRequestOb
 	return api.CancelOrder200JSONResponse(order(tx, x)), nil
 }
 
-func (h *Handlers) GetOrderReport(ctx context.Context, req api.GetOrderReportRequestObject) (api.GetOrderReportResponseObject, error) {
-	tx, done := h.st.Begin(ctx)
-	defer done()
-	_, o, err := advertiser(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-	x, err := tx.OrgOrder(o.ID, req.Id)
-	if err != nil {
-		return nil, err
-	}
-	s := orderSummary(tx, x)
-	out := api.GetOrderReport200JSONResponse{OrderId: x.ID, OrderNumber: x.Number, CampaignName: s.CampaignName, Rows: []api.OrderReportRow{}}
-	for _, p := range tx.OrderPlacements(x.ID) {
-		ch, _ := tx.Channel(p.ChannelID)
-		row := api.OrderReportRow{PlacementId: p.ID, Channel: channelRef(ch), Status: api.PlacementStatus(p.Status),
-			PublishedAt: p.PublishedAt, RemovedAt: p.RemovedAt, Views: p.Views, PublicationUrl: strPtr(p.PublicationURL),
-			UtmCampaign: ptr(fmt.Sprintf("order_%d", x.Number))} // A-21
-		// Итоги — сумма строк: фронт больше не считает сумму строки сам.
-		switch {
-		case p.Status == "accepted" || p.Status == "paid":
-			refund := int64(0)
-			if p.RefundAmount != nil {
-				refund = *p.RefundAmount
-			}
-			row.SpentAmount, row.RefundedAmount = p.TotalAmount-refund, refund
-		case p.Status == "refunded" || (store.IsTerminal(p.Status) && !p.HoldActive):
-			row.RefundedAmount = p.TotalAmount
-		case p.HoldActive:
-			row.HeldAmount = p.TotalAmount // в работе или в споре
-		}
-		out.Rows = append(out.Rows, row)
-		out.Totals.Placements++
-		if p.PublishedAt != nil {
-			out.Totals.Published++
-		}
-		if p.Views != nil {
-			out.Totals.Views += *p.Views
-		}
-		out.Totals.SpentAmount += row.SpentAmount
-		out.Totals.RefundedAmount += row.RefundedAmount
-	}
-	h.logger(ctx).Debug("[FIX] order report built", "op", "Order.Report", "order_id", x.ID, "rows", len(out.Rows),
-		"spent_amount", out.Totals.SpentAmount, "refunded_amount", out.Totals.RefundedAmount)
-	return out, nil
-}
-
 // advPlacement находит размещение заказа рекламодателя.
 func advPlacement(tx *store.Tx, orgID, id uuid.UUID) (*store.Placement, error) {
 	p, err := tx.Placement(id)

@@ -5,6 +5,7 @@ package mail
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	htmltemplate "html/template"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/clock"
+	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/templates"
 )
@@ -100,6 +102,9 @@ func (s *Sender) SendLoginCode(ctx context.Context, email, code string, expiresI
 	return s.send(ctx, op, "login_code", email, subject, text, html)
 }
 
+// errInvalidAddress — адрес получателя не разбирается.
+var errInvalidAddress = errors.New("mail to: invalid address")
+
 func (s *Sender) send(ctx context.Context, op, template, to, subject, text, html string) error {
 	masked := logx.MaskEmail(to)
 	s.log.DebugContext(ctx, "mail send started", logx.KeyOp, op, "template", template, "to", masked)
@@ -110,7 +115,7 @@ func (s *Sender) send(ctx context.Context, op, template, to, subject, text, html
 		return fmt.Errorf("mail from: %w", err)
 	}
 	if err := m.To(to); err != nil {
-		return fmt.Errorf("mail to: invalid address")
+		return errInvalidAddress
 	}
 	m.Subject(subject)
 	m.SetBodyString(gomail.TypeTextPlain, text)
@@ -124,6 +129,8 @@ func (s *Sender) send(ctx context.Context, op, template, to, subject, text, html
 	defer cancel()
 	if err := client.DialAndSendWithContext(sctx, m); err != nil {
 		// Текст ошибки SMTP не содержит учётных данных: их go-mail не выводит.
+		// Отказ RCPT у go-mail называет адресата: в журнал и выше — только с маской (07 §5.4).
+		err = redacted{err: err, text: strings.ReplaceAll(err.Error(), to, masked)}
 		s.log.ErrorContext(ctx, "mail send failed", logx.KeyOp, op, "template", template, "to", masked, logx.KeyError, err.Error())
 		return fmt.Errorf("send mail: %w", err)
 	}
@@ -204,3 +211,32 @@ func (r *rendered) render(data any) (subject, text, html string, err error) {
 	}
 	return subject, text, b.String(), nil
 }
+
+// SendNotification отправляет письмо уведомления (07 §6); тексты собирает модуль уведомлений
+// (notification/render). Отказ адреса (неверный адрес, постоянная ошибка RCPT TO) помечен
+// job.Permanent: повтор его не исправит.
+// ПРЕДПОЛОЖЕНИЕ: SMTP отклоняет несуществующий адрес синхронно кодом 5xx на RCPT TO; отчёты о
+// недоставке (bounce) не обрабатываются (E-6).
+func (s *Sender) SendNotification(ctx context.Context, to, subject, text, html string) error {
+	err := s.send(ctx, "Mail.SendNotification", "notification", to, subject, text, html)
+	if err == nil {
+		return nil
+	}
+	var se *gomail.SendError
+	if errors.As(err, &se) && se.Reason == gomail.ErrSMTPRcptTo && !se.IsTemp() {
+		return job.Permanent(err)
+	}
+	if errors.Is(err, errInvalidAddress) {
+		return job.Permanent(err)
+	}
+	return err
+}
+
+// redacted — ошибка с текстом без адреса получателя; причина доступна через errors.As.
+type redacted struct {
+	err  error
+	text string
+}
+
+func (r redacted) Error() string { return r.text }
+func (r redacted) Unwrap() error { return r.err }

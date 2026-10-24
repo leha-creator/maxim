@@ -226,13 +226,8 @@ func TestPlacementOperationsHTTP(t *testing.T) {
 		t.Fatalf("cancel scheduled: %d %s", r.status, r.body)
 	}
 	// Операции следующих этапов — 501.
-	for _, op := range []struct{ method, path string }{
-		{http.MethodPost, "/placements/" + pid + "/accept"},
-		{http.MethodGet, "/orders/" + order.ID + "/report"},
-	} {
-		if r := adv.do(op.method, op.path, nil); r.status != http.StatusNotImplemented {
-			t.Errorf("%s %s: %d", op.method, op.path, r.status)
-		}
+	if r := adv.do(http.MethodPost, "/placements/"+pid+"/accept", nil); r.status != http.StatusNotImplemented {
+		t.Errorf("accept: %d", r.status)
 	}
 	if r := adv.do(http.MethodPost, "/placements/"+pid+"/claims", map[string]any{"reason": "other", "text": "Нет поста"}); r.status != http.StatusNotImplemented {
 		t.Errorf("claims: %d", r.status)

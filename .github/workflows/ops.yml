@@ -1,0 +1,122 @@
+# Проверки эксплуатации: скрипты, шаблоны окружений, миграции, compose, сайт edge-прокси,
+# образ PostgreSQL и две репетиции — копий с восстановлением и выпуска без простоя
+# (deploy/local, deploy/app/README.md). Выпуск на окружения — release.yml.
+name: ops
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - deploy/**
+      - migrations/**
+      - Dockerfile
+      - Dockerfile.dockerignore
+      - .env.example
+      - .github/workflows/ops.yml
+  pull_request:
+    branches: [master]
+    paths:
+      - deploy/**
+      - migrations/**
+      - Dockerfile
+      - Dockerfile.dockerignore
+      - .env.example
+      - .github/workflows/ops.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ops-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # check-migrations.sh сравнивает с базовой веткой.
+          fetch-depth: 0
+      - name: shellcheck
+        run: |
+          echo "::group::shellcheck"
+          mapfile -t scripts < <(git ls-files 'deploy/*.sh')
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 -x -P SCRIPTDIR "${scripts[@]}"
+          echo "::endgroup::"
+      - name: Environment templates
+        run: deploy/scripts/check-env.sh
+      - name: Migrations are compatible with the previous release
+        if: github.event_name == 'pull_request'
+        run: deploy/scripts/check-migrations.sh "origin/${GITHUB_BASE_REF}"
+      - name: docker compose config
+        run: |
+          for env in staging production; do
+            dir="$PWD/deploy/app/env/$env"
+            APP_ENV_FILE="$dir/app.env.example" docker compose -f deploy/app/compose.yml \
+              --env-file "$dir/stack.env.example" \
+              --profile slot-a --profile slot-b --profile tools --profile mailpit config --quiet
+            echo "compose config ok: $env"
+          done
+          APP_ENV_FILE="$PWD/deploy/local/rehearsal.app.env" docker compose -f deploy/app/compose.yml \
+            -f deploy/local/compose.rehearsal.yml --env-file deploy/local/rehearsal.stack.env \
+            --profile slot-a --profile slot-b --profile tools --profile mailpit config --quiet
+          echo "compose config ok: rehearsal"
+      - name: caddy validate
+        run: |
+          mkdir -p "$RUNNER_TEMP/caddy"
+          sed -e 's/__DOMAIN__/stage-api.example.test/' -e 's/__PREFIX__/maxim-staging/g' \
+            deploy/app/maxim-app.caddy > "$RUNNER_TEMP/caddy/Caddyfile"
+          docker run --rm -v "$RUNNER_TEMP/caddy:/etc/caddy:ro" caddy:2.11.7 \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < deploy/postgres/Dockerfile
+
+  config-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: maxim:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+      # Шаблоны окружений проходят проверку конфигурации образа: заглушки CHANGE_ME
+      # заменяются значениями допустимой формы (реквизиты — образец из тестов). Сертификат
+      # MAX в репозиторий ещё не добавлен (deploy/certs/README.md) — путь к нему снимается;
+      # на сервере его проверит config check в release.sh.
+      - name: maxim config check
+        run: |
+          for env in staging production; do
+            f="$RUNNER_TEMP/$env.app.env"
+            {
+              sed -e 's/CHANGE_ME_BASE64_32B/ZGV2LW9ubHktc2VjcmV0cy1rZXktMzItYnl0ZXMhISE=/' \
+                  -e 's/CHANGE_ME/ci-placeholder-secret-at-least-32-characters/g' \
+                  "deploy/app/env/$env/app.env.example"
+              printf '%s\n' PLATFORM_BANK_BIK=044525225 PLATFORM_BANK_ACCOUNT=40702810200000000001 \
+                PLATFORM_BANK_CORR_ACCOUNT=30101810400000000225 PLATFORM_BANK_NAME=CI-Bank \
+                ALERT_EMAILS=oncall@example.test MAX_CA_CERT_FILE=
+            } > "$f"
+            for mode in api worker migrate; do
+              echo "::group::config check $env $mode"
+              docker run --rm --env-file "$f" maxim:ci config check --for "$mode"
+              echo "::endgroup::"
+            done
+          done
+
+  rehearsal:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Backup and restore rehearsal
+        run: deploy/local/rehearse-backup.sh
+      - name: Zero-downtime release rehearsal
+        run: deploy/local/rehearse-release.sh

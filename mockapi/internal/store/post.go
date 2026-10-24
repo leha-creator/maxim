@@ -172,3 +172,18 @@ func DefaultCarrier(mediaCount int) string {
 	}
 	return "text"
 }
+
+// BodyLinks — адреса ссылок текста версии по порядку без повторов (с UTM-метками заказа).
+func BodyLinks(body string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, m := range hrefRe.FindAllStringSubmatch(body, -1) {
+		u := html.UnescapeString(m[1])
+		if u == "" || seen[u] {
+			continue
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+	return out
+}

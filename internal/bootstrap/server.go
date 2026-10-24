@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -129,23 +128,8 @@ func newHandler(d serverDeps) (http.Handler, error) {
 	for pattern, h := range d.Routes {
 		mux.Handle(pattern, h)
 	}
-	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
-		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-		defer cancel()
-		if d.Ready == nil {
-			httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready"})
-			return
-		}
-		if err := d.Ready(ctx); err != nil {
-			log.WarnContext(ctx, "readiness check failed", logx.KeyOp, "HTTP.Ready", logx.KeyError, err.Error())
-			httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready"})
-			return
-		}
-		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
+	mux.HandleFunc("GET /livez", livezHandler)
+	mux.HandleFunc("GET /readyz", readyzHandler(log, d.Ready))
 	if d.ServeDocs {
 		specJSON, err := json.Marshal(spec)
 		if err != nil {

@@ -26,7 +26,7 @@ func TestAssembledApp(t *testing.T) {
 	for _, kind := range []string{"send_login_code", "process_inbound_event", "send_alert", "check_stuck_objects", "cleanup",
 		"refresh_channel_info", "delete_max_message", "leave_max_chat", "reply_bot_dialog", "release_unclaimed_channels",
 		"schedule_channel_metrics", "refresh_channel_metrics",
-		"build_media_derivative", "publish_media_derivative", "purge_media"} {
+		"build_media_derivative", "publish_media_derivative", "purge_media", "send_notification", "placement_reminder"} {
 		if !slices.Contains(a.worker.Kinds(), kind) {
 			t.Fatalf("worker kinds %v have no %s", a.worker.Kinds(), kind)
 		}

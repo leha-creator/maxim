@@ -262,6 +262,10 @@ func (unimplemented) GetOrderReport(context.Context, apigen.GetOrderReportReques
 	return nil, apperr.NotImplemented("getOrderReport")
 }
 
+func (unimplemented) GetOrderReportCsv(context.Context, apigen.GetOrderReportCsvRequestObject) (apigen.GetOrderReportCsvResponseObject, error) {
+	return nil, apperr.NotImplemented("getOrderReportCsv")
+}
+
 func (unimplemented) CreateOrganization(context.Context, apigen.CreateOrganizationRequestObject) (apigen.CreateOrganizationResponseObject, error) {
 	return nil, apperr.NotImplemented("createOrganization")
 }

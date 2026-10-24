@@ -78,7 +78,7 @@ func (s *Service) complete(ctx context.Context, id uuid.UUID, pp domain.Provider
 	s.log.InfoContext(ctx, "payout succeeded", logx.KeyOp, op, KeyPayoutID, p.ID, KeyPlacementID, p.PlacementID,
 		KeyAttempt, p.Attempt, KeyAmount, int64(p.Amount), "provider_fee", int64(p.ProviderFee), KeyExternalID, p.ExternalID,
 		"method", p.Method)
-	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSucceeded, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID,
+	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutSucceeded, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID, PlacementID: p.PlacementID,
 		Data: map[string]any{"amount": int64(p.Amount), "receipt_url": p.ReceiptURL}})
 	s.resolve(ctx, AlertDepositInsufficient, payoutObject(p.ID))
 	return nil
@@ -115,7 +115,7 @@ func (s *Service) fail(ctx context.Context, id uuid.UUID, code domain.FailureCod
 	} else {
 		s.log.WarnContext(ctx, "payout failed", args...)
 	}
-	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutFailed, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID,
-		Data: map[string]any{"failure_code": string(code)}})
+	s.notify(ctx, domain.Notice{Template: domain.NoticePayoutFailed, OrganizationID: p.BloggerOrganizationID, ObjectID: p.ID, PlacementID: p.PlacementID,
+		Data: map[string]any{"reason": string(code)}})
 	return nil
 }

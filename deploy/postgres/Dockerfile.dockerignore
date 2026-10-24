@@ -1,0 +1,6 @@
+# Контекст сборки maxim-postgres — каталог deploy; нужны только эти файлы.
+*
+!postgres/bin/
+!postgres/initdb/
+!postgres/crontab
+!scripts/lib.sh

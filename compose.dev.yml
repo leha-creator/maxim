@@ -70,6 +70,9 @@ x-backend-env: &backend-env
   ROCKETWORK_DEPOSIT_CHECK_INTERVAL: 1h
   PAYOUT_POLL_FAST: 1m
   PAYOUT_POLL_SLOW: 10m
+  # Уведомления: ссылки в письмах (Mailpit) и сообщениях бота ведут на кабинет разработки.
+  CABINET_BASE_URL: http://localhost:5173
+  NOTIFICATION_SEND_ATTEMPTS: "5"
 
 services:
   postgres:

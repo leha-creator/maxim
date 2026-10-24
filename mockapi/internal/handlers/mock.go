@@ -142,7 +142,6 @@ func (h *Handlers) MockLinkChannel(ctx context.Context, req api.MockLinkChannelR
 	tx.D.Channels = append(tx.D.Channels, c)
 	tx.RecheckChannel(c)
 	h.logger(ctx).Info("channel linked", "op", "Mock.LinkChannel", "channel_id", c.ID, "organization_id", org)
-	tx.Notify(org, "channel.linked", "Канал подключён", fmt.Sprintf("«%s»: заполните категорию и цены, чтобы канал попал в каталог.", title), "channel", c.ID)
 	return api.MockLinkChannel201JSONResponse(bloggerChannel(tx, c)), nil
 }
 
