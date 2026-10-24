@@ -84,6 +84,10 @@ type Deps struct {
 	Platforms     domain.OrdPlatforms
 	Creatives     domain.Creatives
 	Overview      domain.Overview
+	// Reports — ежемесячная отчётность (этап «API администратора и отчётность ОРД»); nil — не подключена.
+	Reports domain.Reports
+	// Source — размещения для отчёта (переходник над placement); nil — отчётность не подключена.
+	Source domain.ReportSource
 	// Порты других модулей (переходники в bootstrap/bridge).
 	Accounts domain.Organizations
 	Posts    domain.CreativeSource

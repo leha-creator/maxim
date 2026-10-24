@@ -35,6 +35,9 @@ func (m *modules) wireAdmin() {
 			bridge.ChannelCounter(m.channel), bridge.PlacementCounter(m.placement), bridge.BillingCounter(m.billing),
 			bridge.PayoutCounter(m.payoutStore), bridge.MarkingCounter(m.markingStore.Overview()),
 		}}
+	if m.cfg.ORD.Enabled {
+		deps.Counters = append(deps.Counters, bridge.OrdReportCounter(m.marking))
+	}
 	if m.in.reg != nil {
 		deps.Metrics = adminpg.NewMetrics(m.in.reg)
 	}

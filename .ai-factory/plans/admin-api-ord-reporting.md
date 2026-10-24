@@ -271,7 +271,7 @@ Rationale: план реализует этап целиком: операции
 
 ### Phase 6: Отчётность ОРД
 
-- [ ] **Task 16: Миграция `00015_ord_reporting.sql` (R-18 … R-21)**
+- [x] **Task 16: Миграция `00015_ord_reporting.sql` (R-18 … R-21)**
   - `publication_views_snapshot` (`publication_id → publication`, `period date` — первое число месяца, на начало которого снимок, `views integer`, `views_checked_at`, `created_at`; PK `(publication_id, period)`).
   - `ord_statistics` (поля синхронизации 04 §6.1, `creative_id → creative`, `ord_platform_id → ord_platform`, `placement_id`, `period`, `impressions >= 0`, `shown_from`, `shown_to`, `amount >= 0`; `unique (creative_id, ord_platform_id, period)`).
   - `ord_invoice` (синхронизация, `ord_contract_id → ord_contract`, `period`, `type`, `number unique`, `invoice_date`, `amount > 0`; `unique (ord_contract_id, period)`); `ord_invoice_item` (`ord_invoice_id`, `creative_id`, `ord_platform_id`, `amount >= 0`; `unique (ord_invoice_id, creative_id, ord_platform_id)`).
@@ -280,7 +280,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты миграции: `up`/`down`/`up`; уникальности.
   - Файлы: `migrations/00015_ord_reporting.sql`, тест миграций.
 
-- [ ] **Task 17: Клиент ОРД и `ordfake`: статистика и акты (R-22, допущения 1–3)** (depends on 16)
+- [x] **Task 17: Клиент ОРД и `ordfake`: статистика и акты (R-22, допущения 1–3)** (depends on 16)
   - `integration/ord`: `OpStatistics = "statistics"`, `OpInvoice = "invoice"`, `OpInvoiceCreatives = "invoice/creatives"`; типы `Statistics`, `Invoice`, `InvoiceCreatives`; `UpsertStatistics`, `UpsertInvoice`, `UpsertInvoiceCreatives` (путь отдельно от имени операции); `recordBody` без изменений (ИНН в теле нет).
   - `ordfake`: новые методы, `advance` для `statistics`/`invoice` останавливается на `ORD success`; `FailNext` по новым операциям; `Objects()` их видит.
   - `bridge.OrdClient`, `bridge.MarkingOrd`: новые методы порта.
@@ -288,14 +288,14 @@ Rationale: план реализует этап целиком: операции
   - Тесты: `httptest` — путь `/api/v8/invoice/creatives`, тело по записанному образцу `testdata/{statistics,invoice,invoice_creatives}_request.json`; `ordfake` — шаги статуса.
   - Файлы: `internal/integration/ord/{client.go,objects.go,types.go,objects_test.go,testdata/*.json}`, `internal/integration/ord/ordfake/{fake.go,fake_test.go}`, `internal/bootstrap/bridge/marking.go`.
 
-- [ ] **Task 18: Правила отчёта в `marking/domain` (R-19, R-20)** (depends on 16)
+- [x] **Task 18: Правила отчёта в `marking/domain` (R-19, R-20)** (depends on 16)
   - `marking/domain/report.go`: `Period` (месяц по Москве), `ReportPlacement` (вход: размещение, креатив, площадка, договоры, `published_at`, `removed_at`, `final_views`, снимки начала и конца, суммы), `BuildStatistics([]ReportPlacement, period) []StatisticsLine`, `BuildInvoices(lines, contracts, prefix, period) []InvoiceDraft`, `InvoiceNumber(prefix, period, n)`.
   - `marking/domain/statistics.go`, `invoice.go`: сущности с `Sync SyncState`, `Ref()`, построители запросов и `PayloadHash`; типы `TypeStatistics`, `TypeInvoice` в `ObjectTypes`, `ParseObjectRef` без жёсткого списка в тексте; `PassesErir` — `false` для новых видов.
   - Журнал: не применимо.
   - Тесты (табличные): публикация внутри месяца; через границу (первый месяц — снимок конца минус 0; второй — итог минус снимок; сумма только во втором); снимок больше итога — 0; две публикации одной пары; даты по Москве на границе суток; акт рекламодателя и блогера; нулевые суммы не дают акта; номер акта.
   - Файлы: `internal/marking/domain/{report.go,report_test.go,statistics.go,invoice.go,sync.go,status.go}`.
 
-- [ ] **Task 19: Формирование, отправка и задания (R-18, R-21 … R-24)** (depends on 17, 18)
+- [x] **Task 19: Формирование, отправка и задания (R-18, R-21 … R-24)** (depends on 17, 18)
   - `marking/domain/ports.go`: `ReportSource{LivePublications(ctx, at) …; Placements(ctx, period) []ReportPlacement}` (`bridge.MarkingReportSource` над `placement/postgres`), репозитории `Statistics`, `Invoices`, `Reports`, `ViewsSnapshots`.
   - `marking/app/report.go`: `TakeSnapshot(ctx, period)`, `BuildReport(ctx, period, adminID *uuid.UUID)` (R-21: пересчёт, сохранение, `ord_report.built_at`, `audit_log` `ord_report.built` при ручном), `SendReport(ctx, period, adminID *uuid.UUID)` (`sync_ord_object` для `pending`/`error`), `Report(ctx, period)` и `Reports(ctx)` для экрана, `CheckReport(ctx, now)` (R-23).
   - `marking/app/records.go`, `sync.go`: записи `statisticsRecord`, `invoiceRecord`, ветки `lock`, `build` (зависимости: креатив с erid и площадка; договор и креативы разбивки), два вызова для акта (R-22).
@@ -306,7 +306,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты (`dbtest`, `ordfake`): снимок только живых; формирование — строки и акты; повтор формирования без изменений — хеш тот же, строки не трогаются; правка после спора — `synced` → `pending`; отправка → `synced` после опроса; ошибка ОРД по статистике — в списке ошибок; проверка 20-го — оповещение; всё `synced` — закрыто.
   - Файлы: `internal/marking/{domain/ports.go,app/report.go,app/report_test.go,app/records.go,app/sync.go,app/service.go,postgres/queries/{report.sql,overview.sql},postgres/*.go,jobs/jobs.go}`, `internal/bootstrap/{marking.go,config_ord.go,config_ord_test.go,worker.go}`, `internal/bootstrap/bridge/marking.go`.
 
-- [ ] **Task 20: Операции и команды отчёта (R-21)** (depends on 19)
+- [x] **Task 20: Операции и команды отчёта (R-21)** (depends on 19)
   - `marking/httpapi/admin.go`: `ListOrdReports`, `GetOrdReport` (обе роли), `RebuildOrdReport`, `SendOrdReport` (`senior`); срок сдачи в ответе — 30-е число следующего месяца (05 §3.7, «проверить с юристом»).
   - `bootstrap/admin_ord.go`: `maxim admin ord report show|build|send --period YYYY-MM [--email]` (изменяющие — `senior`).
   - Журнал: WARN `admin ord report rebuild|send` (`period`, `admin_user_id`) + `audit_log`.
@@ -364,3 +364,4 @@ Rationale: план реализует этап целиком: операции
 - D-5 (задачи 5–8). Списки администратора — смещение в курсоре (`internal/platform/adminpage`, base64url `o:N`, `limit` 1…100, по умолчанию 20) и `total`; чтения — SQL с соединением таблиц модулей (как сверка). Ссылки на юрлицо и почту — `internal/platform/adminref` (ИНН всегда с маской). Действующее лицо audit_log администратора ставит `httpx.AdminContext`. Блокировка канала не вызывает `ChannelUnavailable` (S-25): начатые размещения продолжаются, блогер получает `channel.blocked`. Без маркировки (`ORD_ENABLED=false`) одобрение поста сразу выдаёт `erid` вида `dev-<номер заказа>`. Метрика `maxim_dispute_resolution_seconds{resolution}` — время от открытия до решения спора.
 - D-6 (задачи 9–12, 14). Ключ запроса подтверждения и проводки HTTP — `http:<вид>:<admin_id>:<Idempotency-Key>`: у каждого администратора и вида свой, команды CLI не пересекаются. Исполнитель подтверждения получает ключ запроса как ключ операции, поэтому повтор после сбоя не создаёт второй проводки; сбой исполнения откатывает решение (запрос остаётся `pending`). Автор отклоняет свой запрос — это отзыв (`withdrawn` в `audit_log`). Просроченные `pending` переводятся в `expired` при чтении списка, счётчиков и при попытке решения. Проверка порога отметки выплаты перенесена в `payout/app.MarkLegalPaid` (`ErrSecondApproval`); проверка в команде CLI оставлена как ранний отказ. Модуль `admin` читает `audit_log` без `ip`; `approver_user_id` проводки — из записи журнала действий ручной операции. Порт `placement/httpapi.AdminPayouts` — обработчики `payout/httpapi` (moderator получает пустой список). `getLatestBankStatement` — последняя по времени загрузки (для сверки — по дате конца периода, как в команде).
 - D-7 (задачи 13–15). Порты статуса ОРД в карточках (`account/httpapi.OrdCounterparty`, `placement/httpapi.AdminCreatives`) реализует `marking/httpapi.Handlers` и подключаются только при `ORD_ENABLED=true`; отдельного порта `account/domain.OrdStatus` нет — домен аккаунтов статус ОРД не использует. Блокировка: повтор ничего не меняет (без записи в журнал), администратора — `409 admin_user`; все сессии отзываются в той же транзакции. Правка реквизитов администратором — `organization.admin_updated` с основанием, проверки кабинета (КПП только у блогера-юрлица). `GetOrdObject` читает объект под блокировкой строки в короткой транзакции (как `Retry`) и последний `outbound_request` по `(object_type, ord_external_id)`; в списке ошибок `title` — `<вид>:<id>` без чтения объекта; поле `blocked` (зависимые объекты) не заполняется — оставлено на следующий этап.
+- D-8 (задачи 16–20). `ORD_REPORT_AUTO_SEND` по умолчанию `false`: задание 1-го числа делает снимок и формирует отчёт, отправляет senior после просмотра (`POST …/send` или `maxim admin ord report send`). Акт — два вызова в одном шаге (`invoice`, затем `invoice/creatives`), опрос по квитанции второго (ПРЕДПОЛОЖЕНИЕ Q-42). Строка статистики, пропавшая при повторном формировании, не удаляется: неотправленная удаляется, отправленная обнуляется и снова ждёт отправки (ОРД хранит её по `id`). Сумма отправленного акта, ставшая нулевой, — только WARN (акт в ОРД исправляет человек). Креатив готов для отчётности, когда у него есть erid и он не в `error`; размещение без креатива или площадки пропускается с WARN `ord report placement without creative|platform`. Пустой отчёт (нет строк) считается отправленным. Счётчик S-20 «отчёт не отправлен» и задания отчётности подключаются только при `ORD_ENABLED=true`. Карточка отчёта читает зависимости через `GetForUpdate` вне транзакции (блокировка не держится). Сквозной тест — `internal/bootstrap/ord_report_http_test.go` (по расписанию, по HTTP, команда); отдельного `marking/app/report_test.go` нет — правила покрыты `marking/domain/report_test.go`, связка — сквозным тестом.

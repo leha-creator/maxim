@@ -20,6 +20,10 @@ UNION ALL
 SELECT 'platform'::text, p.sync_status, count(*)::int FROM ord_platform p GROUP BY p.sync_status
 UNION ALL
 SELECT 'creative'::text, cr.sync_status, count(*)::int FROM creative cr GROUP BY cr.sync_status
+UNION ALL
+SELECT 'statistics'::text, st.sync_status, count(*)::int FROM ord_statistics st GROUP BY st.sync_status
+UNION ALL
+SELECT 'invoice'::text, iv.sync_status, count(*)::int FROM ord_invoice iv GROUP BY iv.sync_status
 `
 
 type CountOrdObjectsByStatusRow struct {
@@ -161,6 +165,12 @@ FROM (
     UNION ALL
     SELECT 'creative'::text, cr.id, cr.ord_external_id, cr.ord_status, cr.sync_error, cr.sync_attempts, cr.updated_at
     FROM creative cr WHERE cr.sync_status = 'error'
+    UNION ALL
+    SELECT 'statistics'::text, st.id, st.ord_external_id, st.ord_status, st.sync_error, st.sync_attempts, st.updated_at
+    FROM ord_statistics st WHERE st.sync_status = 'error'
+    UNION ALL
+    SELECT 'invoice'::text, iv.id, iv.ord_external_id, iv.ord_status, iv.sync_error, iv.sync_attempts, iv.updated_at
+    FROM ord_invoice iv WHERE iv.sync_status = 'error'
 ) e
 WHERE ($1::text = '' OR e.object_type = $1)
   AND ($2::timestamptz IS NULL
@@ -232,6 +242,10 @@ SELECT s.object_type, s.id, s.sent_at FROM (
     SELECT 'platform'::text, p.id, p.sent_at FROM ord_platform p WHERE p.sync_status = 'sent'
     UNION ALL
     SELECT 'creative'::text, cr.id, cr.sent_at FROM creative cr WHERE cr.sync_status = 'sent'
+    UNION ALL
+    SELECT 'statistics'::text, st.id, st.sent_at FROM ord_statistics st WHERE st.sync_status = 'sent'
+    UNION ALL
+    SELECT 'invoice'::text, iv.id, iv.sent_at FROM ord_invoice iv WHERE iv.sync_status = 'sent'
 ) s
 WHERE s.sent_at < $1::timestamptz
 ORDER BY s.sent_at, s.id

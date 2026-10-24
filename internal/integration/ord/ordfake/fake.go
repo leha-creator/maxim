@@ -2,8 +2,8 @@
 //
 // Объекты хранятся по нашим идентификаторам, повторный POST обновляет объект (R-1). Ответ
 // на POST — «Request accepted by ORD»; каждый опрос GET /status продвигает объекты запроса
-// на шаг: ORD success → ERIR sync success → ERIR async success. Площадка завершается на
-// ORD success (R-3). Креатив получает токен fake-erid-N сразу в ответе.
+// на шаг: ORD success → ERIR sync success → ERIR async success. Площадка, статистика и акт
+// завершаются на ORD success (R-3, R-22). Креатив получает токен fake-erid-N сразу в ответе.
 package ordfake
 
 import (
@@ -97,6 +97,24 @@ func (c *Client) UpsertCreative(_ context.Context, cr ord.Creative) (ord.Receipt
 	return c.upsert(ord.OpCreative, []string{cr.ID}, cr)
 }
 
+// UpsertStatistics сохраняет статистику месяца.
+func (c *Client) UpsertStatistics(_ context.Context, s ord.Statistics) (ord.Receipt, error) {
+	return c.upsert(ord.OpStatistics, []string{s.ID}, s)
+}
+
+// UpsertInvoice сохраняет акт.
+func (c *Client) UpsertInvoice(_ context.Context, inv ord.Invoice) (ord.Receipt, error) {
+	return c.upsert(ord.OpInvoice, []string{inv.ID}, inv)
+}
+
+// UpsertInvoiceCreatives сохраняет разбивку акта: объект `<id акта>/creatives`.
+func (c *Client) UpsertInvoiceCreatives(_ context.Context, ic ord.InvoiceCreatives) (ord.Receipt, error) {
+	return c.upsert(ord.OpInvoiceCreatives, []string{InvoiceCreativesID(ic.InvoiceID)}, ic)
+}
+
+// InvoiceCreativesID — идентификатор разбивки акта в поддельном ОРД.
+func InvoiceCreativesID(invoiceID string) string { return invoiceID + "/creatives" }
+
 func (c *Client) upsert(op string, ids []string, body any) (ord.Receipt, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -179,12 +197,21 @@ func (c *Client) advance(obj *Object) {
 	case statusAccepted:
 		obj.Status = statusOrdSuccess
 	case statusOrdSuccess:
-		if obj.Op != ord.OpPlatforms {
+		if !stopsAtOrd(obj.Op) {
 			obj.Status = statusSyncSuccess
 		}
 	case statusSyncSuccess:
 		obj.Status = statusDone
 	}
+}
+
+// stopsAtOrd — объекты без проверки ЕРИР: финальный статус — ORD success.
+func stopsAtOrd(op string) bool {
+	switch op {
+	case ord.OpPlatforms, ord.OpStatistics, ord.OpInvoice, ord.OpInvoiceCreatives:
+		return true
+	}
+	return false
 }
 
 func (c *Client) nextFailure(op string) (failure, bool) {

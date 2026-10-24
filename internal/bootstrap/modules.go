@@ -46,6 +46,7 @@ import (
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
 	placementjobs "github.com/leha-creator/maxim/internal/placement/jobs"
 	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
+	"github.com/leha-creator/maxim/internal/platform/adminref"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/cleanup"
@@ -242,7 +243,8 @@ func newModules(cfg Config, in *infra) *modules {
 	// Описания операций баланса — номера заказов и счетов (R-9).
 	ledgerSvc.References = bridge.LedgerReferences{Placements: placementStore.Placements(), Invoices: billingStore}
 	billingSvc.Placements = bridge.BillingPlacements{Placements: placementStore.Placements()}
-	markingSvc, markingStore := newMarkingService(cfg, in, txRunner, queue, auditLog, accountStore, postSvc, channelSvc)
+	markingSvc, markingStore := newMarkingService(cfg, in, txRunner, queue, auditLog, accountStore, postSvc, channelSvc,
+		placementStore.OrdReport())
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
 	platform.stuck.Add(stuckRemovalCheck(cfg, placementSvc))
@@ -273,7 +275,7 @@ func newModules(cfg Config, in *infra) *modules {
 		ledgerStore:       ledgerStore,
 		marking:           markingSvc,
 		markingStore:      markingStore,
-		markingHTTP:       markinghttp.New(markingSvc, log),
+		markingHTTP:       markinghttp.New(markingSvc, adminref.New(in.pool), log),
 		notification:      notificationSvc,
 		notificationHTTP:  notificationhttp.New(notificationSvc, log),
 		notificationStore: notificationStore,
@@ -310,6 +312,8 @@ func (m *modules) registerJobs(w *job.Worker) {
 	notificationjobs.Register(w, m.notification)
 	if m.cfg.ORD.Enabled {
 		markingjobs.Register(w, m.marking)
+		markingjobs.RegisterReports(w, m.marking)
+		markingjobs.RegisterReports(w, m.marking)
 	}
 }
 

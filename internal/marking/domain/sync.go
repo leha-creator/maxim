@@ -22,7 +22,7 @@ const (
 )
 
 // ObjectTypes — все виды в постоянном порядке.
-var ObjectTypes = []ObjectType{TypeOrganization, TypeContract, TypePlatform, TypeCreative}
+var ObjectTypes = []ObjectType{TypeOrganization, TypeContract, TypePlatform, TypeCreative, TypeStatistics, TypeInvoice}
 
 // Valid сообщает, что вид из перечисления.
 func (t ObjectType) Valid() bool {
@@ -48,7 +48,11 @@ func (r ObjectRef) String() string { return string(r.Type) + ":" + r.ID.String()
 func ParseObjectRef(s string) (ObjectRef, error) {
 	t, id, ok := strings.Cut(s, ":")
 	if !ok || !ObjectType(t).Valid() {
-		return ObjectRef{}, fmt.Errorf("object ref %q: want <type>:<id>, type one of organization, contract, platform, creative", s)
+		names := make([]string, 0, len(ObjectTypes))
+		for _, v := range ObjectTypes {
+			names = append(names, string(v))
+		}
+		return ObjectRef{}, fmt.Errorf("object ref %q: want <type>:<id>, type one of %s", s, strings.Join(names, ", "))
 	}
 	uid, err := uuid.Parse(id)
 	if err != nil {

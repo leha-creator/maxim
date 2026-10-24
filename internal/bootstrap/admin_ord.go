@@ -12,6 +12,7 @@ import (
 
 	accountdomain "github.com/leha-creator/maxim/internal/account/domain"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	markingdomain "github.com/leha-creator/maxim/internal/marking/domain"
 	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/logx"
@@ -27,12 +28,16 @@ var innRe = regexp.MustCompile(`\b\d{10}(\d{2})?\b`)
 //
 //	maxim admin ord errors [--limit N]
 //	maxim admin ord retry --object <type>:<id> --reason <основание> --email <администратор>
+//	maxim admin ord report show|build|send --period YYYY-MM [--email <senior> --reason <основание>]
 //
 // Повтор пишется в audit_log с актором admin и основанием.
 func runAdminORD(ctx context.Context, cfg Config, log *slog.Logger, args []string, out io.Writer) error {
 	const op = "Bootstrap.AdminORD"
 	if len(args) == 0 {
 		return errUsage
+	}
+	if args[0] == "report" {
+		return runAdminORDReport(ctx, cfg, log, args[1:], out)
 	}
 	fs := flag.NewFlagSet("admin ord "+args[0], flag.ContinueOnError)
 	fs.SetOutput(out)
@@ -109,4 +114,85 @@ func printORDErrors(out io.Writer, items []markingdomain.ErrorItem) {
 	}
 	_ = w.Flush()
 	fmt.Fprintf(out, "%d object(s) in error\n", len(items))
+}
+
+// runAdminORDReport — ежемесячная отчётность ОРД из консоли (R-20…R-23): show читает
+// состояние; build и send меняют данные и доступны только senior с основанием (как в API).
+func runAdminORDReport(ctx context.Context, cfg Config, log *slog.Logger, args []string, out io.Writer) error {
+	const op = "Bootstrap.AdminORDReport"
+	if len(args) == 0 {
+		return errUsage
+	}
+	action := args[0]
+	fs := flag.NewFlagSet("admin ord report "+action, flag.ContinueOnError)
+	fs.SetOutput(out)
+	var (
+		period = fs.String("period", "", "YYYY-MM")
+		reason = fs.String("reason", "", "reason of the change")
+		email  = fs.String("email", "", "senior admin email")
+	)
+	if err := fs.Parse(args[1:]); err != nil {
+		return errUsage
+	}
+	p, err := markingdomain.ParsePeriod(*period)
+	if err != nil {
+		fmt.Fprintln(out, err)
+		return errUsage
+	}
+	switch action {
+	case "show":
+	case "build", "send":
+		if *reason == "" || *email == "" {
+			return errUsage
+		}
+	default:
+		log.ErrorContext(ctx, "unknown admin ord report command", logx.KeyOp, op, "command", action)
+		return errUsage
+	}
+
+	pool, err := db.Open(ctx, cfg.DatabaseURL, 2, log)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	in, err := newInfra(ctx, cfg, ModeAdmin, pool, log, nil)
+	if err != nil {
+		return err
+	}
+	m := newModules(cfg, in)
+	var view *markingapp.ReportView
+	switch action {
+	case "show":
+		view, err = m.marking.Report(ctx, p)
+	default:
+		user, uerr := accountpg.New(pool, log).Users().GetByEmail(ctx, accountdomain.NormalizeEmail(*email))
+		if errors.Is(uerr, accountdomain.ErrNotFound) || (uerr == nil && (user.AdminRole == nil || *user.AdminRole != accountdomain.AdminSenior)) {
+			log.WarnContext(ctx, "admin ord report refused", logx.KeyOp, op, "command", action, "reason", "not_senior")
+			return errNotSenior
+		}
+		if uerr != nil {
+			return uerr
+		}
+		if action == "build" {
+			view, err = m.marking.BuildReport(ctx, p, &user.ID, *reason)
+		} else {
+			view, err = m.marking.SendReport(ctx, p, &user.ID, *reason)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	printORDReport(out, view)
+	return nil
+}
+
+// printORDReport — сводка отчёта: состояние, строки статистики и акты (без ИНН и имён).
+func printORDReport(out io.Writer, v *markingapp.ReportView) {
+	fmt.Fprintf(out, "period %s: %s, statistics %d, invoices %d, impressions %d, amount %s, pending %d, errors %d\n",
+		v.Period, v.State, v.StatisticsCount, v.InvoicesCount, v.Impressions, markingdomain.Rubles(v.Amount), v.PendingCount, v.ErrorCount)
+	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+	for _, r := range v.Invoices {
+		fmt.Fprintf(w, "invoice\t%s\t%s\t%s\t%s\n", r.Invoice.Number, r.Kind, markingdomain.Rubles(r.Invoice.Amount), r.Invoice.Sync.Status)
+	}
+	_ = w.Flush()
 }

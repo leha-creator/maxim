@@ -47,6 +47,10 @@ type OrdAPI interface {
 	UpsertContract(ctx context.Context, req ContractRequest) (Receipt, error)
 	UpsertPlatform(ctx context.Context, req PlatformRequest) (Receipt, error)
 	UpsertCreative(ctx context.Context, req CreativeRequest) (Receipt, error)
+	// UpsertStatistics — строка статистики месяца (R-20).
+	UpsertStatistics(ctx context.Context, req StatisticsRequest) (Receipt, error)
+	// UpsertInvoice — акт и его разбивка: два вызова в одном шаге; квитанция — второго (R-22).
+	UpsertInvoice(ctx context.Context, req InvoiceRequest) (Receipt, error)
 	GetStatus(ctx context.Context, requestID string) (Receipt, error)
 }
 
@@ -196,6 +200,8 @@ type Config struct {
 	EridWait time.Duration
 	// StuckSentAge — объект в sent дольше — зависший (STUCK_ORD_SENT_AGE).
 	StuckSentAge time.Duration
+	// Report — ежемесячная отчётность (этап «API администратора и отчётность ОРД»).
+	Report ReportRules
 }
 
 // WithDefaults подставляет значения по умолчанию.
@@ -220,5 +226,73 @@ func (c Config) WithDefaults() Config {
 	if c.StuckSentAge <= 0 {
 		c.StuckSentAge = 24 * time.Hour
 	}
+	c.Report = c.Report.WithDefaults()
 	return c
+}
+
+// ---------------------------------------------------------------- ежемесячная отчётность (R-18 … R-24)
+
+// SourcePlacement — размещение с публикацией из модуля размещений (переходник в bootstrap/bridge).
+type SourcePlacement struct {
+	PlacementID      uuid.UUID
+	PublicationID    uuid.UUID
+	ChannelID        uuid.UUID
+	PostVersionID    uuid.UUID
+	AdvertiserOrgID  uuid.UUID
+	BloggerOrgID     uuid.UUID
+	PublishedAt      time.Time
+	RemovedAt        time.Time // нулевое — в канале
+	FinalViews       int64
+	AdvertiserAmount int64
+	BloggerAmount    int64
+}
+
+// PublicationViews — показы живой публикации на момент снимка.
+type PublicationViews struct {
+	PublicationID uuid.UUID
+	Views         int64
+	CheckedAt     *time.Time
+}
+
+// ReportSource — данные размещений для отчёта.
+type ReportSource interface {
+	// LivePublications — публикации в канале на момент at.
+	LivePublications(ctx context.Context, at time.Time) ([]PublicationViews, error)
+	// Placements — размещения с публикацией, пересекающей месяц.
+	Placements(ctx context.Context, period Period) ([]SourcePlacement, error)
+}
+
+// ReportState — состояние отчёта месяца (ord_report).
+type ReportState struct {
+	Period          Period
+	BuiltAt         time.Time
+	BuiltBy         *uuid.UUID
+	SendRequestedAt *time.Time
+	SendRequestedBy *uuid.UUID
+	UpdatedAt       time.Time
+}
+
+// Reports — хранение отчётности: снимки, статистика, акты, состояние месяца.
+type Reports interface {
+	// InsertSnapshots сохраняет снимки начала месяца; уже снятые не меняются. Возвращает число новых.
+	InsertSnapshots(ctx context.Context, period Period, views []PublicationViews, now time.Time) (int, error)
+	// Snapshots — снимки месяца по публикациям.
+	Snapshots(ctx context.Context, period Period) (map[uuid.UUID]int64, error)
+	Statistics(ctx context.Context, period Period) ([]Statistics, error)
+	StatisticsForUpdate(ctx context.Context, id uuid.UUID) (Statistics, error)
+	InsertStatistics(ctx context.Context, s Statistics) error
+	SaveStatistics(ctx context.Context, s Statistics) error
+	DeleteStatistics(ctx context.Context, id uuid.UUID) error
+	// Invoices — акты месяца с разбивкой.
+	Invoices(ctx context.Context, period Period) ([]Invoice, error)
+	InvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoice, error)
+	InsertInvoice(ctx context.Context, i Invoice) error
+	// SaveInvoice сохраняет акт и заменяет разбивку.
+	SaveInvoice(ctx context.Context, i Invoice) error
+	DeleteInvoice(ctx context.Context, id uuid.UUID) error
+	// Report — состояние месяца; ErrNotFound — не формировался.
+	Report(ctx context.Context, period Period) (ReportState, error)
+	SaveReport(ctx context.Context, r ReportState) error
+	// ReportList — сформированные месяцы, новые первыми.
+	ReportList(ctx context.Context) ([]ReportState, error)
 }

@@ -312,3 +312,32 @@ func TestAdminTables(t *testing.T) {
 		t.Errorf("duplicate idempotency key: %v", err)
 	}
 }
+
+// TestOrdReportingTables — снимки показов неизменяемы, отчёт месяца не удаляется; период —
+// первое число месяца (00015).
+func TestOrdReportingTables(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	for _, stmt := range []string{
+		`UPDATE publication_views_snapshot SET views = 1 WHERE false`,
+		`DELETE FROM publication_views_snapshot WHERE false`,
+		`DELETE FROM ord_report WHERE false`,
+		`TRUNCATE ord_statistics`,
+	} {
+		if _, err := d.Pool.Exec(ctx, stmt); err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("%s: want permission denied, got %v", stmt, err)
+		}
+	}
+	for _, stmt := range []string{`DELETE FROM ord_invoice_item WHERE false`, `DELETE FROM ord_statistics WHERE false`} {
+		if _, err := d.Pool.Exec(ctx, stmt); err != nil {
+			t.Errorf("%s: %v", stmt, err)
+		}
+	}
+	_, err := d.Pool.Exec(ctx, `INSERT INTO ord_report (period, built_at, updated_at) VALUES ('2026-09-15', now(), now())`)
+	if err == nil || !strings.Contains(err.Error(), "ord_report_period_check") {
+		t.Errorf("period not on the first day: want check violation, got %v", err)
+	}
+	if _, err := d.Pool.Exec(ctx, `INSERT INTO ord_report (period, built_at, updated_at) VALUES ('2026-09-01', now(), now())`); err != nil {
+		t.Fatal(err)
+	}
+}

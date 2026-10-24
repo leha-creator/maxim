@@ -10,6 +10,10 @@ const (
 	NeedAdvertiserOrganization Requirement = "advertiser_organization"
 	NeedBloggerOrganization    Requirement = "blogger_organization"
 	NeedInitialContract        Requirement = "initial_contract"
+	// Отчётность (R-20, R-22): креатив с erid, площадка, договор акта.
+	NeedCreative Requirement = "creative"
+	NeedPlatform Requirement = "platform"
+	NeedContract Requirement = "contract"
 )
 
 // CreativeDependencies — цепочка креатива: контрагент платформы → контрагент рекламодателя →

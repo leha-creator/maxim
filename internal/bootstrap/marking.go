@@ -10,6 +10,7 @@ import (
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	markingdomain "github.com/leha-creator/maxim/internal/marking/domain"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
+	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/alert"
 	"github.com/leha-creator/maxim/internal/platform/audit"
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -22,13 +23,15 @@ import (
 // newMarkingService собирает модуль маркировки (этап «Маркировка через Яндекс ОРД»). Адаптер
 // ОРД есть только в worker: в api модуль лишь создаёт записи и задания в транзакциях сценариев.
 func newMarkingService(cfg Config, in *infra, txRunner tx.Runner, queue job.Enqueuer, auditLog audit.Recorder,
-	accountStore *accountpg.Store, posts *postapp.Service, channels markingdomain.ChannelPlatformReady) (*markingapp.Service, *markingpg.Store) {
+	accountStore *accountpg.Store, posts *postapp.Service, channels markingdomain.ChannelPlatformReady,
+	placementReports *placementpg.OrdReport) (*markingapp.Service, *markingpg.Store) {
 	log := in.log.With(logx.KeyModule, "marking")
 	store := markingpg.New(in.pool, log)
 	postPorts := bridge.MarkingPosts{Svc: posts}
 	deps := markingapp.Deps{
 		Organizations: store.Organizations(), Contracts: store.Contracts(), Platforms: store.Platforms(),
 		Creatives: store.Creatives(), Overview: store.Overview(),
+		Reports: store.Reports(), Source: bridge.MarkingReportSource{Store: placementReports},
 		Accounts: bridge.MarkingOrganizations{Orgs: accountStore.Organizations()}, Posts: postPorts, Versions: postPorts,
 		Channels: channels,
 		Tx:       txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,

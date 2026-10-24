@@ -13,6 +13,7 @@ import (
 	"github.com/leha-creator/maxim/internal/apigen"
 	"github.com/leha-creator/maxim/internal/marking/app"
 	"github.com/leha-creator/maxim/internal/marking/domain"
+	"github.com/leha-creator/maxim/internal/platform/adminref"
 	"github.com/leha-creator/maxim/internal/platform/apperr"
 	"github.com/leha-creator/maxim/internal/platform/httpx"
 	"github.com/leha-creator/maxim/internal/platform/logx"
@@ -20,13 +21,14 @@ import (
 
 // Handlers реализует операции модуля из apigen.StrictServerInterface.
 type Handlers struct {
-	svc *app.Service
-	log *slog.Logger
+	svc  *app.Service
+	refs adminref.Directory
+	log  *slog.Logger
 }
 
 // New создаёт обработчики.
-func New(svc *app.Service, log *slog.Logger) *Handlers {
-	return &Handlers{svc: svc, log: log.With(logx.KeyModule, "marking")}
+func New(svc *app.Service, refs adminref.Directory, log *slog.Logger) *Handlers {
+	return &Handlers{svc: svc, refs: refs, log: log.With(logx.KeyModule, "marking")}
 }
 
 func (h *Handlers) ListOrdErrors(ctx context.Context, req apigen.ListOrdErrorsRequestObject) (apigen.ListOrdErrorsResponseObject, error) {

@@ -486,6 +486,34 @@ type OrdContract struct {
 	UpdatedAt                time.Time
 }
 
+type OrdInvoice struct {
+	ID            uuid.UUID
+	OrdContractID uuid.UUID
+	Period        pgtype.Date
+	Type          string
+	Number        string
+	InvoiceDate   pgtype.Date
+	Amount        int64
+	OrdExternalID *string
+	SyncStatus    string
+	SyncRequestID *string
+	SyncError     *string
+	SyncAttempts  int32
+	SyncedAt      *time.Time
+	PayloadHash   *string
+	OrdStatus     *string
+	SentAt        *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type OrdInvoiceItem struct {
+	OrdInvoiceID  uuid.UUID
+	CreativeID    uuid.UUID
+	OrdPlatformID uuid.UUID
+	Amount        int64
+}
+
 type OrdOrganization struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
@@ -520,6 +548,38 @@ type OrdPlatform struct {
 	SentAt         *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type OrdReport struct {
+	Period          pgtype.Date
+	BuiltAt         time.Time
+	BuiltBy         *uuid.UUID
+	SendRequestedAt *time.Time
+	SendRequestedBy *uuid.UUID
+	UpdatedAt       time.Time
+}
+
+type OrdStatistic struct {
+	ID            uuid.UUID
+	CreativeID    uuid.UUID
+	OrdPlatformID uuid.UUID
+	PlacementID   uuid.UUID
+	Period        pgtype.Date
+	Impressions   int64
+	ShownFrom     pgtype.Date
+	ShownTo       pgtype.Date
+	Amount        int64
+	OrdExternalID *string
+	SyncStatus    string
+	SyncRequestID *string
+	SyncError     *string
+	SyncAttempts  int32
+	SyncedAt      *time.Time
+	PayloadHash   *string
+	OrdStatus     *string
+	SentAt        *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type Order struct {
@@ -742,6 +802,14 @@ type Publication struct {
 	ContentHash    string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type PublicationViewsSnapshot struct {
+	PublicationID  uuid.UUID
+	Period         pgtype.Date
+	Views          int32
+	ViewsCheckedAt *time.Time
+	CreatedAt      time.Time
 }
 
 type RateLimitBucket struct {

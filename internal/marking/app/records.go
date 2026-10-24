@@ -62,6 +62,28 @@ func (r *creativeRecord) save(ctx context.Context, s *Service, now time.Time) er
 	return s.Creatives.Save(ctx, r.v)
 }
 
+type statisticsRecord struct{ v domain.Statistics }
+
+func (r *statisticsRecord) ref() domain.ObjectRef    { return r.v.Ref() }
+func (r *statisticsRecord) state() *domain.SyncState { return &r.v.Sync }
+func (r *statisticsRecord) externalID() string       { return r.v.ExternalID() }
+func (r *statisticsRecord) createdAt() time.Time     { return r.v.CreatedAt }
+func (r *statisticsRecord) save(ctx context.Context, s *Service, now time.Time) error {
+	r.v.UpdatedAt = now
+	return s.Reports.SaveStatistics(ctx, r.v)
+}
+
+type invoiceRecord struct{ v domain.Invoice }
+
+func (r *invoiceRecord) ref() domain.ObjectRef    { return r.v.Ref() }
+func (r *invoiceRecord) state() *domain.SyncState { return &r.v.Sync }
+func (r *invoiceRecord) externalID() string       { return r.v.ExternalID() }
+func (r *invoiceRecord) createdAt() time.Time     { return r.v.CreatedAt }
+func (r *invoiceRecord) save(ctx context.Context, s *Service, now time.Time) error {
+	r.v.UpdatedAt = now
+	return s.Reports.SaveInvoice(ctx, r.v)
+}
+
 // lock читает объект с блокировкой строки; нет — domain.ErrNotFound.
 func (s *Service) lock(ctx context.Context, ref domain.ObjectRef) (record, error) {
 	switch ref.Type {
@@ -77,6 +99,18 @@ func (s *Service) lock(ctx context.Context, ref domain.ObjectRef) (record, error
 	case domain.TypeCreative:
 		v, err := s.Creatives.GetForUpdate(ctx, ref.ID)
 		return &creativeRecord{v}, err
+	case domain.TypeStatistics:
+		if s.Reports == nil {
+			return nil, domain.ErrNotFound
+		}
+		v, err := s.Reports.StatisticsForUpdate(ctx, ref.ID)
+		return &statisticsRecord{v}, err
+	case domain.TypeInvoice:
+		if s.Reports == nil {
+			return nil, domain.ErrNotFound
+		}
+		v, err := s.Reports.InvoiceForUpdate(ctx, ref.ID)
+		return &invoiceRecord{v}, err
 	}
 	return nil, fmt.Errorf("marking: unknown object type %q", ref.Type)
 }

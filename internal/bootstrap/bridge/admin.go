@@ -18,6 +18,7 @@ import (
 	ledgerapp "github.com/leha-creator/maxim/internal/ledger/app"
 	ledgerdomain "github.com/leha-creator/maxim/internal/ledger/domain"
 	ledgerhttp "github.com/leha-creator/maxim/internal/ledger/httpapi"
+	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	markingdomain "github.com/leha-creator/maxim/internal/marking/domain"
 	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
 	payoutdomain "github.com/leha-creator/maxim/internal/payout/domain"
@@ -181,6 +182,15 @@ func MarkingCounter(o markingdomain.Overview) CounterFunc {
 		for _, byStatus := range counts {
 			c.OrdErrors += byStatus[markingdomain.SyncError]
 		}
+		return err
+	}}
+}
+
+// OrdReportCounter — отчёт ОРД за прошлый месяц не сдан (R-16, R-23).
+func OrdReportCounter(svc *markingapp.Service) CounterFunc {
+	return CounterFunc{Label: "ord_report", Fn: func(ctx context.Context, c *adminapp.Counters) error {
+		pending, err := svc.PendingReport(ctx)
+		c.OrdReportPending = pending
 		return err
 	}}
 }

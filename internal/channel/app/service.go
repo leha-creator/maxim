@@ -94,12 +94,12 @@ type Deps struct {
 	Counter interface {
 		ModerationCount(ctx context.Context) (int, error)
 	}
-	Formats    domain.Formats
-	Prices     domain.Prices
-	Unavail    domain.Unavailabilities
-	Metrics    domain.Metrics
-	Catalog    domain.Catalog
-	Admin      domain.AdminChannels
+	Formats domain.Formats
+	Prices  domain.Prices
+	Unavail domain.Unavailabilities
+	Metrics domain.Metrics
+	Catalog domain.Catalog
+	Admin   domain.AdminChannels
 	// Messages — чтение сообщений канала (только worker).
 	Messages domain.MessageReader
 	// Placements — занятые размещениями интервалы (R-8); nil — пустая реализация.

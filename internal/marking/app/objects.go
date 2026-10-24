@@ -98,6 +98,12 @@ func (s *Service) view(ctx context.Context, r record) (*ObjectView, error) {
 		v.UpdatedAt = x.v.UpdatedAt
 		v.Erid = x.v.Erid
 		v.Title = "Креатив версии " + x.v.PostVersionID.String()
+	case *statisticsRecord:
+		v.UpdatedAt = x.v.UpdatedAt
+		v.Title = "Статистика " + x.v.Period.String()
+	case *invoiceRecord:
+		v.UpdatedAt = x.v.UpdatedAt
+		v.Title = "Акт № " + x.v.Number
 	}
 	last, err := s.Overview.LastRequest(ctx, v.Ref, r.externalID())
 	if err != nil {

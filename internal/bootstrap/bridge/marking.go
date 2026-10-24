@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/ord"
 	markingapp "github.com/leha-creator/maxim/internal/marking/app"
 	"github.com/leha-creator/maxim/internal/marking/domain"
+	placementpg "github.com/leha-creator/maxim/internal/placement/postgres"
 	"github.com/leha-creator/maxim/internal/platform/apperr"
 	postapp "github.com/leha-creator/maxim/internal/post/app"
 	postdomain "github.com/leha-creator/maxim/internal/post/domain"
@@ -93,6 +95,9 @@ type OrdClient interface {
 	UpsertContract(ctx context.Context, c ord.Contract) (ord.Receipt, error)
 	UpsertPlatforms(ctx context.Context, p ord.Platforms) (ord.Receipt, error)
 	UpsertCreative(ctx context.Context, c ord.Creative) (ord.Receipt, error)
+	UpsertStatistics(ctx context.Context, s ord.Statistics) (ord.Receipt, error)
+	UpsertInvoice(ctx context.Context, inv ord.Invoice) (ord.Receipt, error)
+	UpsertInvoiceCreatives(ctx context.Context, ic ord.InvoiceCreatives) (ord.Receipt, error)
 	GetStatus(ctx context.Context, requestID string) (ord.Receipt, error)
 }
 
@@ -139,6 +144,32 @@ func (b MarkingOrd) UpsertCreative(ctx context.Context, r domain.CreativeRequest
 	return receipt(rec), err
 }
 
+func (b MarkingOrd) UpsertStatistics(ctx context.Context, r domain.StatisticsRequest) (domain.Receipt, error) {
+	rec, err := b.Client.UpsertStatistics(ctx, ord.Statistics{
+		ID: r.ID, CreativeID: r.CreativeID, PlatformID: r.PlatformID, ImpsFact: r.ImpsFact, ImpsPlan: r.ImpsPlan,
+		StartDateFact: r.StartDateFact, EndDateFact: r.EndDateFact, StartDatePlan: r.StartDatePlan, EndDatePlan: r.EndDatePlan,
+		Amount: ord.Amount{Incl: r.Amount},
+	})
+	return receipt(rec), err
+}
+
+// UpsertInvoice — акт, затем разбивка (R-22): квитанция второго вызова, по ней идёт опрос.
+// ПРЕДПОЛОЖЕНИЕ (Q-42): статус акта ОРД сообщает по reqid разбивки.
+func (b MarkingOrd) UpsertInvoice(ctx context.Context, r domain.InvoiceRequest) (domain.Receipt, error) {
+	if _, err := b.Client.UpsertInvoice(ctx, ord.Invoice{
+		ID: r.ID, ContractID: r.ContractID, Type: r.Type, Number: r.Number, Date: r.Date, StartDate: r.StartDate,
+		EndDate: r.EndDate, Amount: ord.Amount{Incl: r.Amount}, IsVat: r.IsVat,
+	}); err != nil {
+		return domain.Receipt{}, err
+	}
+	ic := ord.InvoiceCreatives{InvoiceID: r.ID, Items: make([]ord.InvoiceItem, 0, len(r.Items))}
+	for _, it := range r.Items {
+		ic.Items = append(ic.Items, ord.InvoiceItem{CreativeID: it.CreativeID, PlatformID: it.PlatformID, Amount: ord.Amount{Incl: it.Amount}})
+	}
+	rec, err := b.Client.UpsertInvoiceCreatives(ctx, ic)
+	return receipt(rec), err
+}
+
 func (b MarkingOrd) GetStatus(ctx context.Context, requestID string) (domain.Receipt, error) {
 	rec, err := b.Client.GetStatus(ctx, requestID)
 	return receipt(rec), err
@@ -173,4 +204,57 @@ var _ channeldomain.ChannelApprovalListener = ChannelApprovals{}
 
 func (b ChannelApprovals) ChannelApproved(ctx context.Context, ch channeldomain.ApprovedChannel) error {
 	return b.Svc.ChannelApproved(ctx, domain.ChannelRef{ID: ch.ID, OrganizationID: ch.OrganizationID, Title: ch.Title, Link: ch.Link})
+}
+
+// ---------------------------------------------------------------- marking ← placement (отчётность)
+
+// MarkingReportSource — marking/domain.ReportSource поверх выборок placement/postgres (R-19, R-20).
+// Сумма рекламодателя — за вычетом возврата; неизвестный возврат — 0 (Q-44). Вознаграждение
+// блогера — к выплате после итога, до него — по заказу.
+type MarkingReportSource struct{ Store *placementpg.OrdReport }
+
+var _ domain.ReportSource = MarkingReportSource{}
+
+func (b MarkingReportSource) LivePublications(ctx context.Context, at time.Time) ([]domain.PublicationViews, error) {
+	rows, err := b.Store.LiveViews(ctx, at)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.PublicationViews, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.PublicationViews{PublicationID: r.PublicationID, Views: r.Views, CheckedAt: r.CheckedAt})
+	}
+	return out, nil
+}
+
+func (b MarkingReportSource) Placements(ctx context.Context, period domain.Period) ([]domain.SourcePlacement, error) {
+	rows, err := b.Store.Placements(ctx, period.Start(), period.End())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SourcePlacement, 0, len(rows))
+	for _, r := range rows {
+		p := domain.SourcePlacement{
+			PlacementID: r.PlacementID, PublicationID: r.PublicationID, ChannelID: r.ChannelID, PostVersionID: r.PostVersionID,
+			AdvertiserOrgID: r.AdvertiserOrganizationID, BloggerOrgID: r.BloggerOrganizationID, PublishedAt: r.PublishedAt,
+			AdvertiserAmount: r.TotalAmount, BloggerAmount: r.BloggerAmount,
+		}
+		if r.RemovedAt != nil {
+			p.RemovedAt = *r.RemovedAt
+		}
+		switch {
+		case r.FinalViews != nil:
+			p.FinalViews = *r.FinalViews
+		case r.Views != nil:
+			p.FinalViews = *r.Views
+		}
+		if r.RefundAmount != nil {
+			p.AdvertiserAmount = max(r.TotalAmount-*r.RefundAmount, 0)
+		}
+		if r.PayoutAmount != nil {
+			p.BloggerAmount = *r.PayoutAmount
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
