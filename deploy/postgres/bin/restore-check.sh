@@ -32,7 +32,7 @@ done
 
 REQUIRED_TABLES=(goose_db_version "user" organization legal_document legal_acceptance audit_log job
   channel post_version "order" placement publication creative ledger_account ledger_transaction
-  ledger_entry hold invoice bank_transaction media_file)
+  ledger_entry hold invoice bank_transaction media_file rocketwork_contractor payout)
 PORT=${RESTORE_CHECK_PORT:-5433}
 
 start=$(now_ms)

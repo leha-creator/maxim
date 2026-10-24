@@ -63,6 +63,13 @@ x-backend-env: &backend-env
   LEDGER_CHECK_INTERVAL: 1h
   CLOSING_ACTS_DAY: "1"
   CLOSING_ACTS_TIME: "03:00"
+  # Выплаты: rocketworkfake с общим для api и worker файлом состояния (том rocketwork-fake);
+  # онбординг и выплаты двигают «maxim dev rocketwork …» (README, «Выплаты в разработке»).
+  ROCKETWORK_MODE: fake
+  ROCKETWORK_FAKE_STATE_PATH: /home/nonroot/rocketwork-fake.json
+  ROCKETWORK_DEPOSIT_CHECK_INTERVAL: 1h
+  PAYOUT_POLL_FAST: 1m
+  PAYOUT_POLL_SLOW: 10m
   # Уведомления: ссылки в письмах (Mailpit) и сообщениях бота ведут на кабинет разработки.
   CABINET_BASE_URL: http://localhost:5173
   NOTIFICATION_SEND_ATTEMPTS: "5"
@@ -130,6 +137,7 @@ services:
     image: maxim:dev
     command: ["api"]
     environment: *backend-env
+    volumes: ["rocketwork-fake:/home/nonroot"]
     ports: ["${DEV_API_PORT:-8080}:8080", "${DEV_API_METRICS_PORT:-9090}:9090"]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -139,6 +147,7 @@ services:
     image: maxim:dev
     command: ["worker"]
     environment: *backend-env
+    volumes: ["rocketwork-fake:/home/nonroot"]
     ports: ["${DEV_WORKER_METRICS_PORT:-9091}:9090"]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -148,3 +157,4 @@ services:
 volumes:
   postgres: {}
   minio: {}
+  rocketwork-fake: {}

@@ -18,7 +18,7 @@ func TestEveryKindConverges(t *testing.T) {
 	e := newEnv(t)
 	p := ledgertest.NewPlacement(t, e.d.Pool, e.org, 1000000)
 	p2 := ledgertest.NewPlacement(t, e.d.Pool, e.org, 200000)
-	payout := uuid.New()
+	payout := ledgertest.Payout(t, e.d.Pool, p, 750000)
 
 	steps := []struct {
 		tx    domain.Transaction

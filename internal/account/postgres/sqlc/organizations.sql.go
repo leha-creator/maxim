@@ -194,6 +194,39 @@ func (q *Queries) GetOrganizationForMarking(ctx context.Context, id uuid.UUID) (
 	return i, err
 }
 
+const getOrganizationForPayout = `-- name: GetOrganizationForPayout :one
+SELECT o.id, o.legal_type, o.inn, o.name, o.contact_name, o.phone, coalesce(bp.full_name, '')::text AS full_name
+FROM organization o
+LEFT JOIN blogger_profile bp ON bp.organization_id = o.id
+WHERE o.id = $1
+`
+
+type GetOrganizationForPayoutRow struct {
+	ID          uuid.UUID
+	LegalType   string
+	Inn         string
+	Name        string
+	ContactName string
+	Phone       string
+	FullName    string
+}
+
+// Получатель выплаты (модуль payout, 06 §8): тип лица, ИНН, ФИО блогера, телефон; без блокировки.
+func (q *Queries) GetOrganizationForPayout(ctx context.Context, id uuid.UUID) (GetOrganizationForPayoutRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationForPayout, id)
+	var i GetOrganizationForPayoutRow
+	err := row.Scan(
+		&i.ID,
+		&i.LegalType,
+		&i.Inn,
+		&i.Name,
+		&i.ContactName,
+		&i.Phone,
+		&i.FullName,
+	)
+	return i, err
+}
+
 const getOrganizationForUpdate = `-- name: GetOrganizationForUpdate :one
 SELECT o.id, o.legal_type, o.inn, o.name, o.contact_name, o.phone, o.kpp, o.address, o.tax_regime, o.vat_rate, o.tax_document_storage_key, o.tax_document_sha256, o.signer_position, o.signer_name, o.signer_basis_name, o.signer_basis_number, o.bank_account, o.bank_name, o.bank_corr_account, o.bank_bik, o.is_platform, o.status, o.created_at, o.updated_at,
        (ap.organization_id IS NOT NULL)::boolean AS is_advertiser,

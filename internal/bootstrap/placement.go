@@ -31,7 +31,8 @@ const stuckRemovalOverdue = "publication_removal_overdue"
 // пакета bridge (удержания — журнал проводок); порты будущих модулей — пустые реализации с
 // метками этапов (R-3):
 //
-//	ContractorGate — AllowAllContractors, этап «Выплаты блогерам через Рокет Ворк»
+//	ContractorGate, Payouts — AllowAllContractors и NoPayouts до SetPayoutPorts: модуль выплат
+//	                          собирается после размещений (newPayoutService, I-1 этапа выплат)
 //
 // Уведомления сторонам — модуль уведомлений (bridge.PlacementNotifier).
 //
@@ -49,6 +50,7 @@ func newPlacementService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sc
 		Versions:    bridge.PlacementVersions{Svc: posts},
 		Holds:       bridge.LedgerHolds{Svc: ledger},
 		Contractors: bridge.AllowAllContractors{Log: log},
+		Payouts:     bridge.NoPayouts{},
 		Notifier:    bridge.PlacementNotifier{Svc: notifier},
 		Tx:          txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,
 		Config: placementapp.Config{

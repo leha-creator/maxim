@@ -112,6 +112,8 @@ Rationale: план реализует этап целиком: задание `
 
 ## Подключение выплат и споров (после слияния этапов)
 
+Выплаты подключены при слиянии ветки выплат (план `rocketwork-payouts.md`, раздел «Слияние с master»); споры — ещё нет.
+
 - **Выплаты (`internal/payout`).** Порт `payout/domain.Notifier` с той же сигнатурой `Notify(ctx, Notice)`; в `bootstrap` — `bridge.PayoutNotifier` над `notification/app.Notify` (как `bridge.BillingNotifier`). Вызовы в транзакции перехода выплаты: создание выплаты после P-12/P-13 — `payout.sent` (роль `blogger`, `Data`: `placement_id`, `channel_id`, `order_number`, `amount`); P-16 — `payout.succeeded` (+`receipt_url`); выплата отклонена или исчерпаны попытки `send_payout` — `payout.failed` (+`reason` кодом, без текста Рокет Ворк). Объект — `payout`, ссылка — `/blg/payouts`. Статус исполнителя (`ApplyContractor`) — `rocketwork.active` / `rocketwork.blocked` (+`reason` кодом), объект — `rocketwork_contractor`. `payout.domain.Notice` без роли: переходник ставит `RoleBlogger`. `ContractorGate` в `newPlacementService` заменить на реализацию модуля выплат.
 - **Приёмка и споры.** Модуль размещений уже уведомляет из `StateChange.Notices`: для P-12/P-13 добавить в `domain` `Notices` по таблице (блогеру — через `payout.sent` выплаты, отдельного шаблона приёмки нет); для P-15 — `p.notifyBoth(NoticeDisputeResolved)` с `Data` `performance_share`, `refund_amount`. Претензия (S-08) — P-14 уже уведомляет обоих и администратора.
 - Проверка после подключения: тест каталога (`TestCatalogCodesHaveCallers` переводит коды из списка «ждут модуль» в обычные) и сквозной сценарий выплаты.

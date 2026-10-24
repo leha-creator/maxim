@@ -86,6 +86,10 @@ func (unimplemented) ListBloggerPayouts(context.Context, apigen.ListBloggerPayou
 	return nil, apperr.NotImplemented("listBloggerPayouts")
 }
 
+func (unimplemented) GetBloggerPayoutSummary(context.Context, apigen.GetBloggerPayoutSummaryRequestObject) (apigen.GetBloggerPayoutSummaryResponseObject, error) {
+	return nil, apperr.NotImplemented("getBloggerPayoutSummary")
+}
+
 func (unimplemented) ListBloggerPlacements(context.Context, apigen.ListBloggerPlacementsRequestObject) (apigen.ListBloggerPlacementsResponseObject, error) {
 	return nil, apperr.NotImplemented("listBloggerPlacements")
 }
@@ -116,6 +120,10 @@ func (unimplemented) GetRocketworkStatus(context.Context, apigen.GetRocketworkSt
 
 func (unimplemented) InviteRocketwork(context.Context, apigen.InviteRocketworkRequestObject) (apigen.InviteRocketworkResponseObject, error) {
 	return nil, apperr.NotImplemented("inviteRocketwork")
+}
+
+func (unimplemented) RefreshRocketworkStatus(context.Context, apigen.RefreshRocketworkStatusRequestObject) (apigen.RefreshRocketworkStatusResponseObject, error) {
+	return nil, apperr.NotImplemented("refreshRocketworkStatus")
 }
 
 func (unimplemented) ListCampaigns(context.Context, apigen.ListCampaignsRequestObject) (apigen.ListCampaignsResponseObject, error) {

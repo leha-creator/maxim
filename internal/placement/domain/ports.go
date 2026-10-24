@@ -76,6 +76,8 @@ type Placements interface {
 	// UpdateIfStatus сохраняет размещение, если в базе состояние status и lock_version
 	// lockVersion (03 §11); иначе ErrStaleVersion.
 	UpdateIfStatus(ctx context.Context, p Placement, status Status, lockVersion int) error
+	// SetDistribution сохраняет распределение удержания (03 §7) один раз; уже задано — ErrStaleVersion.
+	SetDistribution(ctx context.Context, id uuid.UUID, d Distribution) error
 	// ListByOrder — размещения заказа по времени создания.
 	ListByOrder(ctx context.Context, orderID uuid.UUID) ([]Placement, error)
 	// ListByOrderForUpdate — то же с блокировкой строк в порядке id.
@@ -191,7 +193,7 @@ type Holds interface {
 }
 
 // ContractorGate — блогер может принять запрос (A-36, R-3): исполнитель Рокет Ворк active
-// (юрлицо не проверяется). Реализация — модуль payout; до него — AllowAllContractors.
+// (юрлицо не проверяется). Реализация — модуль payout (SetPayoutPorts); до сборки — AllowAllContractors.
 type ContractorGate interface {
 	CanAccept(ctx context.Context, bloggerOrgID uuid.UUID) (bool, error)
 }
@@ -341,4 +343,18 @@ func CallPriorityFrom(ctx context.Context) CallPriority {
 		return p
 	}
 	return CallReconcile
+}
+
+// PayoutRequest — создать выплату блогеру по принятому размещению (R-4).
+type PayoutRequest struct {
+	PlacementID  uuid.UUID
+	BloggerOrgID uuid.UUID
+	Amount       money.Kopecks
+}
+
+// Payouts — создание выплаты (модуль payout, bootstrap/bridge.PlacementPayouts). Вызывается
+// в транзакции перехода в accepted из P-12, P-13, P-15 на этапе «Приёмка, споры и возвраты»
+// (I-10): строка payout и задание send_payout фиксируются вместе с переходом.
+type Payouts interface {
+	Create(ctx context.Context, r PayoutRequest) (uuid.UUID, error)
 }

@@ -91,7 +91,9 @@ type Deps struct {
 	// Порты будущих модулей (R-2 … R-4).
 	Holds       domain.Holds
 	Contractors domain.ContractorGate
-	Notifier    domain.Notifier
+	// Payouts — создание выплаты при переходе в accepted (этап «Приёмка, споры и возвраты»).
+	Payouts  domain.Payouts
+	Notifier domain.Notifier
 	// Публикации, нарушения, споры и внешние вызовы (этап «Автопостинг и контроль»). Publisher
 	// и Content нужны только в режиме worker.
 	Publications domain.Publications

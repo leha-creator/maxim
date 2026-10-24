@@ -124,6 +124,12 @@ sql:
         <<: *gen
         out: internal/billing/postgres/sqlc
   - <<: *entry
+    queries: internal/payout/postgres/queries
+    gen:
+      go:
+        <<: *gen
+        out: internal/payout/postgres/sqlc
+  - <<: *entry
     queries: internal/notification/postgres/queries
     gen:
       go:

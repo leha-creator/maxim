@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/max"
 	notificationapp "github.com/leha-creator/maxim/internal/notification/app"
 	notificationdomain "github.com/leha-creator/maxim/internal/notification/domain"
+	payoutdomain "github.com/leha-creator/maxim/internal/payout/domain"
 	placementdomain "github.com/leha-creator/maxim/internal/placement/domain"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/ratelimit"
@@ -129,4 +131,26 @@ var _ channeldomain.Notifier = ChannelNotifier{}
 func (b ChannelNotifier) Notify(ctx context.Context, n channeldomain.Notice) error {
 	return b.Svc.Notify(ctx, notificationdomain.Notice{Template: n.Template, OrganizationID: n.OrganizationID,
 		Role: notificationdomain.RoleBlogger, ObjectType: "channel", ObjectID: n.ChannelID.String(), Data: n.Data})
+}
+
+// PayoutNotifier — payout/domain.Notifier поверх модуля уведомлений: блогеру о выплате
+// (объект payout, повтор по коду и выплате не дублирует) и о статусе исполнителя Рокет Ворк
+// (объект rocketwork_contractor, без ключа: статус может меняться туда и обратно). Ссылка —
+// /blg/payouts (notification/domain.Link).
+type PayoutNotifier struct{ Svc notifier }
+
+var _ payoutdomain.Notifier = PayoutNotifier{}
+
+func (b PayoutNotifier) Notify(ctx context.Context, n payoutdomain.Notice) error {
+	if n.OrganizationID == uuid.Nil {
+		return errors.New("payout notice without organization")
+	}
+	out := notificationdomain.Notice{Template: n.Template, OrganizationID: n.OrganizationID,
+		Role: notificationdomain.RoleBlogger, ObjectType: "payout", ObjectID: n.ObjectID.String(), Data: n.Data}
+	if strings.HasPrefix(n.Template, "rocketwork.") {
+		out.ObjectType = "rocketwork_contractor"
+	} else {
+		out.Key = n.Template + ":" + n.ObjectID.String()
+	}
+	return b.Svc.Notify(ctx, out)
 }

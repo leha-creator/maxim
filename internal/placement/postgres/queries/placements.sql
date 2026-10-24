@@ -110,10 +110,16 @@ ORDER BY p.publish_at LIMIT 1000;
 
 -- name: ListPlacementRefs :many
 -- Заказ, канал и публикация размещений для операций баланса и отчёта агента (модули ledger, billing).
-SELECT p.id, p.order_id, o.number AS order_number, coalesce(c.title, '')::text AS channel_title,
+SELECT p.id, p.order_id, o.number AS order_number, p.channel_id, coalesce(c.title, '')::text AS channel_title,
     pub.published_at, pub.removed_at
 FROM placement p
 JOIN "order" o ON o.id = p.order_id
 JOIN channel c ON c.id = p.channel_id
 LEFT JOIN publication pub ON pub.placement_id = p.id
 WHERE p.id = ANY(@ids::uuid[]);
+
+-- name: SetPlacementDistribution :execrows
+-- Распределение удержания при переходе в accepted или refunded (03 §7, I-12); один раз.
+UPDATE placement SET performance_share = @performance_share, payout_amount = @payout_amount,
+    fee_charged = @fee_charged, refund_amount = @refund_amount
+WHERE id = @id AND performance_share IS NULL;

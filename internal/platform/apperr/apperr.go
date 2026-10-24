@@ -24,8 +24,10 @@ const (
 	CodeCartChanged         Code = "cart_changed"
 	CodeCampaignIncomplete  Code = "campaign_incomplete"
 	CodeRateLimited         Code = "rate_limited"
-	CodeNotImplemented      Code = "not_implemented"
-	CodeInternal            Code = "internal"
+	// CodeServiceUnavailable — внешний сервис не подключён или недоступен (503, этап выплат).
+	CodeServiceUnavailable Code = "service_unavailable"
+	CodeNotImplemented     Code = "not_implemented"
+	CodeInternal           Code = "internal"
 )
 
 // Error — ошибка с кодом. Message — короткая постоянная строка на английском,

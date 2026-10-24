@@ -35,6 +35,10 @@ import (
 	notificationhttp "github.com/leha-creator/maxim/internal/notification/httpapi"
 	notificationjobs "github.com/leha-creator/maxim/internal/notification/jobs"
 	notificationpg "github.com/leha-creator/maxim/internal/notification/postgres"
+	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
+	payouthttp "github.com/leha-creator/maxim/internal/payout/httpapi"
+	payoutjobs "github.com/leha-creator/maxim/internal/payout/jobs"
+	payoutpg "github.com/leha-creator/maxim/internal/payout/postgres"
 	placementapp "github.com/leha-creator/maxim/internal/placement/app"
 	placementhttp "github.com/leha-creator/maxim/internal/placement/httpapi"
 	placementjobs "github.com/leha-creator/maxim/internal/placement/jobs"
@@ -48,6 +52,8 @@ import (
 	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 	"github.com/leha-creator/maxim/internal/platform/metrics"
+	"github.com/leha-creator/maxim/internal/platform/outbound"
+	"github.com/leha-creator/maxim/internal/platform/ratelimit"
 	"github.com/leha-creator/maxim/internal/platform/secretbox"
 	"github.com/leha-creator/maxim/internal/platform/storage"
 	"github.com/leha-creator/maxim/internal/platform/storage/storagefake"
@@ -72,13 +78,30 @@ type infra struct {
 	// reg — реестр метрик процесса; nil в служебных командах.
 	reg *metrics.Registry
 	box *secretbox.Box
+	// rocketwork — Рокет Ворк (rocketwork.Client, rocketwork.Disabled, rocketworkfake); nil — disabled.
+	rocketwork bridge.RocketWorkAPI
+	// outMetrics, limitMetrics — общие метрики outbound и ограничителя: регистрируются один раз
+	// на процесс, сколько бы адаптеров ни подключилось.
+	outMetrics   *outbound.Metrics
+	limitMetrics *ratelimit.Metrics
 	// life — признак остановки процесса для /readyz (выпуск без простоя).
 	life lifecycle
 }
 
 // newInfra подключает адаптеры, нужные режиму.
+// commandClockKey — часы команд maxim admin и maxim dev, запущенных в тестах рядом с собранным
+// приложением (clock.Manual): задания и переходы получают то же время, что api и worker.
+type commandClockKey struct{}
+
+func withCommandClock(ctx context.Context, clk clock.Clock) context.Context {
+	return context.WithValue(ctx, commandClockKey{}, clk)
+}
+
 func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, log *slog.Logger, reg *metrics.Registry) (*infra, error) {
 	in := &infra{pool: pool, clock: clock.System{}, log: log, reg: reg}
+	if clk, ok := ctx.Value(commandClockKey{}).(clock.Clock); ok {
+		in.clock = clk
+	}
 	in.alerter = newAlerter(cfg, in)
 	fakes := cfg.Env == EnvTest
 	// worker строит и публикует производные изображений (R-6, R-7): ему тоже нужно хранилище.
@@ -119,6 +142,12 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 		}
 		in.connectORD(ctx, cfg)
 	}
+	// Рокет Ворк: подпись вебхука (api), задания (worker), сверка депозита и команды (admin, dev).
+	if mode == ModeAPI || mode == ModeWorker || mode == modeAdminMoney || mode == ModeAdmin || mode == ModeDev {
+		if err := in.connectRocketWork(ctx, cfg); err != nil {
+			return nil, err
+		}
+	}
 	if mode == ModeAPI || mode == ModeWorker {
 		box, err := secretbox.New(cfg.SecretsKeyBytes())
 		if err != nil {
@@ -154,6 +183,10 @@ type modules struct {
 	// marking — объекты ОРД и erid; markingStore — для метрики.
 	marking      *markingapp.Service
 	markingStore *markingpg.Store
+	// payout — выплаты блогерам через Рокет Ворк; payoutStore — для команд администратора.
+	payout      *payoutapp.Service
+	payoutStore *payoutpg.Store
+	payoutHTTP  *payouthttp.Handlers
 	// notification — уведомления; notificationStore — для метрики.
 	notification      *notificationapp.Service
 	notificationHTTP  *notificationhttp.Handlers
@@ -197,6 +230,7 @@ func newModules(cfg Config, in *infra) *modules {
 	ledgerSvc, ledgerStore := newLedgerService(cfg, in, txRunner, auditLog)
 	billingSvc, billingStore := newBillingService(cfg, in, txRunner, auditLog, accountStore, ledgerSvc, notificationSvc)
 	placementSvc, placementStore := newPlacementService(cfg, in, txRunner, queue, auditLog, channelSvc, postSvc, ledgerSvc, notificationSvc)
+	payoutSvc, payoutStore := newPayoutService(cfg, in, txRunner, queue, auditLog, accountStore, ledgerSvc, placementSvc, placementStore, notificationSvc)
 	// Описания операций баланса — номера заказов и счетов (R-9).
 	ledgerSvc.References = bridge.LedgerReferences{Placements: placementStore.Placements(), Invoices: billingStore}
 	billingSvc.Placements = bridge.BillingPlacements{Placements: placementStore.Placements()}
@@ -204,6 +238,9 @@ func newModules(cfg Config, in *infra) *modules {
 	platform := newPlatformJobs(cfg, in, accountStore)
 	platform.stuck.Add(stuckScheduledCheck(cfg, placementSvc))
 	platform.stuck.Add(stuckRemovalCheck(cfg, placementSvc))
+	for _, c := range payoutSvc.StuckChecks() {
+		platform.stuck.Add(c)
+	}
 	platform.cleaner.Add(cleanup.Task{
 		Name: "channel_unavailability", Retention: cfg.Retention.ChannelUnavailability, Delete: channelStore.DeleteEndedUnavailability,
 	})
@@ -231,6 +268,9 @@ func newModules(cfg Config, in *infra) *modules {
 		notification:      notificationSvc,
 		notificationHTTP:  notificationhttp.New(notificationSvc, log),
 		notificationStore: notificationStore,
+		payout:            payoutSvc,
+		payoutStore:       payoutStore,
+		payoutHTTP:        payouthttp.New(payoutSvc, log),
 		platform:          platform,
 		txRunner:          txRunner,
 		queue:             queue,
@@ -256,6 +296,7 @@ func (m *modules) registerJobs(w *job.Worker) {
 	billingjobs.Register(w, m.billing, billingjobs.Options{ExpireInterval: m.cfg.Billing.InvoiceExpireInterval,
 		ClosingDay: m.cfg.Billing.ClosingActsDay, ClosingHour: closingHour, ClosingMinute: closingMinute})
 	ledgerjobs.Register(w, m.ledger, m.cfg.Billing.LedgerCheckInterval)
+	payoutjobs.Register(w, m.platform.dispatcher, m.payout, payoutjobs.Options{DepositCheckInterval: m.cfg.RocketWork.DepositCheckInterval})
 	notificationjobs.Register(w, m.notification)
 	if m.cfg.ORD.Enabled {
 		markingjobs.Register(w, m.marking)
@@ -271,6 +312,7 @@ type apiImpl struct {
 	*placementHandlers
 	*billingHandlers
 	*ledgerHandlers
+	*payoutHandlers
 	*notificationHandlers
 }
 
@@ -287,10 +329,11 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Metrics: reg,
 		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
 			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP,
-			notificationHandlers: m.notificationHTTP},
+			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
-			maxWebhookPattern: newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
+			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
+			rocketworkWebhookPattern: newRocketWorkWebhook(in, m.payout, m.txRunner, m.queue, httpx.ClientInfo(trusted)),
 		},
 		Ready:         in.life.ready(readiness(in.pool)),
 		Authenticated: httpx.Authenticated,

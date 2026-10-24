@@ -15,7 +15,7 @@
 | Яндекс ОРД | пусто `ORD_OAUTH_TOKEN` — подделка; токен кабинета `ord-prestable` — тестовый контур | `https://ord.yandex.net` |
 | Банк | подделки нет: файл выписки делает `maxim dev statement`, загружает `maxim admin money statement import` | выписки банка платформы |
 | Почта | Mailpit (профиль `mailpit`, интерфейс на `127.0.0.1:8025` сервера) или SMTP провайдера | SMTP провайдера |
-| Рокет Ворк | после этапа выплат (блок «Модули в разработке» шаблонов) | после этапа выплат |
+| Рокет Ворк | `ROCKETWORK_MODE=disabled`: подделке нужен общий для `api` и `worker` файл, у стека его нет; тестовая среда Рокет Ворк (Q-12) — `live` | `disabled` до сверки контракта (Q-10 … Q-12), затем `live` |
 | Данные | выдуманные; данные продакшена сюда не переносятся | настоящие |
 
 `APP_ENV=test` для серверов не подходит: в нём всегда подделки и хранилище в памяти, оно для тестов Go.
@@ -57,6 +57,7 @@
 5. Первый выпуск: Actions → **release** → Run workflow (окружение, ref). Роли базы создаются при первом запуске PostgreSQL (`deploy/postgres/initdb/10-roles.sh`), миграции применяет `release.sh`.
 6. **Действие человека.** Юридические документы: `docker compose --env-file stack.env --env-file slots.env run --rm migrate legal publish …` (тексты — [docs/launch/legal-documents.md](../../docs/launch/legal-documents.md)); роль администратора — `… run --rm migrate admin grant --email <адрес> --role senior`. Сервис `migrate` запускается образом из `MAXIM_TAG_NEW`: перед командой `export MAXIM_TAG_NEW=<активный тег>` (`grep MAXIM_TAG slots.env`).
 7. Для продакшена — сертификат Минцифры в образе (`deploy/certs/README.md`, **действие человека**: скачать, сверить отпечаток, закоммитить) и `MAX_CA_CERT_FILE` в `app.env`; в тестовом окружении — только вместе с токеном тестового бота.
+8. **Действие человека.** Рокет Ворк (при `ROCKETWORK_MODE=live`): в кабинете Рокет Ворк указать адрес вебхука `<PUBLIC_BASE_URL>/api/v1/webhooks/rocketwork` (например `https://api.maxim-ads.ru/api/v1/webhooks/rocketwork`) и ключ подписи — тот же, что `ROCKETWORK_WEBHOOK_SECRET` в `app.env` (не короче 16 символов). Запрос идёт через тот же сайт edge-Caddy, что и API, отдельного маршрута не нужно; подпись проверяет `api`, отказы — журнал `rocketwork webhook rejected` и оповещение после пяти отказов за 10 минут. Без вебхука исходы выплат узнаёт опрос `worker` (`PAYOUT_POLL_FAST`, `PAYOUT_POLL_SLOW`). Перед первой выплатой — пополнить депозит: перевод в Рокет Ворк и `… run --rm migrate admin money deposit-topup --amount … --reason … --email …`.
 
 Команды compose на сервере всегда с обоими файлами переменных:
 
@@ -125,7 +126,7 @@ dc exec backup /usr/local/bin/backup-dump.sh        # внеочередная �
 
 ### Проверка восстановления
 
-`restore-check.sh` (по расписанию и вручную `dc exec backup /usr/local/bin/restore-check.sh [--key db/dump/…/maxim-<время>]`): скачивает логическую копию, сверяет `sha256`, поднимает временный кластер PostgreSQL в томе `backup-tmp` того же сервера, восстанавливает и проверяет: возраст копии, версию миграций, наличие таблиц, сходимость журнала проводок (те же запросы, что задание `check_ledger_balance`), наличие в копии объектов до 50 файлов медиатеки. Итог — строка `restore_check_result` с длительностью восстановления; кластер удаляется. Данные не покидают сервер.
+`restore-check.sh` (по расписанию и вручную `dc exec backup /usr/local/bin/restore-check.sh [--key db/dump/…/maxim-<время>]`): скачивает логическую копию, сверяет `sha256`, поднимает временный кластер PostgreSQL в томе `backup-tmp` того же сервера, восстанавливает и проверяет: возраст копии, версию миграций, наличие таблиц (в том числе выплат `payout` и `rocketwork_contractor`), сходимость журнала проводок (те же запросы, что задание `check_ledger_balance`), наличие в копии объектов до 50 файлов медиатеки. Итог — строка `restore_check_result` с длительностью восстановления; кластер удаляется. Данные не покидают сервер.
 
 ### Восстановление логической копии
 

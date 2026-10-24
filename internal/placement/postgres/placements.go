@@ -144,6 +144,21 @@ func (r *Placements) UpdateIfStatus(ctx context.Context, p domain.Placement, sta
 	return nil
 }
 
+func (r *Placements) SetDistribution(ctx context.Context, id uuid.UUID, d domain.Distribution) error {
+	const op = "Placement.Placements.SetDistribution"
+	share, payout, fee, refund := int32(d.PerformanceShare), int64(d.PayoutAmount), int64(d.FeeCharged), int64(d.RefundAmount)
+	n, err := r.s.q(ctx).SetPlacementDistribution(ctx, sqlc.SetPlacementDistributionParams{
+		ID: id, PerformanceShare: &share, PayoutAmount: &payout, FeeCharged: &fee, RefundAmount: &refund,
+	})
+	if err != nil {
+		return r.s.fail(ctx, op, err, "placement_id", id)
+	}
+	if n == 0 {
+		return domain.ErrStaleVersion
+	}
+	return nil
+}
+
 func (r *Placements) ListByOrder(ctx context.Context, orderID uuid.UUID) ([]domain.Placement, error) {
 	rows, err := r.s.q(ctx).ListPlacementsByOrder(ctx, orderID)
 	if err != nil {

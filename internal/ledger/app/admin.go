@@ -17,6 +17,7 @@ import (
 const (
 	ActionManual        = "ledger.manual"
 	ActionBalanceReturn = "ledger.balance_return"
+	ActionDepositTopup  = "ledger.deposit_topup"
 )
 
 // ErrSecondApproval — ручная проводка выше порога без второго администратора (R-14).
@@ -63,6 +64,31 @@ func (s *Service) BalanceReturn(ctx context.Context, key string, orgID uuid.UUID
 	}
 	t := domain.NewBalanceReturn(key, orgID, amount, adminID, reason)
 	return s.adminPost(ctx, op, t, ActionBalanceReturn, &orgID, uuid.Nil, map[string]any{KeyAmount: int64(amount)})
+}
+
+// DepositTopup — пополнение депозита Рокет Ворк с расчётного счёта (06 §2.3, R-12 этапа выплат):
+// bank → rocketwork_deposit. Сумма выше порога — только со вторым администратором (R-14).
+func (s *Service) DepositTopup(ctx context.Context, key string, amount money.Kopecks, adminID, approverID uuid.UUID, reason string) (Result, error) {
+	const op = "Ledger.DepositTopup"
+	if reason == "" {
+		return Result{}, apperr.Validation("reason", "required")
+	}
+	if s.ManualSecondApproval > 0 && amount > s.ManualSecondApproval && (approverID == uuid.Nil || approverID == adminID) {
+		s.log.WarnContext(ctx, "admin deposit topup refused", logx.KeyOp, op, "admin_id", adminID, KeyAmount, int64(amount),
+			"reason", "second_approval")
+		return Result{}, ErrSecondApproval
+	}
+	t := domain.NewDepositTopup(key, amount, adminID, reason)
+	data := map[string]any{KeyAmount: int64(amount), "key": key}
+	if approverID != uuid.Nil {
+		data["approver_id"] = approverID.String()
+	}
+	res, err := s.adminPost(ctx, op, t, ActionDepositTopup, nil, approverID, data)
+	if err == nil {
+		s.log.WarnContext(ctx, "admin deposit topup", logx.KeyOp, op, "admin_user_id", adminID, KeyAmount, int64(amount),
+			"key", key, "replayed", res.Replayed)
+	}
+	return res, err
 }
 
 // adminPost проводит транзакцию администратора и пишет журнал действий; повтор ключа —

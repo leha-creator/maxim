@@ -26,6 +26,7 @@ import (
 	"github.com/leha-creator/maxim/internal/integration/mail/mailfake"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	"github.com/leha-creator/maxim/internal/integration/ord/ordfake"
+	"github.com/leha-creator/maxim/internal/integration/rocketwork/rocketworkfake"
 	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/dbtest"
 	"github.com/leha-creator/maxim/internal/platform/job"
@@ -80,7 +81,13 @@ func newTestAppWith(t *testing.T, cfg Config) *testApp {
 	fake := maxfake.New()
 	fake.SetNow(clk.Now)
 	ordFake := ordfake.New()
-	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: fake, box: box, ord: ordFake}
+	var rwOpts []rocketworkfake.Option
+	if cfg.RocketWork.FakeStatePath != "" { // общее состояние с командами maxim dev rocketwork
+		rwOpts = append(rwOpts, rocketworkfake.WithStatePath(cfg.RocketWork.FakeStatePath))
+	}
+	rwFake := rocketworkfake.New(cfg.RocketWorkWebhookSecret(), rwOpts...)
+	in := &infra{pool: d.Pool, clock: clk, log: log, storage: storagefake.New(), mail: mailfake.New(), max: fake, box: box, ord: ordFake,
+		rocketwork: rwFake}
 	in.alerter = newAlerter(cfg, in)
 	m := newModules(cfg, in)
 	if err := m.startMarking(context.Background()); err != nil {

@@ -103,3 +103,17 @@ func NewPlacement(t testing.TB, pool *pgxpool.Pool, advertiser uuid.UUID, blogge
 	}
 	return p
 }
+
+// Payout записывает попытку выплаты размещения (created, перевод вручную): основание проводки
+// payout (ledger_transaction.payout_id ссылается на payout).
+func Payout(t testing.TB, pool *pgxpool.Pool, p Placement, amount money.Kopecks) uuid.UUID {
+	t.Helper()
+	id := ids.New()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO payout (id, placement_id, blogger_organization_id, method,
+		amount, attempt, status, idempotency_key, created_at, updated_at)
+		VALUES ($1, $2, $3, 'bank_transfer', $4, 1, 'created', $5, now(), now())`,
+		id, p.ID, p.BloggerID, int64(amount), "rw-payout:"+id.String()); err != nil {
+		t.Fatalf("insert payout: %v", err)
+	}
+	return id
+}

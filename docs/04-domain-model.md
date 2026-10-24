@@ -596,7 +596,7 @@ erDiagram
 | Таблица | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|---|
 | `ledger_transaction` | `kind` | `text` | да | Вид операции (06 §2.3) |
-| | `placement_id`, `invoice_id`, `payout_id`, `bank_transaction_id` | `uuid` | нет | Основание; заполняется подходящее |
+| | `placement_id`, `invoice_id`, `payout_id`, `bank_transaction_id` | `uuid` | нет | Основание; заполняется подходящее. `payout_id` — внешний ключ на `payout` (с этапа выплат) |
 | | `actor_type`, `actor_user_id` | | да / нет | `system`, `admin`, `advertiser` |
 | | `reason` | `text` | нет | Обязателен для `manual` и `balance_return` |
 | | `idempotency_key` | `text` | да | Уникально. Формат по виду операции — 06 §2.2 (R-3) |
@@ -624,7 +624,8 @@ erDiagram
 | `organization_id` | `uuid` | да | Уникально |
 | `external_id` | `text` | нет | Идентификатор исполнителя в Рокет Ворк |
 | `status` | `text` | да | `invited`, `pending`, `active`, `blocked` |
-| `onboarding_url` | `text` | нет | |
+| `blocked_reason` | `text` | нет | Только при `blocked`; наш код (`tax_status_lost` — утрачен статус самозанятого), адаптер приводит к нему ответ сервиса |
+| `onboarding_url` | `text` | нет | Для блогера; в журнал выше DEBUG не пишется |
 | `status_checked_at` | `timestamptz` | нет | |
 | `last_error` | `text` | нет | |
 
@@ -635,16 +636,20 @@ erDiagram
 | Поле | Тип | Об. | Пояснение |
 |---|---|---|---|
 | `placement_id` | `uuid` | да | Частичный уникальный индекс при `status` из `created`, `sent`, `succeeded` — не больше одной живой выплаты |
-| `rocketwork_contractor_id` | `uuid` | да | |
+| `blogger_organization_id` | `uuid` | да | Получатель |
+| `method` | `text` | да | `rocketwork` — через сервис; `bank_transfer` — юрлицу переводом вне сервиса (A-36) |
+| `rocketwork_contractor_id` | `uuid` | нет | Заполнено тогда и только тогда, когда `method = rocketwork` |
 | `amount` | `bigint` | да | Равно `placement.payout_amount` |
 | `attempt` | `integer` | да | С 1 |
 | `status` | `text` | да | `created`, `sent`, `succeeded`, `failed` |
 | `external_id` | `text` | нет | Идентификатор в Рокет Ворк |
 | `provider_fee` | `bigint` | нет | Комиссия Рокет Ворк за выплату |
 | `receipt_url` | `text` | нет | Чек |
-| `failure_code`, `failure_message` | `text` | нет | |
+| `bank_reference` | `text` | нет | Номер платёжного поручения для `bank_transfer` |
+| `failure_code`, `failure_message` | `text` | нет | Код — из 05 §4.3; заполнен тогда и только тогда, когда `failed` |
 | `sent_at`, `completed_at` | `timestamptz` | нет | |
-| `idempotency_key` | `text` | да | Уникально. Передаётся в Рокет Ворк |
+| `idempotency_key` | `text` | да | Уникально. `rw-payout:{payout_id}`: у каждой попытки свой. Передаётся в Рокет Ворк |
+| `created_by` | `uuid` | нет | Администратор, создавший попытку повтором; пусто — система |
 | `lock_version` | `integer` | да | |
 
 Заявок на вывод остатка нет (D-26): возврат остатка — проводка `balance_return`, которую администратор вводит по обращению в поддержку (06 §2.3).

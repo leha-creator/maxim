@@ -75,11 +75,12 @@ type Config struct {
 	Billing      BillingConfig
 	Notification NotificationConfig
 
-	ORD       ORDConfig
-	MAX       MAXConfig
-	Alert     AlertConfig
-	Scheduler SchedulerConfig
-	Retention RetentionConfig
+	ORD        ORDConfig
+	RocketWork RocketWorkConfig
+	MAX        MAXConfig
+	Alert      AlertConfig
+	Scheduler  SchedulerConfig
+	Retention  RetentionConfig
 }
 
 // MAXConfig — MAX Bot API (05 §2.1, 05 §2.8).
@@ -423,6 +424,7 @@ func (c Config) Validate(mode string) error {
 		c.validateMedia(add)
 		c.validatePlacement(add)
 		c.validateORD(add)
+		c.validateRocketWork(add)
 		c.validateBilling(add)
 		c.validateNotification(add)
 	}
@@ -658,6 +660,16 @@ func (c Config) LogValue() slog.Value {
 		slog.String("ord_platform_type", c.ORD.PlatformType),
 		slog.String("ord_status_timeout", c.ORD.StatusTimeout.String()),
 		slog.String("ord_erid_wait", c.ORD.EridWait.String()),
+		slog.String("rocketwork_mode", c.RocketWorkMode()),
+		slog.String("rocketwork_base_url", c.RocketWork.BaseURL),
+		slog.String("rocketwork_token", secret(c.RocketWork.Token)),
+		slog.String("rocketwork_webhook_secret", secret(c.RocketWork.WebhookSecret)),
+		slog.Float64("rocketwork_rate", c.RocketWork.Rate),
+		slog.String("rocketwork_deposit_check_interval", c.RocketWork.DepositCheckInterval.String()),
+		slog.Int64("rocketwork_deposit_tolerance", c.RocketWork.DepositTolerance),
+		slog.String("payout_poll_fast", c.RocketWork.PollFast.String()),
+		slog.String("payout_poll_slow", c.RocketWork.PollSlow.String()),
+		slog.Int64("payout_npd_annual_limit", c.RocketWork.NPDAnnualLimit),
 		slog.String("platform_bank_account", logx.MaskAccount(c.BillingSupplier().BankAccount)),
 		slog.String("invoice_ttl", c.Billing.InvoiceTTL.String()),
 		slog.Int("invoice_rate_per_user", c.Billing.InvoiceRatePerUser),

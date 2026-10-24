@@ -10,6 +10,7 @@ import (
 	billingdomain "github.com/leha-creator/maxim/internal/billing/domain"
 	"github.com/leha-creator/maxim/internal/integration/max/maxfake"
 	notificationdomain "github.com/leha-creator/maxim/internal/notification/domain"
+	payoutdomain "github.com/leha-creator/maxim/internal/payout/domain"
 	placementdomain "github.com/leha-creator/maxim/internal/placement/domain"
 	"github.com/leha-creator/maxim/internal/platform/job"
 	"github.com/leha-creator/maxim/internal/platform/logx"
@@ -64,5 +65,36 @@ func TestNotificationMessengerPassesRejection(t *testing.T) {
 	fake.FailUserMessagesWith(job.Permanent(errors.New("chat.denied")))
 	if err := b.SendUserMessage(context.Background(), 42, "hi"); !job.IsPermanent(err) {
 		t.Fatalf("rejection must stay permanent: %v", err)
+	}
+}
+
+func TestPayoutNotifierBlogger(t *testing.T) {
+	rec := &recordingNotifier{}
+	b := PayoutNotifier{Svc: rec}
+	if err := b.Notify(context.Background(), payoutdomain.Notice{Template: payoutdomain.NoticePayoutSent}); err == nil {
+		t.Fatal("notice without organization must fail")
+	}
+	org, payout, contractor := uuid.New(), uuid.New(), uuid.New()
+	if err := b.Notify(context.Background(), payoutdomain.Notice{Template: payoutdomain.NoticePayoutSucceeded, OrganizationID: org,
+		ObjectID: payout, Data: map[string]any{"receipt_url": "https://r"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Notify(context.Background(), payoutdomain.Notice{Template: payoutdomain.NoticeRocketworkActive, OrganizationID: org,
+		ObjectID: contractor}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 2 {
+		t.Fatalf("got %+v", rec.got)
+	}
+	p, c := rec.got[0], rec.got[1]
+	if p.Role != notificationdomain.RoleBlogger || p.ObjectType != "payout" || p.ObjectID != payout.String() ||
+		p.Key != "payout.succeeded:"+payout.String() || p.Data["receipt_url"] != "https://r" {
+		t.Fatalf("payout notice %+v", p)
+	}
+	if c.Role != notificationdomain.RoleBlogger || c.ObjectType != "rocketwork_contractor" || c.Key != "" {
+		t.Fatalf("contractor notice %+v", c)
+	}
+	if notificationdomain.Link(p) != "/blg/payouts" || notificationdomain.Link(c) != "/blg/payouts" {
+		t.Fatalf("links %q %q", notificationdomain.Link(p), notificationdomain.Link(c))
 	}
 }

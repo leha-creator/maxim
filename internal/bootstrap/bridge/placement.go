@@ -229,7 +229,7 @@ func (b ChannelPlacements) InCart(ctx context.Context, orgID uuid.UUID, ids []uu
 
 // ---------------------------------------------------------------- будущие модули (R-3, R-4)
 
-// AllowAllContractors — проверка исполнителя Рокет Ворк до этапа «Выплаты блогерам» (R-3, A-36).
+// AllowAllContractors — проверка исполнителя до подключения модуля выплат (SetPayoutPorts, R-3, A-36).
 type AllowAllContractors struct{ Log *slog.Logger }
 
 var _ domain.ContractorGate = AllowAllContractors{}

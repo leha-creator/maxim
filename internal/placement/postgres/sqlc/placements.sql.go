@@ -598,7 +598,7 @@ func (q *Queries) ListBloggerPlacements(ctx context.Context, arg ListBloggerPlac
 }
 
 const listPlacementRefs = `-- name: ListPlacementRefs :many
-SELECT p.id, p.order_id, o.number AS order_number, coalesce(c.title, '')::text AS channel_title,
+SELECT p.id, p.order_id, o.number AS order_number, p.channel_id, coalesce(c.title, '')::text AS channel_title,
     pub.published_at, pub.removed_at
 FROM placement p
 JOIN "order" o ON o.id = p.order_id
@@ -611,6 +611,7 @@ type ListPlacementRefsRow struct {
 	ID           uuid.UUID
 	OrderID      uuid.UUID
 	OrderNumber  int64
+	ChannelID    uuid.UUID
 	ChannelTitle string
 	PublishedAt  *time.Time
 	RemovedAt    *time.Time
@@ -630,6 +631,7 @@ func (q *Queries) ListPlacementRefs(ctx context.Context, ids []uuid.UUID) ([]Lis
 			&i.ID,
 			&i.OrderID,
 			&i.OrderNumber,
+			&i.ChannelID,
 			&i.ChannelTitle,
 			&i.PublishedAt,
 			&i.RemovedAt,
@@ -919,6 +921,35 @@ func (q *Queries) ScheduledWithoutPublication(ctx context.Context, before *time.
 		return nil, err
 	}
 	return items, nil
+}
+
+const setPlacementDistribution = `-- name: SetPlacementDistribution :execrows
+UPDATE placement SET performance_share = $1, payout_amount = $2,
+    fee_charged = $3, refund_amount = $4
+WHERE id = $5 AND performance_share IS NULL
+`
+
+type SetPlacementDistributionParams struct {
+	PerformanceShare *int32
+	PayoutAmount     *int64
+	FeeCharged       *int64
+	RefundAmount     *int64
+	ID               uuid.UUID
+}
+
+// Распределение удержания при переходе в accepted или refunded (03 §7, I-12); один раз.
+func (q *Queries) SetPlacementDistribution(ctx context.Context, arg SetPlacementDistributionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPlacementDistribution,
+		arg.PerformanceShare,
+		arg.PayoutAmount,
+		arg.FeeCharged,
+		arg.RefundAmount,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updatePlacement = `-- name: UpdatePlacement :execrows

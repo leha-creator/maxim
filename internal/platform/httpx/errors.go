@@ -38,6 +38,8 @@ func StatusOf(code apperr.Code) int {
 		return http.StatusTooManyRequests
 	case apperr.CodeNotImplemented:
 		return http.StatusNotImplemented
+	case apperr.CodeServiceUnavailable:
+		return http.StatusServiceUnavailable
 	case apperr.CodeInternal:
 		return http.StatusInternalServerError
 	default: // conflict, inn_taken, invalid_transition и прочие предметные отказы
@@ -55,6 +57,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 	}
 	status := StatusOf(e.Code)
 	switch {
+	case e.Code == apperr.CodeServiceUnavailable:
+		log.WarnContext(ctx, "request rejected, service unavailable", logx.KeyOp, "HTTP.Error", "status", status,
+			"reason", e.Details["reason"])
 	case status >= 500 && e.Code != apperr.CodeNotImplemented:
 		log.ErrorContext(ctx, "request failed", logx.KeyOp, "HTTP.Error", "status", status, logx.KeyError, err.Error())
 	case status == http.StatusForbidden:
