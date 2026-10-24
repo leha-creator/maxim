@@ -133,7 +133,11 @@ notify_failure() {
   } > "$msg"
   local args=(--silent --show-error --max-time 30 --url "$url" --mail-from "$MAIL_FROM" --upload-file "$msg")
   [[ ${SMTP_TLS:-starttls} == starttls ]] && args+=(--ssl-reqd)
-  [[ -n ${SMTP_USER:-} ]] && args+=(--user "$SMTP_USER:${SMTP_PASSWORD:-}")
+  # Пароль SMTP — через файл netrc (права 600), а не аргументом: аргументы видны в списке процессов.
+  if [[ -n ${SMTP_USER:-} ]]; then
+    (umask 077; printf 'machine %s login %s password %s\n' "$SMTP_HOST" "$SMTP_USER" "${SMTP_PASSWORD:-}" > "$msg.netrc")
+    args+=(--netrc-file "$msg.netrc")
+  fi
   IFS=',' read -ra rcpt <<< "$ALERT_EMAILS"
   local r
   for r in "${rcpt[@]}"; do
@@ -146,7 +150,7 @@ notify_failure() {
   else
     log error notify_failed kind="$kind" error="$(head -c 300 "$msg.err")"
   fi
-  rm -f "$msg" "$msg.err"
+  rm -f "$msg" "$msg.err" "$msg.netrc"
 }
 
 # fail_job <kind> <event> <text> — ERROR в журнал, состояние, письмо; код 1.
