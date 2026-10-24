@@ -90,6 +90,10 @@ type Deps struct {
 	Channels   domain.Channels
 	LinkCodes  domain.LinkCodes
 	Categories domain.Categories
+	// Counter — счётчик каналов на модерации (R-16 этапа «API администратора»); nil — 0.
+	Counter interface {
+		ModerationCount(ctx context.Context) (int, error)
+	}
 	Formats    domain.Formats
 	Prices     domain.Prices
 	Unavail    domain.Unavailabilities

@@ -86,7 +86,7 @@ func newChannelService(cfg Config, in *infra, txRunner tx.Runner, queue job.Enqu
 	ch := cfg.Channel
 	day := 24 * time.Hour
 	deps := channelapp.Deps{
-		Channels: store.Channels(), LinkCodes: store.LinkCodes(), Categories: store.Categories(),
+		Channels: store.Channels(), LinkCodes: store.LinkCodes(), Categories: store.Categories(), Counter: store.Categories(),
 		Formats: store.Formats(), Prices: store.Prices(), Unavail: store.Unavailabilities(), Metrics: store.Metrics(),
 		Catalog: store.Catalog(), Admin: store.AdminChannels(),
 		Alerts: in.alerter, Tx: txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,

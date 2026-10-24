@@ -253,3 +253,27 @@ func (g AllowAllContractors) CanAccept(ctx context.Context, bloggerOrgID uuid.UU
 		logx.KeyOrganizationID, bloggerOrgID)
 	return true, nil
 }
+
+// PlacementPostModeration — решение администратора по версии поста (S-17) для модуля размещений:
+// модуль post. MarkingOff — ORD_ENABLED=false (I-2 этапа «API администратора»).
+type PlacementPostModeration struct {
+	Svc        *postapp.Service
+	MarkingOff bool
+}
+
+func (b PlacementPostModeration) Approve(ctx context.Context, versionID, adminID uuid.UUID) error {
+	_, err := b.Svc.ApproveVersion(ctx, versionID, adminID)
+	return err
+}
+
+func (b PlacementPostModeration) Reject(ctx context.Context, versionID, adminID uuid.UUID, reason string) error {
+	_, err := b.Svc.RejectVersion(ctx, versionID, adminID, reason)
+	return err
+}
+
+func (b PlacementPostModeration) MarkingDisabled() bool { return b.MarkingOff }
+
+func (b PlacementPostModeration) MarkReady(ctx context.Context, versionID uuid.UUID, erid string) error {
+	_, err := b.Svc.MarkVersionReady(ctx, versionID, erid)
+	return err
+}

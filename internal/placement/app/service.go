@@ -104,6 +104,11 @@ type Deps struct {
 	Ratings   domain.ChannelRatings
 	Publisher domain.ChannelPublisher
 	Content   domain.PublicationContent
+	// Admin, Messages, Moderation — разделы администратора (этап «API администратора»): выборки,
+	// переписка по спору и решение по посту; Moderation — модуль post.
+	Admin      domain.AdminReads
+	Messages   domain.DisputeMessages
+	Moderation domain.PostModeration
 	// Alerts — оповещения администратору (07 §3); nil — только журнал.
 	Alerts Alerter
 	// Metrics — метрики публикации и контроля (07 §5.5); nil — без метрик.
@@ -254,8 +259,8 @@ type Observer interface {
 	Accepted(code domain.TransitionCode)
 	// DisputeOpened — открыт спор: кто открыл и причина.
 	DisputeOpened(openedBy domain.OpenedBy, reason string)
-	// DisputeResolved — спор решён.
-	DisputeResolved(res domain.Resolution)
+	// DisputeResolved — спор решён; took — от открытия до решения.
+	DisputeResolved(res domain.Resolution, took time.Duration)
 }
 
 // NopObserver — метрики не собираются.
@@ -266,7 +271,7 @@ func (NopObserver) RemoveDelay(time.Duration)                              {}
 func (NopObserver) Violation(domain.ViolationKind, domain.ViolationSource) {}
 func (NopObserver) Accepted(domain.TransitionCode)                         {}
 func (NopObserver) DisputeOpened(domain.OpenedBy, string)                  {}
-func (NopObserver) DisputeResolved(domain.Resolution)                      {}
+func (NopObserver) DisputeResolved(domain.Resolution, time.Duration)       {}
 
 // raise поднимает оповещение; ошибка оповещения не отменяет сценарий — она в журнале.
 func (s *Service) raise(ctx context.Context, op string, a alert.Alert) {

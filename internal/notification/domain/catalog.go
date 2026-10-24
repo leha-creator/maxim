@@ -45,6 +45,7 @@ var catalog = []Template{
 	{Code: "placement.removal_overdue", Roles: blogger},
 	{Code: "placement.disputed", Roles: bothAdmin},
 	{Code: "placement.dispute_resolved", Roles: both},
+	{Code: "placement.dispute_message", Roles: bothAdmin},
 	{Code: "payout.sent", Roles: blogger},
 	{Code: "payout.succeeded", Roles: blogger},
 	{Code: "payout.failed", Roles: blogger},
@@ -55,6 +56,7 @@ var catalog = []Template{
 	{Code: "channel.suspended", Roles: blogger},
 	{Code: "channel.disconnected", Roles: blogger},
 	{Code: "channel.restored", Roles: blogger},
+	{Code: "channel.blocked", Roles: blogger},
 }
 
 // Lookup — шаблон по коду.

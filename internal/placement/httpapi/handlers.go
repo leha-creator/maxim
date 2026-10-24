@@ -24,6 +24,8 @@ const (
 type Handlers struct {
 	svc *app.Service
 	log *slog.Logger
+	// admin — порты ответов администратора (SetAdminPorts).
+	admin AdminPorts
 }
 
 // New создаёт обработчики.

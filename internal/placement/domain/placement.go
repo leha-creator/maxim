@@ -120,6 +120,8 @@ const (
 	NoticeDisputed       = "placement.disputed"
 	// NoticeDisputeResolved — решение по спору (P-15, этап «Приёмка, споры и возвраты»).
 	NoticeDisputeResolved = "placement.dispute_resolved"
+	// NoticeDisputeMessage — новое сообщение по спору (R-9 этапа «API администратора»).
+	NoticeDisputeMessage = "placement.dispute_message"
 	// NoticeAcceptReminder — до T-01 осталось ReminderLead (R-8 этапа уведомлений).
 	NoticeAcceptReminder = "placement.accept_reminder"
 	// NoticePostApproved — модератор одобрил версию поста заказа.

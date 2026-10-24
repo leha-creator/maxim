@@ -61,6 +61,8 @@ type Category struct {
 	Slug     string
 	Name     string
 	Position int
+	// Archived — категория в архиве (is_active = false): не показывается кабинетам.
+	Archived bool
 }
 
 // Categories — справочник категорий.
@@ -68,6 +70,12 @@ type Categories interface {
 	ListActive(ctx context.Context) ([]Category, error)
 	// ExistsActive сообщает, что категория есть и включена.
 	ExistsActive(ctx context.Context, id uuid.UUID) (bool, error)
+	// Insert — новая категория; slug занят — ErrCategoryExists.
+	Insert(ctx context.Context, c Category, now time.Time) error
+	NextPosition(ctx context.Context) (int, error)
+	// GetForUpdate — категория с блокировкой; ErrNotFound, если нет.
+	GetForUpdate(ctx context.Context, id uuid.UUID) (Category, error)
+	Update(ctx context.Context, c Category, now time.Time) error
 }
 
 // ChatReader — чтение канала в MAX. Вызывается только из заданий worker (R-7).

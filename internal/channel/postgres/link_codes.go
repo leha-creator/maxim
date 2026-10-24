@@ -8,6 +8,7 @@ import (
 
 	"github.com/leha-creator/maxim/internal/channel/domain"
 	"github.com/leha-creator/maxim/internal/channel/postgres/sqlc"
+	"github.com/leha-creator/maxim/internal/platform/db"
 )
 
 // LinkCodes — коды подключения канала (R-15). Хеш кода в журнал не пишется.
@@ -96,4 +97,53 @@ func (r *Categories) ExistsActive(ctx context.Context, id uuid.UUID) (bool, erro
 	}
 	r.s.debug(ctx, op, "category_id", id, "exists", ok)
 	return ok, nil
+}
+
+func (r *Categories) Insert(ctx context.Context, c domain.Category, now time.Time) error {
+	const op = "Channel.Categories.Insert"
+	err := r.s.q(ctx).InsertCategory(ctx, sqlc.InsertCategoryParams{ID: c.ID, Slug: c.Slug, Name: c.Name,
+		Position: int32(c.Position), CreatedAt: now})
+	if db.UniqueViolation(err, "channel_category_slug_key") {
+		return domain.ErrCategoryExists
+	}
+	if err != nil {
+		return r.s.fail(ctx, op, err)
+	}
+	r.s.debug(ctx, op, "category_id", c.ID, "slug", c.Slug)
+	return nil
+}
+
+func (r *Categories) NextPosition(ctx context.Context) (int, error) {
+	n, err := r.s.q(ctx).NextCategoryPosition(ctx)
+	if err != nil {
+		return 0, r.s.fail(ctx, "Channel.Categories.NextPosition", err)
+	}
+	return int(n), nil
+}
+
+func (r *Categories) GetForUpdate(ctx context.Context, id uuid.UUID) (domain.Category, error) {
+	row, err := r.s.q(ctx).GetCategoryForUpdate(ctx, id)
+	if err != nil {
+		return domain.Category{}, r.s.fail(ctx, "Channel.Categories.GetForUpdate", err)
+	}
+	return domain.Category{ID: row.ID, Slug: row.Slug, Name: row.Name, Position: int(row.Position), Archived: !row.IsActive}, nil
+}
+
+func (r *Categories) Update(ctx context.Context, c domain.Category, now time.Time) error {
+	const op = "Channel.Categories.Update"
+	if err := r.s.q(ctx).UpdateCategory(ctx, sqlc.UpdateCategoryParams{ID: c.ID, Name: c.Name, Position: int32(c.Position),
+		IsActive: !c.Archived, UpdatedAt: now}); err != nil {
+		return r.s.fail(ctx, op, err)
+	}
+	r.s.debug(ctx, op, "category_id", c.ID, "archived", c.Archived)
+	return nil
+}
+
+// ModerationCount — каналы на модерации (счётчик R-16).
+func (r *Categories) ModerationCount(ctx context.Context) (int, error) {
+	n, err := r.s.q(ctx).CountChannelsInModeration(ctx)
+	if err != nil {
+		return 0, r.s.fail(ctx, "Channel.ModerationCount", err)
+	}
+	return int(n), nil
 }

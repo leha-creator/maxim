@@ -159,3 +159,15 @@ func PhoneFor(p *Principal, phone string) string {
 	}
 	return logx.MaskPhone(phone)
 }
+
+// AdminContext — RequireAdmin и context с действующим лицом admin для audit_log: операции
+// администратора через HTTP пишут журнал действий так же, как команды maxim admin.
+func AdminContext(ctx context.Context, log *slog.Logger, op string, roles ...string) (context.Context, *Principal, error) {
+	p, err := RequireAdmin(ctx, log, op, roles...)
+	if err != nil {
+		return ctx, nil, err
+	}
+	actor := audit.ActorFrom(ctx)
+	actor.Type, actor.UserID, actor.OrganizationID = audit.ActorAdmin, &p.UserID, nil
+	return audit.WithActor(ctx, actor), p, nil
+}

@@ -173,7 +173,7 @@ Rationale: план реализует этап целиком: операции
 
 ### Phase 3: Модерация, размещения, споры
 
-- [ ] **Task 5: Модерация поста (S-17, R-4)** (depends on 1, 4)
+- [x] **Task 5: Модерация поста (S-17, R-4)** (depends on 1, 4)
   - `placement/domain/ports.go`: `PostModeration{Approve(ctx, versionID, adminID) error; Reject(ctx, versionID, adminID, reason) error}`; `bridge.PlacementPostModeration` над `post/app`.
   - `placement/app/admin_orders.go`: `AdminOrders(ctx, filter)` (очередь: `moderation` по `campaign.date_from`, затем `moderation_started_at`/`updated_at`; `urgent` — до начала периода меньше 6 ч, A-40; `total`), `AdminOrder(ctx, id)` (заказ, размещения, версия поста с итоговым текстом — порт `PublicationContent` или `OrderView.Version`, креатив — порт `placement/domain.CreativeInfo` над `marking`), `ApproveOrderPost`, `RejectOrderPost` (заказ в `moderation`, иначе `409 invalid_transition`; причина обязательна). `placement/postgres`: выборка `ListOrdersForAdmin`.
   - `placement/httpapi/admin_orders.go`: обработчики (роль — обе).
@@ -181,7 +181,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты (`dbtest`): очередь по сроку, `urgent`; одобрение — версия `approved`, при `ORD_ENABLED=false` → `ready` и P-02 (как `dev post-version`); отказ — заказ `rejected`, удержания сняты; заказ не в `moderation` — `409`.
   - Файлы: `internal/placement/{domain/ports.go,app/admin_orders.go,app/admin_orders_test.go,postgres/queries/orders.sql,postgres/*.go,httpapi/admin_orders.go}`, `internal/bootstrap/bridge/placement.go`, `internal/bootstrap/placement.go`.
 
-- [ ] **Task 6: Блокировка канала и справочник категорий (R-7, R-8)** (depends on 3, 4)
+- [x] **Task 6: Блокировка канала и справочник категорий (R-7, R-8)** (depends on 3, 4)
   - `channel/domain`: `(c *Channel) Block(reason, now)`, `Unblock(now)` (в `moderation`); категория `Archived`.
   - `channel/app/moderation.go`: `Block(ctx, adminID, id, reason)`, `Unblock(ctx, adminID, id, reason)` — `audit_log` `channel.blocked|unblocked`, уведомление `channel.blocked` (шаблон `templates/notification/channel.blocked.tmpl`, каталог уведомлений); каталог и корзина уже фильтруют по `active`; проверка оформления — канал не `active` → как сейчас.
   - `channel/app/categories.go`: `CreateCategory`, `UpdateCategory` (`audit_log` `channel_category.created|updated`), `ListCategories` без архивных для кабинетов.
@@ -190,7 +190,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты: блокировка из `active` — нет в каталоге, текущее размещение продолжается; повторная — `409`; снятие — `moderation`; архивная категория не в списке кабинета; `moderator` — `403`.
   - Файлы: `internal/channel/{domain/channel.go,domain/category.go,app/moderation.go,app/categories.go,app/*_test.go,postgres/queries/*.sql,postgres/*.go,httpapi/admin.go}`, `internal/notification/domain/catalog.go`, `templates/notification/channel.blocked.tmpl`.
 
-- [ ] **Task 7: Размещения администратора и ручные операции (R-5, R-6)** (depends on 4)
+- [x] **Task 7: Размещения администратора и ручные операции (R-5, R-6)** (depends on 4)
   - `placement/app/admin_placements.go`: `AdminPlacements(ctx, filter{status, channel_id, order_id, from, to, overdue_removal, cursor, limit})` с `total`; `AdminPlacement(ctx, id)` — размещение, заказ, история, публикация, нарушения, спор (сводка), выплаты (порт `placement/domain.PayoutInfo` над `payout/app`), действия `available_admin_actions` (по состоянию и роли).
   - `CancelByAdmin(ctx, id, adminID, reason)` — P-06 `admin` (`ReasonAdminCancel`), `ReleaseHold`, `audit_log` `placement.admin_cancel`.
   - `MarkRemovedByAdmin(ctx, id, adminID, removedAt, reason)` — R-6: `publication.MarkRemoved(admin, removedAt)`, P-10 `admin`, `final_views`, отмена `remove_placement`, T-05 от `removed_at`, `audit_log` `placement.admin_mark_removed`.
@@ -200,7 +200,7 @@ Rationale: план реализует этап целиком: операции
   - Тесты (`dbtest`): отмена из `scheduled` — удержание снято, задания отменены; из `published` — `409`; отметка снятия — `removed`, `final_views`, T-05 от времени снятия, без нарушения; время раньше публикации — `422`; фильтр «просрочено снятие».
   - Файлы: `internal/placement/{app/admin_placements.go,app/admin_placements_test.go,domain/publish.go,domain/publication.go,domain/ports.go,postgres/queries/placements.sql,postgres/*.go,httpapi/admin_placements.go,httpapi/convert.go}`, `internal/bootstrap/bridge/placement.go`.
 
-- [ ] **Task 8: Споры через HTTP и переписка (R-9 … R-11)** (depends on 3, 4, 7)
+- [x] **Task 8: Споры через HTTP и переписка (R-9 … R-11)** (depends on 3, 4, 7)
   - `placement/domain/dispute_message.go`: `DisputeMessage`, `NewAdminMessage(to)`, `NewPartyMessage(author)`, `VisibleTo(author_type)`; ошибки `ErrDisputeResolved` (уже), `ErrMessageText`.
   - `placement/postgres/queries/dispute_messages.sql`: вставка, список по спору; `disputes.sql`: `GetDisputeByID`, `ListDisputesAdmin` с `state` (`open|resolved|all`), курсором и `total`.
   - `placement/app/dispute_messages.go`: `PostAdminMessage(ctx, disputeID, adminID, to, text)`, `PostPartyMessage(ctx, orgID, userID, placementID, side, text)`, `Messages(...)` для администратора и сторон; уведомление `dispute.message` (шаблон, каталог; адресат — роль стороны или администраторы).
@@ -361,3 +361,4 @@ Rationale: план реализует этап целиком: операции
 - Ручная денежная операция выше порога исполняется только после подтверждения другим `senior`; оба — в `audit_log`.
 - Отчёт ОРД за месяц формируется и отправляется заданием 1-го числа и вручную; суммы и показы — по 05 §3.6; ошибки видны в списке S-20; с 20-го — оповещение.
 - Ни текст основания, ни текст переписки, ни почта/ИНН без маскирования не пишутся в журнал приложения; выгрузки ИНН маскируют.
+- D-5 (задачи 5–8). Списки администратора — смещение в курсоре (`internal/platform/adminpage`, base64url `o:N`, `limit` 1…100, по умолчанию 20) и `total`; чтения — SQL с соединением таблиц модулей (как сверка). Ссылки на юрлицо и почту — `internal/platform/adminref` (ИНН всегда с маской). Действующее лицо audit_log администратора ставит `httpx.AdminContext`. Блокировка канала не вызывает `ChannelUnavailable` (S-25): начатые размещения продолжаются, блогер получает `channel.blocked`. Без маркировки (`ORD_ENABLED=false`) одобрение поста сразу выдаёт `erid` вида `dev-<номер заказа>`. Метрика `maxim_dispute_resolution_seconds{resolution}` — время от открытия до решения спора.

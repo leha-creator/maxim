@@ -275,6 +275,7 @@ func newModules(cfg Config, in *infra) *modules {
 		txRunner:          txRunner,
 		queue:             queue,
 	}
+	m.wireAdmin()
 	if cfg.ORD.Enabled {
 		m.wireMarking()
 	}

@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AdminApproval struct {
+	ID             uuid.UUID
+	Kind           string
+	Payload        []byte
+	Amount         int64
+	Summary        string
+	Reason         string
+	IdempotencyKey string
+	RequestedBy    uuid.UUID
+	Status         string
+	DecidedBy      *uuid.UUID
+	DecidedAt      *time.Time
+	DecisionReason *string
+	ResultID       *uuid.UUID
+	ExpiresAt      time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type AdvertiserProfile struct {
 	OrganizationID uuid.UUID
 	CreatedAt      time.Time
@@ -262,6 +281,16 @@ type Dispute struct {
 	ResolvedAt        *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+type DisputeMessage struct {
+	ID           uuid.UUID
+	DisputeID    uuid.UUID
+	AuthorType   string
+	AuthorUserID uuid.UUID
+	Recipient    *string
+	Text         string
+	CreatedAt    time.Time
 }
 
 type Hold struct {
@@ -747,13 +776,16 @@ type Session struct {
 }
 
 type User struct {
-	ID          uuid.UUID
-	Email       string
-	AdminRole   *string
-	Status      string
-	LastLoginAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            uuid.UUID
+	Email         string
+	AdminRole     *string
+	Status        string
+	LastLoginAt   *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	BlockedAt     *time.Time
+	BlockedReason *string
+	AnonymizedAt  *time.Time
 }
 
 type Violation struct {
