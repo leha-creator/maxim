@@ -91,3 +91,28 @@ type JournalLine struct {
 	Credit        AccountRef
 	Amount        money.Kopecks
 }
+
+// AdminEntryFilter — отбор журнала денег администратора (adm/ledger); нулевые поля — без отбора.
+type AdminEntryFilter struct {
+	OrganizationID *uuid.UUID
+	Kind           *Kind
+	From, To       *time.Time
+	Offset, Limit  int
+}
+
+// AdminEntry — проводка журнала администратора: основание, действующее лицо и второй администратор.
+type AdminEntry struct {
+	JournalLine
+	ActorType   ActorType
+	ActorUserID *uuid.UUID
+	// ApproverID — второй администратор ручной операции; uuid.Nil — не было.
+	ApproverID  uuid.UUID
+	PlacementID *uuid.UUID
+	InvoiceID   *uuid.UUID
+	PayoutID    *uuid.UUID
+}
+
+// AdminJournal — журнал денег администратора с общим числом строк.
+type AdminJournal interface {
+	AdminEntries(ctx context.Context, f AdminEntryFilter) ([]AdminEntry, int, error)
+}

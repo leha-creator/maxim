@@ -20,8 +20,9 @@ const cabinetBlogger = "blogger"
 
 // Handlers — операции OpenAPI выплат (тег blogger-payouts, R-16 этапа выплат).
 type Handlers struct {
-	svc *app.Service
-	log *slog.Logger
+	svc   *app.Service
+	log   *slog.Logger
+	admin AdminPorts
 }
 
 // New создаёт обработчики.

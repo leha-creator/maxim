@@ -14,6 +14,8 @@ var (
 	ErrInvalidPayoutState = errors.New("payout: invalid payout state")
 	// ErrPayoutNotRetryable — повтор возможен только из последней попытки failed (R-9).
 	ErrPayoutNotRetryable = errors.New("payout: payout is not retryable")
+	// ErrSecondApproval — отметка выплаты выше порога без второго администратора (R-2).
+	ErrSecondApproval = errors.New("payout: second senior admin approval is required")
 	// ErrPayoutExists — у размещения уже есть живая выплата (04 §7).
 	ErrPayoutExists = errors.New("payout: placement already has a live payout")
 	// ErrContractorNotRequired — юрлицу исполнитель Рокет Ворк не нужен (A-36).

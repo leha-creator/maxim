@@ -12,6 +12,90 @@ import (
 	"github.com/google/uuid"
 )
 
+const adminCountInvoices = `-- name: AdminCountInvoices :one
+SELECT count(*)::int FROM invoice
+WHERE ($1::text = '' OR status = $1)
+  AND ($2::uuid IS NULL OR organization_id = $2)
+  AND ($3::text = '' OR number = $3)
+`
+
+type AdminCountInvoicesParams struct {
+	Status         string
+	OrganizationID *uuid.UUID
+	Number         string
+}
+
+func (q *Queries) AdminCountInvoices(ctx context.Context, arg AdminCountInvoicesParams) (int32, error) {
+	row := q.db.QueryRow(ctx, adminCountInvoices, arg.Status, arg.OrganizationID, arg.Number)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const adminListInvoices = `-- name: AdminListInvoices :many
+SELECT id, number, organization_id, amount, status, expires_at, paid_at, paid_amount, payer_name, payer_inn, payer_bank_account, payer_bank_name, payer_bank_bik, payer_bank_corr_account, pdf_storage_key, created_by, cancel_reason, created_at, updated_at FROM invoice
+WHERE ($1::text = '' OR status = $1)
+  AND ($2::uuid IS NULL OR organization_id = $2)
+  AND ($3::text = '' OR number = $3)
+ORDER BY created_at DESC, id DESC
+LIMIT $5 OFFSET $4
+`
+
+type AdminListInvoicesParams struct {
+	Status         string
+	OrganizationID *uuid.UUID
+	Number         string
+	Off            int32
+	Lim            int32
+}
+
+// Счета всех организаций для администратора (adm/payments), новые сверху; смещение и общее число.
+func (q *Queries) AdminListInvoices(ctx context.Context, arg AdminListInvoicesParams) ([]Invoice, error) {
+	rows, err := q.db.Query(ctx, adminListInvoices,
+		arg.Status,
+		arg.OrganizationID,
+		arg.Number,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Invoice{}
+	for rows.Next() {
+		var i Invoice
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.OrganizationID,
+			&i.Amount,
+			&i.Status,
+			&i.ExpiresAt,
+			&i.PaidAt,
+			&i.PaidAmount,
+			&i.PayerName,
+			&i.PayerInn,
+			&i.PayerBankAccount,
+			&i.PayerBankName,
+			&i.PayerBankBik,
+			&i.PayerBankCorrAccount,
+			&i.PdfStorageKey,
+			&i.CreatedBy,
+			&i.CancelReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countInvoicesByStatus = `-- name: CountInvoicesByStatus :many
 SELECT status, count(*)::int AS n FROM invoice GROUP BY status ORDER BY status
 `
@@ -300,6 +384,50 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]I
 		arg.CursorID,
 		arg.Lim,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Invoice{}
+	for rows.Next() {
+		var i Invoice
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.OrganizationID,
+			&i.Amount,
+			&i.Status,
+			&i.ExpiresAt,
+			&i.PaidAt,
+			&i.PaidAmount,
+			&i.PayerName,
+			&i.PayerInn,
+			&i.PayerBankAccount,
+			&i.PayerBankName,
+			&i.PayerBankBik,
+			&i.PayerBankCorrAccount,
+			&i.PdfStorageKey,
+			&i.CreatedBy,
+			&i.CancelReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInvoicesByIDs = `-- name: ListInvoicesByIDs :many
+SELECT id, number, organization_id, amount, status, expires_at, paid_at, paid_amount, payer_name, payer_inn, payer_bank_account, payer_bank_name, payer_bank_bik, payer_bank_corr_account, pdf_storage_key, created_by, cancel_reason, created_at, updated_at FROM invoice WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) ListInvoicesByIDs(ctx context.Context, ids []uuid.UUID) ([]Invoice, error) {
+	rows, err := q.db.Query(ctx, listInvoicesByIDs, ids)
 	if err != nil {
 		return nil, err
 	}

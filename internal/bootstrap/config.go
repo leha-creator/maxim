@@ -680,6 +680,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("invoice_rate_per_ip", c.Billing.InvoiceRatePerIP),
 		slog.String("ledger_check_interval", c.Billing.LedgerCheckInterval.String()),
 		slog.Int64("ledger_manual_second_approval_threshold", c.Billing.ManualSecondApproval),
+		slog.String("admin_approval_ttl", c.Billing.ApprovalTTL.String()),
 		slog.String("closing_acts_at", fmt.Sprintf("%d %s", c.Billing.ClosingActsDay, c.Billing.ClosingActsTime)),
 		slog.String("cabinet_base_url", c.CabinetBaseURL()),
 		slog.Int("notification_send_attempts", c.Notification.SendAttempts),

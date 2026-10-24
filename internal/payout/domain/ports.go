@@ -83,6 +83,14 @@ type AdminFilter struct {
 	OrganizationID uuid.UUID
 	From, To       time.Time
 	Limit          int
+	Offset         int
+}
+
+// StatusTotal — число и сумма выплат в состоянии.
+type StatusTotal struct {
+	Status Status
+	Count  int
+	Amount money.Kopecks
 }
 
 // StuckItem — объект проверки зависших (07 §3).
@@ -116,6 +124,12 @@ type Store interface {
 	// SucceededSum — сумма succeeded выплат организации с completed_at в [from, to).
 	SucceededSum(ctx context.Context, orgID uuid.UUID, from, to time.Time) (money.Kopecks, error)
 	AdminList(ctx context.Context, f AdminFilter) ([]Payout, error)
+	// AdminPage — страница реестра со смещением f.Offset и общим числом (adm/payouts).
+	AdminPage(ctx context.Context, f AdminFilter) ([]Payout, int, error)
+	// AdminTotals — число и сумма выплат по состояниям.
+	AdminTotals(ctx context.Context) ([]StatusTotal, error)
+	// PlacementPayouts — попытки размещения, новые сверху.
+	PlacementPayouts(ctx context.Context, placementID uuid.UUID) ([]Payout, error)
 
 	// RocketworkPayable — остаток blogger_payable организаций с исполнителем Рокет Ворк (не юрлиц).
 	RocketworkPayable(ctx context.Context) (money.Kopecks, error)
@@ -163,6 +177,8 @@ type Ledger interface {
 	LegalPayout(ctx context.Context, p Payout, adminID uuid.UUID, reason string) error
 	// DepositBalance — остаток rocketwork_deposit в журнале.
 	DepositBalance(ctx context.Context) (money.Kopecks, error)
+	// PayableBalance — остаток blogger_payable всех блогеров (сводка adm/payouts).
+	PayableBalance(ctx context.Context) (money.Kopecks, error)
 }
 
 // Payee — получатель выплаты (06 §8).

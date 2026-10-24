@@ -14,6 +14,8 @@ import (
 	accounthttp "github.com/leha-creator/maxim/internal/account/httpapi"
 	accountjobs "github.com/leha-creator/maxim/internal/account/jobs"
 	accountpg "github.com/leha-creator/maxim/internal/account/postgres"
+	adminapp "github.com/leha-creator/maxim/internal/admin/app"
+	adminhttp "github.com/leha-creator/maxim/internal/admin/httpapi"
 	billingapp "github.com/leha-creator/maxim/internal/billing/app"
 	billinghttp "github.com/leha-creator/maxim/internal/billing/httpapi"
 	billingjobs "github.com/leha-creator/maxim/internal/billing/jobs"
@@ -191,7 +193,10 @@ type modules struct {
 	notification      *notificationapp.Service
 	notificationHTTP  *notificationhttp.Handlers
 	notificationStore *notificationpg.Store
-	platform          *platformJobs
+	// admin — второе подтверждение, журнал действий, счётчики меню (этап «API администратора»).
+	admin     *adminapp.Service
+	adminHTTP *adminhttp.Handlers
+	platform  *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
 	queue    *job.Queue
@@ -315,6 +320,7 @@ type apiImpl struct {
 	*ledgerHandlers
 	*payoutHandlers
 	*notificationHandlers
+	*adminHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -330,7 +336,7 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Metrics: reg,
 		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
 			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP,
-			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP},
+			payoutHandlers: m.payoutHTTP, notificationHandlers: m.notificationHTTP, adminHandlers: m.adminHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),

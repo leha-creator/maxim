@@ -22,8 +22,9 @@ const cabinetAdvertiser = "advertiser"
 
 // Handlers — операции OpenAPI модуля расчётов.
 type Handlers struct {
-	svc *app.Service
-	log *slog.Logger
+	svc   *app.Service
+	log   *slog.Logger
+	admin AdminPorts
 }
 
 // New создаёт обработчики.

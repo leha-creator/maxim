@@ -63,3 +63,29 @@ WHERE (@status::text = '' OR status = @status)
   AND (NOT @has_to::bool OR created_at < @to_at)
 ORDER BY created_at DESC, id DESC
 LIMIT @lim;
+
+-- name: AdminPagePayouts :many
+-- Реестр выплат администратора (adm/payouts): страница со смещением; общее число — AdminCountPayouts.
+SELECT * FROM payout
+WHERE (@status::text = '' OR status = @status)
+  AND (NOT @has_org::bool OR blogger_organization_id = @organization_id)
+  AND (NOT @has_from::bool OR created_at >= @from_at)
+  AND (NOT @has_to::bool OR created_at < @to_at)
+ORDER BY created_at DESC, id DESC
+LIMIT @lim OFFSET @off;
+
+-- name: AdminCountPayouts :one
+SELECT count(*)::int FROM payout
+WHERE (@status::text = '' OR status = @status)
+  AND (NOT @has_org::bool OR blogger_organization_id = @organization_id)
+  AND (NOT @has_from::bool OR created_at >= @from_at)
+  AND (NOT @has_to::bool OR created_at < @to_at);
+
+-- name: AdminPayoutTotals :many
+-- Сводка реестра: число и сумма по состояниям.
+SELECT status, count(*)::int AS n, coalesce(sum(amount), 0)::bigint AS amount
+FROM payout GROUP BY status ORDER BY status;
+
+-- name: ListPlacementPayouts :many
+-- Попытки выплаты размещения для карточки администратора, новые сверху.
+SELECT * FROM payout WHERE placement_id = @placement_id ORDER BY attempt DESC;

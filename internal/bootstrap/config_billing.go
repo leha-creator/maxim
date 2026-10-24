@@ -32,6 +32,8 @@ type BillingConfig struct {
 	// ManualSecondApproval — порог ручной проводки, выше которого нужен второй администратор
 	// (R-14), в копейках.
 	ManualSecondApproval int64 `env:"LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD" envDefault:"10000000"`
+	// ApprovalTTL — срок запроса второго подтверждения через HTTP (R-2 этапа «API администратора»).
+	ApprovalTTL time.Duration `env:"ADMIN_APPROVAL_TTL" envDefault:"72h"`
 	// ClosingActsDay, ClosingActsTime — запуск generate_closing_acts по Москве (R-16).
 	ClosingActsDay  int    `env:"CLOSING_ACTS_DAY" envDefault:"1"`
 	ClosingActsTime string `env:"CLOSING_ACTS_TIME" envDefault:"03:00"`
@@ -162,6 +164,9 @@ func (c Config) validateBilling(add func(field, reason string)) {
 	}
 	if b.ManualSecondApproval < 1 {
 		add("LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD", "must be positive")
+	}
+	if b.ApprovalTTL < time.Hour || b.ApprovalTTL > 30*24*time.Hour {
+		add("ADMIN_APPROVAL_TTL", "must be between 1h and 720h")
 	}
 	if b.ClosingActsDay < 1 || b.ClosingActsDay > 28 {
 		add("CLOSING_ACTS_DAY", "must be 1..28")

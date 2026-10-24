@@ -164,3 +164,33 @@ func (s *Store) InvoiceNumbers(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 	}
 	return out, nil
 }
+
+func (r invoices) AdminPage(ctx context.Context, f domain.AdminInvoiceFilter) ([]domain.Invoice, int, error) {
+	q := r.s.q(ctx)
+	rows, err := q.AdminListInvoices(ctx, sqlc.AdminListInvoicesParams{Status: string(f.Status), OrganizationID: f.OrganizationID,
+		Number: f.Number, Off: int32(f.Offset), Lim: int32(f.Limit)})
+	if err != nil {
+		return nil, 0, r.s.fail(ctx, "Invoice.AdminPage", err)
+	}
+	total, err := q.AdminCountInvoices(ctx, sqlc.AdminCountInvoicesParams{Status: string(f.Status), OrganizationID: f.OrganizationID,
+		Number: f.Number})
+	if err != nil {
+		return nil, 0, r.s.fail(ctx, "Invoice.AdminCount", err)
+	}
+	return invoicesFromRows(rows), int(total), nil
+}
+
+func (r invoices) ByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.Invoice, error) {
+	out := make(map[uuid.UUID]domain.Invoice, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := r.s.q(ctx).ListInvoicesByIDs(ctx, ids)
+	if err != nil {
+		return nil, r.s.fail(ctx, "Invoice.ByIDs", err)
+	}
+	for _, inv := range invoicesFromRows(rows) {
+		out[inv.ID] = inv
+	}
+	return out, nil
+}

@@ -44,3 +44,20 @@ SELECT count(*)::int AS n, coalesce(sum(amount), 0)::bigint AS total FROM bank_t
 
 -- name: CountBankTransactionsByStatus :many
 SELECT match_status, count(*)::int AS n FROM bank_transaction GROUP BY match_status ORDER BY match_status;
+
+-- name: AdminListBankTransactions :many
+-- Поступления для администратора (adm/payments), новые сверху; смещение и общее число.
+SELECT * FROM bank_transaction
+WHERE (@match_status::text = '' OR match_status = @match_status)
+ORDER BY created_at DESC, id DESC
+LIMIT @lim OFFSET @off;
+
+-- name: AdminCountBankTransactions :one
+SELECT count(*)::int FROM bank_transaction WHERE (@match_status::text = '' OR match_status = @match_status);
+
+-- name: GetBankStatement :one
+SELECT * FROM bank_statement WHERE id = @id;
+
+-- name: LatestUploadedBankStatement :one
+-- Последняя загруженная выписка (итоги загрузки adm/payments).
+SELECT * FROM bank_statement ORDER BY created_at DESC, id DESC LIMIT 1;

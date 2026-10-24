@@ -49,3 +49,21 @@ SELECT id, number FROM invoice WHERE id = ANY(@ids::uuid[]);
 
 -- name: CountInvoicesByStatus :many
 SELECT status, count(*)::int AS n FROM invoice GROUP BY status ORDER BY status;
+
+-- name: AdminListInvoices :many
+-- Счета всех организаций для администратора (adm/payments), новые сверху; смещение и общее число.
+SELECT * FROM invoice
+WHERE (@status::text = '' OR status = @status)
+  AND (sqlc.narg('organization_id')::uuid IS NULL OR organization_id = sqlc.narg('organization_id'))
+  AND (@number::text = '' OR number = @number)
+ORDER BY created_at DESC, id DESC
+LIMIT @lim OFFSET @off;
+
+-- name: AdminCountInvoices :one
+SELECT count(*)::int FROM invoice
+WHERE (@status::text = '' OR status = @status)
+  AND (sqlc.narg('organization_id')::uuid IS NULL OR organization_id = sqlc.narg('organization_id'))
+  AND (@number::text = '' OR number = @number);
+
+-- name: ListInvoicesByIDs :many
+SELECT * FROM invoice WHERE id = ANY(@ids::uuid[]);

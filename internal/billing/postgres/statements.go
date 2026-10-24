@@ -141,3 +141,37 @@ func (r bankTransactions) UnmatchedTotal(ctx context.Context) (int, money.Kopeck
 	}
 	return int(row.N), money.Kopecks(row.Total), nil
 }
+
+func (r bankTransactions) AdminPage(ctx context.Context, status domain.MatchStatus, offset, limit int) ([]domain.BankTransaction, int, error) {
+	q := r.s.q(ctx)
+	rows, err := q.AdminListBankTransactions(ctx, sqlc.AdminListBankTransactionsParams{MatchStatus: string(status),
+		Off: int32(offset), Lim: int32(limit)})
+	if err != nil {
+		return nil, 0, r.s.fail(ctx, "BankTransaction.AdminPage", err)
+	}
+	total, err := q.AdminCountBankTransactions(ctx, string(status))
+	if err != nil {
+		return nil, 0, r.s.fail(ctx, "BankTransaction.AdminCount", err)
+	}
+	out := make([]domain.BankTransaction, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, bankTransactionFromRow(row))
+	}
+	return out, int(total), nil
+}
+
+func (r statements) Get(ctx context.Context, id uuid.UUID) (domain.BankStatement, error) {
+	row, err := r.s.q(ctx).GetBankStatement(ctx, id)
+	if err != nil {
+		return domain.BankStatement{}, r.s.fail(ctx, "Statement.Get", err)
+	}
+	return statementFromRow(row), nil
+}
+
+func (r statements) LatestUploaded(ctx context.Context) (domain.BankStatement, error) {
+	row, err := r.s.q(ctx).LatestUploadedBankStatement(ctx)
+	if err != nil {
+		return domain.BankStatement{}, r.s.fail(ctx, "Statement.LatestUploaded", err)
+	}
+	return statementFromRow(row), nil
+}

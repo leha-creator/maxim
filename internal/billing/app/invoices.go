@@ -209,6 +209,6 @@ func (s *Service) CancelInvoice(ctx context.Context, id, adminID uuid.UUID, reas
 	if err != nil {
 		return domain.Invoice{}, err
 	}
-	s.log.WarnContext(ctx, "invoice cancelled", logx.KeyOp, op, KeyInvoiceID, inv.ID, KeyAdminID, adminID, "reason", reason)
+	s.log.WarnContext(ctx, "invoice cancelled", logx.KeyOp, op, KeyInvoiceID, inv.ID, KeyAdminID, adminID)
 	return inv, nil
 }

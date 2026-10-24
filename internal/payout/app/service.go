@@ -114,6 +114,9 @@ type Config struct {
 	NPDAnnualLimit money.Kopecks
 	// StuckAcceptedAge, StuckSentAge, StuckCreatedAge — пороги проверок зависших (R-14).
 	StuckAcceptedAge, StuckSentAge, StuckCreatedAge time.Duration
+	// SecondApproval — сумма отметки выплаты юрлицу, выше которой нужен второй senior
+	// (LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD, R-2); 0 — без порога.
+	SecondApproval money.Kopecks
 }
 
 func (c *Config) defaults() {

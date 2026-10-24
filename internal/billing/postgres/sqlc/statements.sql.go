@@ -13,6 +13,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adminCountBankTransactions = `-- name: AdminCountBankTransactions :one
+SELECT count(*)::int FROM bank_transaction WHERE ($1::text = '' OR match_status = $1)
+`
+
+func (q *Queries) AdminCountBankTransactions(ctx context.Context, matchStatus string) (int32, error) {
+	row := q.db.QueryRow(ctx, adminCountBankTransactions, matchStatus)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const adminListBankTransactions = `-- name: AdminListBankTransactions :many
+SELECT id, bank_statement_id, external_id, operation_date, amount, payer_inn, payer_name, payer_account, purpose, match_status, invoice_id, organization_id, matched_by, ignored_reason, created_at, updated_at FROM bank_transaction
+WHERE ($1::text = '' OR match_status = $1)
+ORDER BY created_at DESC, id DESC
+LIMIT $3 OFFSET $2
+`
+
+type AdminListBankTransactionsParams struct {
+	MatchStatus string
+	Off         int32
+	Lim         int32
+}
+
+// Поступления для администратора (adm/payments), новые сверху; смещение и общее число.
+func (q *Queries) AdminListBankTransactions(ctx context.Context, arg AdminListBankTransactionsParams) ([]BankTransaction, error) {
+	rows, err := q.db.Query(ctx, adminListBankTransactions, arg.MatchStatus, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BankTransaction{}
+	for rows.Next() {
+		var i BankTransaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankStatementID,
+			&i.ExternalID,
+			&i.OperationDate,
+			&i.Amount,
+			&i.PayerInn,
+			&i.PayerName,
+			&i.PayerAccount,
+			&i.Purpose,
+			&i.MatchStatus,
+			&i.InvoiceID,
+			&i.OrganizationID,
+			&i.MatchedBy,
+			&i.IgnoredReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bankStatementExists = `-- name: BankStatementExists :one
 SELECT EXISTS (SELECT 1 FROM bank_statement WHERE file_sha256 = $1) AS found
 `
@@ -51,6 +113,33 @@ func (q *Queries) CountBankTransactionsByStatus(ctx context.Context) ([]CountBan
 		return nil, err
 	}
 	return items, nil
+}
+
+const getBankStatement = `-- name: GetBankStatement :one
+SELECT id, uploaded_by, storage_key, file_sha256, account_number, date_from, date_to, opening_balance, closing_balance, incoming_count, matched_count, unmatched_count, duplicate_count, created_at, updated_at FROM bank_statement WHERE id = $1
+`
+
+func (q *Queries) GetBankStatement(ctx context.Context, id uuid.UUID) (BankStatement, error) {
+	row := q.db.QueryRow(ctx, getBankStatement, id)
+	var i BankStatement
+	err := row.Scan(
+		&i.ID,
+		&i.UploadedBy,
+		&i.StorageKey,
+		&i.FileSha256,
+		&i.AccountNumber,
+		&i.DateFrom,
+		&i.DateTo,
+		&i.OpeningBalance,
+		&i.ClosingBalance,
+		&i.IncomingCount,
+		&i.MatchedCount,
+		&i.UnmatchedCount,
+		&i.DuplicateCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getBankTransactionForUpdate = `-- name: GetBankTransactionForUpdate :one
@@ -183,6 +272,34 @@ SELECT id, uploaded_by, storage_key, file_sha256, account_number, date_from, dat
 
 func (q *Queries) LatestBankStatement(ctx context.Context) (BankStatement, error) {
 	row := q.db.QueryRow(ctx, latestBankStatement)
+	var i BankStatement
+	err := row.Scan(
+		&i.ID,
+		&i.UploadedBy,
+		&i.StorageKey,
+		&i.FileSha256,
+		&i.AccountNumber,
+		&i.DateFrom,
+		&i.DateTo,
+		&i.OpeningBalance,
+		&i.ClosingBalance,
+		&i.IncomingCount,
+		&i.MatchedCount,
+		&i.UnmatchedCount,
+		&i.DuplicateCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const latestUploadedBankStatement = `-- name: LatestUploadedBankStatement :one
+SELECT id, uploaded_by, storage_key, file_sha256, account_number, date_from, date_to, opening_balance, closing_balance, incoming_count, matched_count, unmatched_count, duplicate_count, created_at, updated_at FROM bank_statement ORDER BY created_at DESC, id DESC LIMIT 1
+`
+
+// Последняя загруженная выписка (итоги загрузки adm/payments).
+func (q *Queries) LatestUploadedBankStatement(ctx context.Context) (BankStatement, error) {
+	row := q.db.QueryRow(ctx, latestUploadedBankStatement)
 	var i BankStatement
 	err := row.Scan(
 		&i.ID,

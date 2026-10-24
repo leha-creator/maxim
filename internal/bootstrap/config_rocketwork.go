@@ -75,6 +75,7 @@ func (c Config) PayoutAppConfig() payoutapp.Config {
 		ProviderEnabled: c.RocketWorkMode() != RocketWorkDisabled,
 		PollFast:        r.PollFast, PollSlow: r.PollSlow, ContractorPollMaxAge: r.ContractorPollMaxAge,
 		DepositTolerance: money.Kopecks(r.DepositTolerance), NPDAnnualLimit: money.Kopecks(r.NPDAnnualLimit),
+		SecondApproval: money.Kopecks(c.Billing.ManualSecondApproval),
 	}
 }
 

@@ -213,7 +213,7 @@ Rationale: план реализует этап целиком: операции
 
 ### Phase 4: Деньги
 
-- [ ] **Task 9: Модуль `admin`: второе подтверждение (R-2, R-3, R-11)** (depends on 3)
+- [x] **Task 9: Модуль `admin`: второе подтверждение (R-2, R-3, R-11)** (depends on 3)
   - `internal/admin/domain`: `Approval`, `Kind`, `Status`, `NewApproval(…, ttl)`, `(a *Approval) Approve(adminID, now)`, `Reject(adminID, reason, now)`, ошибки `ErrSameAdmin`, `ErrApprovalDecided`, `ErrApprovalExpired`; порты `Store`, `Executor{Execute(ctx, a Approval, approverID) (resultID uuid.UUID, err error)}` по виду, `Counters` (задача 14).
   - `internal/admin/app`: `RequestApproval(ctx, kind, key, payload, amount, adminID, reason)` (повтор ключа — тот же запрос), `List(ctx, status, cursor, limit)`, `Approve(ctx, id, approverID)` — блокировка строки, проверка, исполнение через `Executor` в той же транзакции, `audit_log` `admin_approval.approved`; `Reject` — `admin_approval.rejected`; просроченные при чтении — `expired`.
   - `internal/admin/postgres` (sqlc, запись в `sqlc.yaml`), `internal/admin/httpapi`: `ListAdminApprovals`, `ApproveAdminApproval`, `RejectAdminApproval` (`senior`).
@@ -223,21 +223,21 @@ Rationale: план реализует этап целиком: операции
   - Тесты (`domain` и `dbtest`): свой запрос — `ErrSameAdmin`; повтор решения; срок; подтверждение исполняет проводку один раз (повтор после сбоя — по ключу).
   - Файлы: `internal/admin/{domain,app,postgres,httpapi}/*.go`, `internal/admin/postgres/queries/approvals.sql`, `sqlc.yaml`, `internal/bootstrap/{admin_module.go,config.go,modules.go}`, `internal/bootstrap/bridge/admin.go`.
 
-- [ ] **Task 10: Проводки и сверка через HTTP (S-19, R-2)** (depends on 9)
+- [x] **Task 10: Проводки и сверка через HTTP (S-19, R-2)** (depends on 9)
   - `ledger/httpapi/admin.go`: `GetLedgerSummary` (остатки по видам счетов, сверка с выпиской и депозитом — как `admin money reconcile`; чтение банка и депозита — порты `ledger/domain.ReconcileSources` над `billing/app.BankPosition` и `payout/app.DepositReport`), `ListLedgerEntries` (`Journal` с курсором, фильтры `kind`, `organization_id`, `account_kind`, `from`, `to`), `CreateManualLedgerEntry` (порог → `admin/app.RequestApproval`, иначе `Manual`), `CreateDepositTopup` (так же), `CreateBalanceReturn`.
   - `ledger/app`: курсор и `total` в `Journal`; `ManualAllowed(amount)`.
   - Журнал: WARN `manual ledger operation` (уже); WARN `admin approval requested`.
   - Тесты (`*_http_test.go`): 1 000 ₽ — `201`, проводка; 150 000 ₽ — `202`, проводки нет, подтверждение другим `senior` — проводка с `approver_id` в `audit_log`; повтор `Idempotency-Key`; `moderator` — `403`; сверка сходится.
   - Файлы: `internal/ledger/{httpapi/admin.go,app/admin.go,domain/ports.go,postgres/*.go}`, `internal/bootstrap/{ledger.go,bridge/ledger.go,ledger_http_test.go}`.
 
-- [ ] **Task 11: Реестр выплат через HTTP (R-2, R-14)** (depends on 9, 4)
+- [x] **Task 11: Реестр выплат через HTTP (R-2, R-14)** (depends on 9, 4)
   - `payout/app/admin.go`: `AdminPage(ctx, filter, cursor, limit)` с `total`, `AdminSummary(ctx)` (депозит — последний `DepositReport` без внешнего вызова: остаток журнала и последнее значение API из метрики/таблицы, в работе, не прошли, к выплате), `ExportCSV(ctx, filter, w)` (ИНН маскирован, `audit_log` `payout.exported`), `MarkLegalPaid` — проверка порога переносится в сервис (`ErrSecondApproval`).
   - `payout/httpapi/admin.go`: `ListAdminPayouts`, `GetAdminPayoutSummary`, `ExportAdminPayouts`, `RetryPayout`, `MarkPayoutPaid` (порог → подтверждение) — `senior`.
   - Журнал: WARN `admin payout retry` (уже), INFO `payouts exported` (`count`, `admin_user_id`).
   - Тесты: фильтры и `total`; CSV — заголовок, BOM, маска ИНН; `mark-paid` выше порога — `202`; `retry` не последней попытки — `409`.
   - Файлы: `internal/payout/{app/admin.go,app/export.go,app/*_test.go,httpapi/admin.go,postgres/queries/payouts.sql,postgres/*.go}`, `internal/bootstrap/{payout_http_test.go,admin_payout.go}`.
 
-- [ ] **Task 12: Оплаты и счета через HTTP (S-30)** (depends on 4)
+- [x] **Task 12: Оплаты и счета через HTTP (S-30)** (depends on 4)
   - `billing/httpapi/admin.go`: `GetLatestBankStatement` (итоги последней загрузки), `UploadBankStatement` (multipart, предел `STATEMENT_MAX_BYTES`, тело — `bodyLimit` в `server.go`), `ListBankTransactions` (`match_status`, курсор, `total`), `MatchBankTransaction`, `IgnoreBankTransaction`, `ListAdminInvoices` (`status`, `organization_id`, `number`), `CancelAdminInvoice` — `senior`.
   - `billing/app`: `LatestStatement`, `AdminInvoices`.
   - Журнал: как в сервисах (уже); WARN отказ размера.
@@ -362,3 +362,4 @@ Rationale: план реализует этап целиком: операции
 - Отчёт ОРД за месяц формируется и отправляется заданием 1-го числа и вручную; суммы и показы — по 05 §3.6; ошибки видны в списке S-20; с 20-го — оповещение.
 - Ни текст основания, ни текст переписки, ни почта/ИНН без маскирования не пишутся в журнал приложения; выгрузки ИНН маскируют.
 - D-5 (задачи 5–8). Списки администратора — смещение в курсоре (`internal/platform/adminpage`, base64url `o:N`, `limit` 1…100, по умолчанию 20) и `total`; чтения — SQL с соединением таблиц модулей (как сверка). Ссылки на юрлицо и почту — `internal/platform/adminref` (ИНН всегда с маской). Действующее лицо audit_log администратора ставит `httpx.AdminContext`. Блокировка канала не вызывает `ChannelUnavailable` (S-25): начатые размещения продолжаются, блогер получает `channel.blocked`. Без маркировки (`ORD_ENABLED=false`) одобрение поста сразу выдаёт `erid` вида `dev-<номер заказа>`. Метрика `maxim_dispute_resolution_seconds{resolution}` — время от открытия до решения спора.
+- D-6 (задачи 9–12, 14). Ключ запроса подтверждения и проводки HTTP — `http:<вид>:<admin_id>:<Idempotency-Key>`: у каждого администратора и вида свой, команды CLI не пересекаются. Исполнитель подтверждения получает ключ запроса как ключ операции, поэтому повтор после сбоя не создаёт второй проводки; сбой исполнения откатывает решение (запрос остаётся `pending`). Автор отклоняет свой запрос — это отзыв (`withdrawn` в `audit_log`). Просроченные `pending` переводятся в `expired` при чтении списка, счётчиков и при попытке решения. Проверка порога отметки выплаты перенесена в `payout/app.MarkLegalPaid` (`ErrSecondApproval`); проверка в команде CLI оставлена как ранний отказ. Модуль `admin` читает `audit_log` без `ip`; `approver_user_id` проводки — из записи журнала действий ручной операции. Порт `placement/httpapi.AdminPayouts` — обработчики `payout/httpapi` (moderator получает пустой список). `getLatestBankStatement` — последняя по времени загрузки (для сверки — по дате конца периода, как в команде).

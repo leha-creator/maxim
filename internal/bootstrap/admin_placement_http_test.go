@@ -40,7 +40,7 @@ type adminPlacementView struct {
 }
 
 type page[T any] struct {
-	Items []T `json:"items"`
+	Items []T  `json:"items"`
 	Total *int `json:"total"`
 }
 

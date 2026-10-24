@@ -31,6 +31,7 @@ const BaseURL = "/api/v1"
 const (
 	bodyLimitDefault     = 1 << 20
 	bodyLimitTaxDocument = 11 << 20
+	bodyLimitStatement   = 11 << 20
 	bodyLimitMedia       = 51 << 20
 )
 
@@ -151,6 +152,10 @@ func newHandler(d serverDeps) (http.Handler, error) {
 		httpx.Recover(log),
 		httpx.SecurityHeaders(BaseURL),
 		httpx.BodyLimit(func(r *http.Request) int64 {
+			// Выписка банка — до STATEMENT_MAX_BYTES (10 МБ) и заголовки multipart.
+			if r.Method == http.MethodPost && r.URL.Path == BaseURL+"/admin/bank-statements" {
+				return bodyLimitStatement
+			}
 			if r.URL.Path == BaseURL+"/organizations/current/tax-document" {
 				return bodyLimitTaxDocument
 			}
