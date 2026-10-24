@@ -32,6 +32,7 @@ import (
 	markingjobs "github.com/leha-creator/maxim/internal/marking/jobs"
 	markingpg "github.com/leha-creator/maxim/internal/marking/postgres"
 	payoutapp "github.com/leha-creator/maxim/internal/payout/app"
+	payouthttp "github.com/leha-creator/maxim/internal/payout/httpapi"
 	payoutjobs "github.com/leha-creator/maxim/internal/payout/jobs"
 	payoutpg "github.com/leha-creator/maxim/internal/payout/postgres"
 	placementapp "github.com/leha-creator/maxim/internal/placement/app"
@@ -168,6 +169,7 @@ type modules struct {
 	// payout — выплаты блогерам через Рокет Ворк; payoutStore — для команд администратора.
 	payout      *payoutapp.Service
 	payoutStore *payoutpg.Store
+	payoutHTTP  *payouthttp.Handlers
 	platform    *platformJobs
 	// txRunner и queue нужны приёму Webhook (api).
 	txRunner tx.Runner
@@ -241,6 +243,7 @@ func newModules(cfg Config, in *infra) *modules {
 		markingStore:   markingStore,
 		payout:         payoutSvc,
 		payoutStore:    payoutStore,
+		payoutHTTP:     payouthttp.New(payoutSvc, log),
 		platform:       platform,
 		txRunner:       txRunner,
 		queue:          queue,
@@ -281,6 +284,7 @@ type apiImpl struct {
 	*placementHandlers
 	*billingHandlers
 	*ledgerHandlers
+	*payoutHandlers
 }
 
 // apiHandler собирает HTTP-обработчик режима api.
@@ -295,7 +299,8 @@ func apiHandler(cfg Config, in *infra, m *modules, reg *metrics.Registry) (http.
 		Clock:   in.clock,
 		Metrics: reg,
 		Impl: apiImpl{Handlers: m.accountHTTP, channelHandlers: m.channelHTTP, postHandlers: m.postHTTP,
-			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP},
+			placementHandlers: m.placementHTTP, billingHandlers: m.billingHTTP, ledgerHandlers: m.ledgerHTTP,
+			payoutHandlers: m.payoutHTTP},
 		// Webhook MAX — сырое тело и заголовок секрета, вне strict server (R-4).
 		Routes: map[string]http.Handler{
 			maxWebhookPattern:        newMAXWebhook(cfg, in, m.txRunner, m.queue, httpx.ClientInfo(trusted)),

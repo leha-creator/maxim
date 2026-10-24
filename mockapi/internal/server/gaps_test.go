@@ -268,3 +268,23 @@ func TestAdminChannels(t *testing.T) {
 	}
 	errorOf(t, e.do(c, http.MethodPost, path+"/approve", nil, ""), http.StatusConflict, "conflict", "")
 }
+
+// Этап выплат: юрлицу Рокет Ворк не нужен — 409 contractor_not_required, выплата переводом.
+func TestRocketworkNotRequiredForLegal(t *testing.T) {
+	e := newEnv(t)
+	tx, done := e.st.Begin(context.Background())
+	tx.D.Orgs[seed.OrgBlogger].LegalType = "legal_entity"
+	done()
+	c := e.client(blg)
+	errorOf(t, e.do(c, http.MethodPost, "/blogger/rocketwork/invite", nil, ""), http.StatusConflict, "conflict", "contractor_not_required")
+	errorOf(t, e.do(c, http.MethodPost, "/blogger/rocketwork/refresh", nil, ""), http.StatusConflict, "conflict", "contractor_not_required")
+	var page struct {
+		Items []struct {
+			Method string `json:"method"`
+		} `json:"items"`
+	}
+	e.do(c, http.MethodGet, "/blogger/payouts", nil, "").json(t, &page)
+	if len(page.Items) == 0 || page.Items[0].Method != "bank_transfer" {
+		t.Fatalf("payouts %+v", page.Items)
+	}
+}

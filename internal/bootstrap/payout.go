@@ -24,12 +24,15 @@ import (
 // сырое тело и подпись, вне strict server.
 const rocketworkWebhookPattern = "POST " + BaseURL + "/webhooks/rocketwork"
 
+// payoutHandlers — псевдоним для встраивания в apiImpl рядом с обработчиками других модулей.
+type payoutHandlers = payouthttp.Handlers
+
 // newPayoutService собирает модуль выплат (этап «Выплаты блогерам через Рокет Ворк»).
 // Порты: размещения и P-16 — bridge.PayoutPlacements, проводки — bridge.PayoutLedger,
 // организации — account, Рокет Ворк — адаптер infra (R-1). Уведомления — NopNotifier до
 // этапа «Уведомления и отчёт по кампании» (R-15). После сборки модуль подключается к
 // размещениям: гейт исполнителя P-03 и создание выплаты при переходе в accepted (I-1).
-func newPayoutService(cfg Config, in *infra, txRunner tx.Runner, queue job.Scheduler, auditLog audit.Recorder,
+func newPayoutService(cfg Config, in *infra, txRunner tx.Runner, queue job.Scheduler, auditLog *audit.Log,
 	accounts *accountpg.Store, ledger *ledgerapp.Service, placements *placementapp.Service,
 	placementStore *placementpg.Store) (*payoutapp.Service, *payoutpg.Store) {
 	log := in.log.With(logx.KeyModule, "payout")
@@ -44,6 +47,7 @@ func newPayoutService(cfg Config, in *infra, txRunner tx.Runner, queue job.Sched
 		Placements:    bridge.PayoutPlacements{Svc: placements, Placements: placementStore.Placements()},
 		Organizations: bridge.PayoutOrganizations{Orgs: accounts.Organizations()},
 		Tx:            txRunner, Jobs: queue, Audit: auditLog, Clock: in.clock, Log: in.log,
+		Limits: auditLog,
 		Config: cfg.PayoutAppConfig(),
 	}
 	if in.alerter != nil {

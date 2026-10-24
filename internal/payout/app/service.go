@@ -189,9 +189,11 @@ type Deps struct {
 	Tx            tx.Runner
 	Jobs          job.Scheduler
 	Audit         audit.Recorder
-	Clock         clock.Clock
-	Log           *slog.Logger
-	Config        Config
+	// Limits — лимит частоты приглашений и проверок статуса; nil — без лимита.
+	Limits Limits
+	Clock  clock.Clock
+	Log    *slog.Logger
+	Config Config
 }
 
 // Service — сценарии модуля выплат.

@@ -231,7 +231,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
 
 ### Phase 4: Кабинет блогера, конфигурация, подключение
 
-- [ ] **Task 11: Конфигурация и подключение модуля (R-1, R-4)** (depends on 7, 8, 9, 10)
+- [x] **Task 11: Конфигурация и подключение модуля (R-1, R-4)** (depends on 7, 8, 9, 10)
   - `internal/bootstrap/config_rocketwork.go`: `RocketWorkConfig` — `ROCKETWORK_MODE` (`fake`/`disabled`/`live`; в `production` не `fake`, R-1), `ROCKETWORK_BASE_URL`, `ROCKETWORK_TOKEN` (обязателен при `live`), `ROCKETWORK_RATE`, `ROCKETWORK_WEBHOOK_SECRET` (обязателен при `fake` вне `test`), `ROCKETWORK_DEPOSIT_CHECK_INTERVAL`, `ROCKETWORK_DEPOSIT_TOLERANCE`, `ROCKETWORK_CONTRACTOR_POLL_MAX_AGE`, `PAYOUT_POLL_FAST`, `PAYOUT_POLL_SLOW`, `PAYOUT_NPD_ANNUAL_LIMIT`; проверки границ; маскированная выдача (`secret(...)`).
   - `internal/bootstrap/payout.go`: `newPayoutService(...)`; `integration.go` — `connectRocketWork` (`infra.rocketwork`; в `test` — подделка из `harness`); `modules.go` — поле, `registerJobs`, `stuck`, маршрут вебхука, обработчики в `apiImpl`; `placement.go` — `Contractors` и `Payouts` из модуля выплат через `SetPayoutPorts` после сборки `payout` (I-1).
   - `internal/bootstrap/dev.go`: `maxim dev rocketwork activate|block|deposit|complete|fail …` и `maxim dev placement accept --placement --share` (R-4). Подделка используется процессами `api` и `worker`, поэтому в `development` `rocketworkfake` хранит состояние в JSON-файле `ROCKETWORK_FAKE_STATE_PATH` (общий для процессов, без новых таблиц); команда меняет состояние и при `--webhook` отправляет подписанный вебхук на `api`.
@@ -240,7 +240,7 @@ Source: .ai-factory/RESEARCH.md (Active Summary), выдержка по этап
   - Тесты: проверки конфигурации (`fake` в `production` — ошибка); `wiring_test.go` — виды заданий и политики, `placement` получил настоящий гейт и порт выплат, обработчик `rocketwork` зарегистрирован в диспетчере.
   - Файлы: `internal/bootstrap/{config.go,config_rocketwork.go,config_rocketwork_test.go,payout.go,integration.go,modules.go,placement.go,dev.go,wiring_test.go}`, `internal/integration/rocketwork/rocketworkfake/state.go`, `.env.example`, `deploy/.env.example`, `compose.dev.yml`.
 
-- [ ] **Task 12: Операции кабинета блогера и OpenAPI (R-16)** (depends on 11)
+- [x] **Task 12: Операции кабинета блогера и OpenAPI (R-16)** (depends on 11)
   - `api/openapi.yaml`: изменения R-16; `go generate ./...` (`internal/apigen`).
   - `internal/payout/httpapi/handlers.go`: `ListBloggerPayouts` (номер заказа и канал через `Placements.Brief`), `GetBloggerPayoutSummary`, `GetRocketworkStatus`, `InviteRocketwork` (`202`, `409 contractor_not_required`, `503 rocketwork_unavailable`), `RefreshRocketworkStatus`; только роль блогера своей организации; ограничение частоты `invite`/`refresh` (`platform/ratelimit`, 10 в час на организацию, `429`).
   - `internal/bootstrap/unimplemented.go`: убрать реализованные операции.

@@ -22,15 +22,21 @@ import (
 // исполнителем active.
 func (a *testApp) acceptedPayout(legal bool, amount money.Kopecks) (placementID, bloggerID, payoutID uuid.UUID) {
 	a.t.Helper()
-	ctx := context.Background()
-	adv := ledgertest.Organization(a.t, a.db.Pool, accountdomain.LegalEntity, "Рекламодатель")
-	p := ledgertest.NewPlacement(a.t, a.db.Pool, adv, amount)
-	bloggerID = p.BloggerID
 	if legal {
 		bloggerID = ledgertest.Organization(a.t, a.db.Pool, accountdomain.LegalEntity, "ООО Блогер")
 	} else {
+		bloggerID = ledgertest.Organization(a.t, a.db.Pool, accountdomain.SelfEmployed, "Блогер")
 		a.activeContractor(bloggerID)
 	}
+	return a.acceptedPayoutFor(bloggerID, amount)
+}
+
+// acceptedPayoutFor — то же для готовой организации блогера (исполнитель уже active или юрлицо).
+func (a *testApp) acceptedPayoutFor(bloggerID uuid.UUID, amount money.Kopecks) (placementID, _, payoutID uuid.UUID) {
+	a.t.Helper()
+	ctx := context.Background()
+	adv := ledgertest.Organization(a.t, a.db.Pool, accountdomain.LegalEntity, "Рекламодатель")
+	p := ledgertest.NewPlacement(a.t, a.db.Pool, adv, amount)
 	if _, err := a.db.Pool.Exec(ctx, `UPDATE post_version SET content_doc = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"текст"}]}]}'
 		WHERE id = $1`, p.VersionID); err != nil {
 		a.t.Fatal(err)

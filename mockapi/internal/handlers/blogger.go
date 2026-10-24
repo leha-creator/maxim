@@ -403,7 +403,7 @@ func (h *Handlers) ListBloggerPayouts(ctx context.Context, req api.ListBloggerPa
 	items := []api.Payout{}
 	for _, po := range pg {
 		item := api.Payout{Id: po.ID, PlacementId: po.PlacementID, Amount: po.Amount, Status: api.PayoutStatus(po.Status),
-			Attempt: po.Attempt, ReceiptUrl: strPtr(po.ReceiptURL), CreatedAt: po.CreatedAt, CompletedAt: po.CompletedAt}
+			Method: payoutMethod(o), Attempt: po.Attempt, ReceiptUrl: strPtr(po.ReceiptURL), CreatedAt: po.CreatedAt, CompletedAt: po.CompletedAt}
 		if p, err := tx.Placement(po.PlacementID); err == nil {
 			if c, err := tx.Channel(p.ChannelID); err == nil {
 				item.Channel = channelRef(c)
@@ -417,11 +417,50 @@ func (h *Handlers) ListBloggerPayouts(ctx context.Context, req api.ListBloggerPa
 	return api.ListBloggerPayouts200JSONResponse{Items: items, NextCursor: next, Total: total}, nil
 }
 
+// payoutMethod — юрлицу переводом, остальным через Рокет Ворк (A-36).
+func payoutMethod(o *store.Organization) api.PayoutMethod {
+	if o.LegalType == "legal_entity" {
+		return api.BankTransfer
+	}
+	return api.Rocketwork
+}
+
+func (h *Handlers) GetBloggerPayoutSummary(ctx context.Context, req api.GetBloggerPayoutSummaryRequestObject) (api.GetBloggerPayoutSummaryResponseObject, error) {
+	tx, done := h.st.Begin(ctx)
+	defer done()
+	_, o, err := blogger(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	out := api.GetBloggerPayoutSummary200JSONResponse{}
+	for _, po := range tx.D.Payouts {
+		if po.OrgID != o.ID {
+			continue
+		}
+		out.Count++
+		switch po.Status {
+		case "succeeded":
+			out.ReceivedAmount += po.Amount
+		case "created", "sent":
+			out.InProgressAmount += po.Amount
+		}
+	}
+	return out, nil
+}
+
 func rocketworkStatus(tx *store.Tx, o *store.Organization) api.RocketworkStatus {
 	out := api.RocketworkStatus{Status: "none", Required: o.LegalType != "legal_entity"}
 	if rw := tx.D.Rocketwork[o.ID]; rw != nil {
 		out.Status = api.RocketworkContractorStatus(rw.Status)
 		out.OnboardingUrl = strPtr(rw.OnboardingURL)
+		if out.Status != "none" {
+			at := tx.Now
+			out.StatusCheckedAt = &at
+		}
+		if rw.Status == "blocked" {
+			reason := "tax_status_lost"
+			out.BlockedReason = &reason
+		}
 	}
 	return out
 }
@@ -444,7 +483,7 @@ func (h *Handlers) InviteRocketwork(ctx context.Context, req api.InviteRocketwor
 		return nil, err
 	}
 	if o.LegalType == "legal_entity" {
-		return nil, store.Conflict("conflict", "rocketwork is not required for legal_entity", nil)
+		return nil, store.ConflictReason("contractor_not_required", "rocketwork is not required", nil)
 	}
 	rw := tx.D.Rocketwork[o.ID]
 	if rw == nil {
@@ -457,7 +496,21 @@ func (h *Handlers) InviteRocketwork(ctx context.Context, req api.InviteRocketwor
 		rw.OnboardingURL = fmt.Sprintf("https://rocketwork.example.test/onboarding/%s", o.ID)
 		h.logger(ctx).Info("rocketwork contractor activated", "op", "Rocketwork.Invite", "organization_id", o.ID)
 	}
-	return api.InviteRocketwork200JSONResponse(rocketworkStatus(tx, o)), nil
+	return api.InviteRocketwork202JSONResponse(rocketworkStatus(tx, o)), nil
+}
+
+// RefreshRocketworkStatus — в заглушке статус не меняется: возвращает текущий.
+func (h *Handlers) RefreshRocketworkStatus(ctx context.Context, req api.RefreshRocketworkStatusRequestObject) (api.RefreshRocketworkStatusResponseObject, error) {
+	tx, done := h.st.Begin(ctx)
+	defer done()
+	_, o, err := blogger(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if o.LegalType == "legal_entity" {
+		return nil, store.ConflictReason("contractor_not_required", "rocketwork is not required", nil)
+	}
+	return api.RefreshRocketworkStatus200JSONResponse(rocketworkStatus(tx, o)), nil
 }
 
 // linkCodeAlphabet — символы кода подключения без похожих знаков (R-1).

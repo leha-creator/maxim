@@ -165,9 +165,11 @@ var cases = map[string]opCase{
 		body: map[string]any{"mode": "at", "publish_at": at(2 * time.Hour)}},
 	"bloggerReschedulePlacement": {user: blg, params: id(seed.PlacementScheduled),
 		body: map[string]any{"publish_at": at(5 * time.Hour)}},
-	"listBloggerPayouts":  {user: blg},
-	"getRocketworkStatus": {user: blg},
-	"inviteRocketwork":    {user: blg, noBody: true},
+	"listBloggerPayouts":      {user: blg},
+	"getBloggerPayoutSummary": {user: blg},
+	"getRocketworkStatus":     {user: blg},
+	"inviteRocketwork":        {user: blg, noBody: true},
+	"refreshRocketworkStatus": {user: blg, noBody: true},
 
 	// администратор
 	"listAdminChannels":  {user: adm, query: "status=moderation"},
