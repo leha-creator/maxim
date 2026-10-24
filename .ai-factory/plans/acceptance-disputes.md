@@ -204,7 +204,7 @@ Rationale: план реализует этап целиком: приёмку �
 
 ### Phase 4: Проверка и документы
 
-- [ ] **Task 11: Сквозные тесты приёмки и споров** (depends on 10)
+- [x] **Task 11: Сквозные тесты приёмки и споров** (depends on 10)
   - `internal/bootstrap/acceptance_e2e_test.go` на собранных `api` и `worker` (`clock.Manual`, `maxfake`, `ordfake`, `rocketworkfake`, настоящий журнал):
     - S-08 P-12: публикация, снятие, `acceptPlacement` → `accepted`, выплата `created`, проводка `settlement`, повтор с ключом — без изменений.
     - S-24 P-13: снятие, +24 ч — `accepted` и выплата.
@@ -214,7 +214,7 @@ Rationale: план реализует этап целиком: приёмку �
     - `check_ledger_balance` после каждого денежного шага — без оповещений.
   - Файлы: `internal/bootstrap/acceptance_e2e_test.go`, при необходимости `harness_test.go`.
 
-- [ ] **Task 12: Документы** (depends on 11)
+- [x] **Task 12: Документы** (depends on 11)
   - 02 S-08, S-18, S-19, S-24 — «Как сделано» (команды, причины отказов, ключи); 03 §4 (особые правила: P-12…P-15, I-02, удаление при возврате; убрать «до этапа приёмки»), §5 (T-05 без ожидания); 04 §5 (`claim`, проверка доли, `claim_id`), §9; 06 §2.3 (актор `settlement`); 07 §2, §8 (новые параметры); `docs/launch/legal-documents.md` — строка «Санкция за нарушение: снижение рейтинга»; `docs/open-questions.md` — R-13 (величина штрафа), допущения 1–4; README бэкенда — команды `maxim admin dispute …`; план — «Решения при реализации».
   - Журнал: не применимо.
   - Файлы: `docs/02-scenarios.md`, `docs/03-placement.md`, `docs/04-domain-model.md`, `docs/06-finance-legal.md`, `docs/07-non-functional.md`, `docs/launch/legal-documents.md`, `docs/open-questions.md`, `README.md` (бэкенд).

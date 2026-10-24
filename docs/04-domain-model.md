@@ -447,7 +447,7 @@ erDiagram
 
 ### claim
 
-`placement_id uuid unique`, `reason text` (`removed_early`, `top_violated`, `content_mismatch`, `other`), `text text` (до 2000 символов), `created_by uuid`.
+`placement_id uuid unique`, `reason text` (`removed_early`, `top_violated`, `content_mismatch`, `other`), `text text` (до 2000 символов), `created_by uuid`. Таблица — миграция `00013_disputes.sql`: текст от 1 до 2000 символов (проверка БД), роль приложения только добавляет строки (`UPDATE`, `DELETE` отозваны). Текст претензии видят рекламодатель и администратор; в журнал приложения он не пишется.
 
 ### dispute
 
@@ -458,13 +458,13 @@ erDiagram
 | `placement_id` | `uuid` | да | Уникально (I-11) |
 | `reason` | `text` | да | 03 §6 |
 | `opened_by_type` | `text` | да | `advertiser`, `system`, `admin` |
-| `claim_id`, `violation_id` | `uuid` | нет | Что стало основанием. У `claim_id` нет внешнего ключа, пока нет таблицы `claim` (этап «Приёмка, споры и возвраты») |
+| `claim_id`, `violation_id` | `uuid` | нет | Что стало основанием; внешние ключи на `claim` и `violation` |
 | `deadline_at` | `timestamptz` | да | T-06 |
 | `suggested_share` | `integer` | нет | Предложение системы (03 §7) |
 | `resolution` | `text` | нет | `full_payout`, `proportional`, `full_refund` |
-| `performance_share` | `integer` | нет | Итоговая доля |
-| `resolution_comment` | `text` | нет | Обязателен при решении |
-| `resolved_by`, `resolved_at` | | нет | |
+| `performance_share` | `integer` | нет | Итоговая доля; проверка БД: `full_payout` — 10000, `full_refund` — 0, `proportional` — 1…9999 |
+| `resolution_comment` | `text` | нет | Обязателен при решении, до 2000 символов; сторонам не показывается |
+| `resolved_by`, `resolved_at` | | нет | Заполнены вместе с `resolution`. Решение окончательное: обновляется только строка без решения; удаление споров у роли приложения отозвано |
 
 ### dispute_message
 

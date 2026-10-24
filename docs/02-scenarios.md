@@ -154,6 +154,8 @@
 - Если рекламодатель не сделал ничего, срабатывает автоприёмка (S-24).
 - По одному размещению — одна претензия.
 
+**Как сделано (этап «Приёмка, споры и возвраты»).** «Принять» — `POST /placements/{id}/accept`, «Подать претензию» — `POST /placements/{id}/claims` (`201`); оба принимают `Idempotency-Key`: повтор с тем же ключом возвращает размещение без нового перехода. P-12 в одной транзакции распределяет удержание с долей 10000 (проводка `settlement`), создаёт выплату и отменяет T-05. Отказы: не из `removed` — `409 invalid_transition`; пост ещё в канале — `details.reason = publication_live`; окно закрыто — `409 invalid_transition` с `claim_window_closed`; претензия уже есть — `409 conflict` с `claim_exists`; спор уже открыт системой — `409 invalid_transition`. Претензия создаёт спор с предложением доли (`removed_early` — по снятой публикации, `top_violated` — 5000, иначе без предложения), уведомляет обоих и администратора и поднимает оповещение `placement_disputed`. Текст претензии видят рекламодатель (поле `claim` размещения) и администратор; в журнал приложения он не пишется. В `available_actions` — `accept` из `removed`, `claim` из `published` и из `removed` до `claim_deadline_at`, если претензии нет.
+
 ### S-09. Отчёт по кампании
 
 **Предусловия.** В заказе есть хотя бы одно опубликованное размещение.
@@ -351,6 +353,8 @@
 - Срок решения — 72 часа (T-06). По истечении — оповещение старшему администратору; автоматического решения нет.
 - Решение окончательное; изменить его нельзя, исправление — отдельной ручной проводкой (S-19).
 
+**Как сделано (этап «Приёмка, споры и возвраты»).** До API администратора — команды `maxim admin dispute` (администратор `moderator` или `senior`, иначе `admin_required`): `list [--all] [--overdue] [--limit]` — открытые споры по сроку; `show --placement <id>` — спор, претензия с текстом, нарушения, публикация, история и предпросмотр сумм по предложенной доле; `resolve --placement <id> --resolution full_payout|proportional|full_refund [--share 1…9999] --comment …`. Без `--share` для `proportional` берётся предложение системы; его нет — отказ `share_required`. В одной транзакции: решение в `dispute`, распределение, переход P-15, `settlement` и выплата (или `hold_release` при `full_refund`), отмена T-06, `placement.dispute_resolved` обоим (исход, доля, выплата, возврат), снижение рейтинга канала (`DISPUTE_RATING_PENALTY_*`), `audit_log` `dispute.resolved`; после — закрытие оповещений `placement_disputed` и `dispute_overdue`. `accepted` при живой публикации — отказ `publication_live`: пост удаляется по сроку или командой `remove-post`. `full_refund` при живой публикации ставит удаление поста сейчас (причина `refund`). Повторное решение — `dispute_resolved`. Переписка по спору (п. 2) — этап API администратора.
+
 ### S-19. Ручные операции
 
 **Предусловия.** Роль администратора.
@@ -366,6 +370,8 @@
 | `block_channel` | Любое состояние канала | Канал `blocked`; новые размещения невозможны, текущие продолжаются |
 
 Каждая операция требует текстового основания и пишется в журнал действий на уровне WARN.
+
+`admin_open_dispute` и `admin_remove_post` до API администратора — `maxim admin dispute open --placement <id> --reason … --email …` (P-14 с причиной `admin`, основание — в истории и `audit_log`) и `maxim admin dispute remove-post --placement <id> --reason … --email …` (из `published` сначала открывает спор, затем ставит удаление поста сейчас с причиной `admin`; публикация уже снята — `409 publication_not_live`). `admin_cancel`, `admin_mark_removed` и `block_channel` — этап API администратора.
 
 До API администратора выплаты — служебные команды `maxim admin payout` (администратор `senior`, `--reason`): `list [--status] [--org] [--from] [--to] [--limit]`; `retry --payout <id>` — `retry_payout`: только последняя попытка `failed` размещения в `accepted`, новая строка `attempt + 1` и `send_payout`; `mark-paid --payout <id> --bank-ref <п/п>` — выплата юрлицу переводом выполнена: `succeeded`, проводка `payout` из `bank`, P-16; сумма больше `LEDGER_MANUAL_SECOND_APPROVAL_THRESHOLD` — с `--approver-email`; `contractor refresh --org <id|ИНН>` — внеочередной опрос исполнителя. Пополнение депозита Рокет Ворк — `maxim admin money deposit-topup --amount <руб.коп>` (проводка `deposit_topup`, тот же порог второго администратора, ключ повтора `--key`).
 
@@ -444,6 +450,8 @@
 **Запуск.** Таймер T-05.
 
 1. Размещение всё ещё в `removed` → переход `P-13`: `accepted`; запускается выплата (S-15).
+
+**Как сделано (этап «Приёмка, споры и возвраты»).** Задание `placement_timer` T-05 выполняет P-13 (актор `system`, причина `auto_acceptance`) тем же путём, что P-12: доля 10000, `settlement` и выплата в одной транзакции. Размещение уже не в `removed` (претензия, спор) — таймер устарел, ничего не меняется.
 
 ### S-25. Отзыв прав бота
 
