@@ -13,6 +13,7 @@ import (
 
 	"github.com/leha-creator/maxim/internal/integration/rocketwork/rocketworkfake"
 	"github.com/leha-creator/maxim/internal/platform/audit"
+	"github.com/leha-creator/maxim/internal/platform/clock"
 	"github.com/leha-creator/maxim/internal/platform/db"
 	"github.com/leha-creator/maxim/internal/platform/logx"
 )
@@ -38,12 +39,13 @@ type seedWaiter interface {
 // pollWaiter опрашивает базу раз в every не дольше limit.
 type pollWaiter struct {
 	every, limit time.Duration
+	clk          clock.Clock
 	log          *slog.Logger
 }
 
 func (w pollWaiter) Wait(ctx context.Context, what string, done func(ctx context.Context) (bool, error)) error {
 	const op = "Bootstrap.DevSeed"
-	start := time.Now()
+	start := w.clk.Now()
 	t := time.NewTicker(w.every)
 	defer t.Stop()
 	for {
@@ -51,7 +53,7 @@ func (w pollWaiter) Wait(ctx context.Context, what string, done func(ctx context
 		if err != nil || ok {
 			return err
 		}
-		elapsed := time.Since(start)
+		elapsed := w.clk.Now().Sub(start)
 		w.log.DebugContext(ctx, "seed waiting", logx.KeyOp, op, "what", what, "elapsed_ms", elapsed.Milliseconds())
 		if elapsed >= w.limit {
 			return fmt.Errorf("worker did not %s within %s: %w", what, w.limit, errWorkerTimeout)
@@ -96,7 +98,7 @@ func runDevSeed(ctx context.Context, cfg Config, log *slog.Logger, args []string
 	}
 	log.WarnContext(ctx, "dev command used", logx.KeyOp, op, "command", "seed", "orders", *orders, "wait", wait.String())
 	s := &seeder{cfg: cfg, m: m, log: log, out: out, orders: *orders,
-		wait: pollWaiter{every: 2 * time.Second, limit: *wait, log: log}}
+		wait: pollWaiter{every: 2 * time.Second, limit: *wait, clk: in.clock, log: log}}
 	// Состояние подделки Рокет Ворк должно быть общим с api и worker, иначе worker не найдёт исполнителя.
 	if fake, ok := in.rocketwork.(*rocketworkfake.Fake); ok && cfg.RocketWork.FakeStatePath != "" {
 		s.rw = fake
@@ -158,7 +160,7 @@ func (s *seeder) run(ctx context.Context) error {
 	}
 	stages = append(stages, seedStage{"check", s.checkLedger})
 	for _, st := range stages {
-		start := time.Now()
+		start := s.m.in.clock.Now()
 		created, skipped := len(s.created), len(s.skipped)
 		s.log.InfoContext(ctx, "seed stage started", logx.KeyOp, op, "stage", st.name)
 		if err := st.fn(ctx); err != nil {
@@ -167,7 +169,7 @@ func (s *seeder) run(ctx context.Context) error {
 			return fmt.Errorf("seed %s: %w", st.name, err)
 		}
 		s.log.InfoContext(ctx, "seed stage done", logx.KeyOp, op, "stage", st.name, "created", len(s.created)-created,
-			"skipped", len(s.skipped)-skipped, "duration_ms", time.Since(start).Milliseconds())
+			"skipped", len(s.skipped)-skipped, "duration_ms", s.m.in.clock.Now().Sub(start).Milliseconds())
 	}
 	s.summary()
 	return nil
