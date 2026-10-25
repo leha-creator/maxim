@@ -10,6 +10,7 @@
 //	maxim admin ord errors|retry|report — ошибки Яндекс ОРД, повтор, ежемесячный отчёт
 //	maxim admin pd export|anonymize — запросы субъекта персональных данных
 //	maxim dev post-version          — двинуть версию поста заказа (только development и test, R-23)
+//	maxim dev seed                  — тестовые данные разработки (только development и test)
 //	maxim config check --for <mode>  — проверить конфигурацию режима до выпуска
 //	maxim probe <url>                — проверка здоровья для HEALTHCHECK (код 0 при 200)
 //
@@ -48,6 +49,8 @@ commands:
                            ready only with ORD_ENABLED=false)
   dev balance deposit      --email <user> --amount <rub.kop>: invoice and paying statement (development and test only)
   dev statement            --invoice MX-… [--amount <rub.kop>] [--out <path>]: statement file paying an invoice
+  dev seed                 [--wait 5m] [--orders=true]: demo users, catalog, campaigns and orders; needs a running
+                           worker (development and test only)
   config check --for <mode>  validate configuration of a mode (api, worker, migrate, legal, admin, dev) and exit
   probe <url>              GET the url with a 2 s timeout: exit 0 on 200 (container health check)
 `

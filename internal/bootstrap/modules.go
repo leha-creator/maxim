@@ -109,7 +109,7 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 	in.alerter = newAlerter(cfg, in)
 	fakes := cfg.Env == EnvTest
 	// worker строит и публикует производные изображений (R-6, R-7): ему тоже нужно хранилище.
-	if mode == ModeAPI || mode == ModeLegal || mode == ModeWorker || mode == modeAdminMoney {
+	if mode == ModeAPI || mode == ModeLegal || mode == ModeWorker || mode == modeAdminMoney || mode == modeDevSeed {
 		if fakes {
 			in.storage = storagefake.New()
 		} else {
@@ -147,7 +147,7 @@ func newInfra(ctx context.Context, cfg Config, mode string, pool *pgxpool.Pool, 
 		in.connectORD(ctx, cfg)
 	}
 	// Рокет Ворк: подпись вебхука (api), задания (worker), сверка депозита и команды (admin, dev).
-	if mode == ModeAPI || mode == ModeWorker || mode == modeAdminMoney || mode == ModeAdmin || mode == ModeDev {
+	if mode == ModeAPI || mode == ModeWorker || mode == modeAdminMoney || mode == ModeAdmin || mode == ModeDev || mode == modeDevSeed {
 		if err := in.connectRocketWork(ctx, cfg); err != nil {
 			return nil, err
 		}
