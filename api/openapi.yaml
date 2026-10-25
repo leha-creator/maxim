@@ -26,13 +26,17 @@ info:
     - Деньги — целые копейки (`int64`). Суммы считает сервер; клиент передаёт идентификаторы.
     - Время — RFC 3339 в UTC. Время суток (`time_from`, `time_to`) — `ЧЧ:ММ` по Москве.
     - Идентификаторы — UUID; у формата размещения — строка (`f_1_24`).
-    - Сессия — cookie `session` (`HttpOnly`, `Secure`, `SameSite=Lax`), выдаётся при входе.
+    - Сессия — cookie `session` (`HttpOnly`, `SameSite=Lax`; `Secure` при `COOKIE_SECURE=true`,
+      обязательно в продакшене), выдаётся при входе.
     - Защита от межсайтовой подделки — двойная отправка: при входе выдаётся cookie `csrf_token`
       (без `HttpOnly`); меняющие запросы (`POST`, `PUT`, `PATCH`, `DELETE`), кроме `/auth/code`
       и `/auth/login`, повторяют её значение в заголовке `X-CSRF-Token`. Без совпадения — `403`
       с `details.reason = csrf` (тестовый сервер заголовок не проверяет).
     - Превышение лимита частоты — `429` с кодом `rate_limited` и заголовком `Retry-After` в секундах.
     - Операция, которую бэкенд ещё не реализует, отвечает `501` с кодом `not_implemented`.
+    - Любой запрос сначала проверяется по этой спецификации: параметр пути, запроса или заголовка
+      вне схемы (не UUID в `{id}`, `limit` вне 1…100, `Idempotency-Key` длиннее 64) — `422`
+      `validation_failed`, даже если у операции `422` не указан.
     - Переход размещения, недопустимый из текущего состояния, отклоняется ответом `409` с кодом `invalid_transition`.
     - Каждый ответ содержит заголовок `X-Request-Id`; по нему запрос находится в журнале.
 
@@ -137,6 +141,9 @@ paths:
       description: |
         Проверяет код и выдаёт cookie сессии. Если пользователя нет — создаёт его;
         тогда `organizations` пуст и кабинет ведёт на заполнение реквизитов.
+        Верный код заблокированного пользователя — `403` с `details.reason = user_blocked`; любой
+        другой отказ (неверный, истёкший или сгоревший код) — `401`. Код сгорает после
+        `AUTH_LOGIN_CODE_ATTEMPTS` (5) неверных попыток; отдельного лимита частоты у входа нет.
       security: []
       requestBody:
         required: true
@@ -158,7 +165,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
-        '429': { $ref: '#/components/responses/RateLimited' }
   /auth/logout:
     post:
       tags: [auth]
@@ -187,7 +193,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ---------------------------------------------------------------- organizations
   /organizations:
@@ -199,8 +204,14 @@ paths:
         Создаёт организацию пользователя с профилем рекламодателя или блогера. Если организация
         уже есть — добавляет к ней второй профиль («стать блогером», «стать рекламодателем»);
         реквизиты в этом случае не меняются, но поля, обязательные для блогера, передаются.
-        КПП, `tax_regime`, `vat_rate` и данные подписанта есть только у блогера (D-24):
-        у рекламодателя они отклоняются. Допустимые `tax_regime` зависят от `legal_type`,
+        При добавлении профиля `inn` и `legal_type` должны совпадать с организацией (иначе `422`
+        с `details.field = inn`, `details.reason = immutable`), а поля, не нужные этому профилю,
+        молча отбрасываются: у рекламодателя — все поля блогера, у блогера — `name`, `contact_name`,
+        `phone`, `address` и банковские реквизиты. Профиль уже открыт — `409 conflict` с
+        `details.reason = cabinet_already_open`.
+        КПП, `tax_regime`, `vat_rate`, `blogger_full_name` и данные подписанта есть только у блогера
+        (D-24): при создании организации рекламодателя они отклоняются (`422 not_allowed`).
+        Допустимые `tax_regime` зависят от `legal_type`,
         допустимые `vat_rate` — от `tax_regime` (04 §2). Документ о режиме налогообложения
         загружается отдельно: `PUT /organizations/current/tax-document`.
         ИНН, уже принадлежащий другой организации, — `409` с кодом `inn_taken`.
@@ -239,13 +250,16 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Organization' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [organizations]
       operationId: updateCurrentOrganization
       summary: Изменить реквизиты
-      description: ИНН и тип лица не меняются. Передаются только изменяемые поля.
+      description: |
+        ИНН и тип лица не меняются. Передаются только изменяемые поля. Пустая строка (или только
+        пробелы) очищает необязательное поле: `address`, `signer_*`, `bank_name`, `blogger_full_name`.
+        После правки организация проверяется целиком: очистка обязательного для неё поля — `422`
+        с `details.reason = required`.
       requestBody:
         required: true
         content:
@@ -269,8 +283,13 @@ paths:
       summary: Загрузить документ о режиме налогообложения
       description: |
         Документ, подтверждающий режим налогообложения и ставку НДС блогера (04 §2, `auth/org-blg`).
-        Только для кабинета блогера. PDF, JPEG или PNG до 10 МБ; тип определяется по содержимому.
-        Новый файл заменяет прежний.
+        Только для кабинета блогера (иначе `403` с `details.reason = cabinet_required`). PDF, JPEG
+        или PNG до 10 МБ; тип определяется по содержимому. Новый файл заменяет прежний.
+        Не больше 10 загрузок в час на пользователя (`429`, `details.scope = user`; `Retry-After`
+        всегда 3600).
+
+        Отказы по файлу — `422` с `details.field = file` и `details.reason`: `required` — части `file`
+        нет; `malformed` — тело не разбирается как multipart; `empty`; `too_large`; `unsupported_type`.
       requestBody:
         required: true
         content:
@@ -313,12 +332,16 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/LegalDocument' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
   /legal-acceptances:
     post:
       tags: [legal]
       operationId: acceptLegalDocuments
       summary: Принять документы
+      description: |
+        Нет организации — `403` с `details.reason = organization_required`. Документ неизвестен или
+        не действующая версия — `404` с `details.legal_document_id`. Документ не нужен открытым
+        кабинетам — `422` с `details.field = legal_document_ids`, `details.reason = not_required`
+        и `details.legal_document_id`. Повторное принятие ничего не меняет.
       requestBody:
         required: true
         content:
@@ -360,7 +383,6 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /notifications/read-all:
     post:
@@ -393,8 +415,9 @@ paths:
       summary: Каналы каталога
       description: |
         Нужен открытый кабинет рекламодателя. В каталоге виден канал в состоянии `active`, у которого
-        есть включённая цена активного формата и подписчиков меньше порога РКН (10 000) или номер РКН
-        подтверждён. Цены — итог для рекламодателя, с комиссией платформы.
+        задана категория, площадка зарегистрирована в ОРД, есть включённая цена активного формата
+        и подписчиков меньше порога РКН (10 000) или номер РКН подтверждён. Цены — итог для
+        рекламодателя, с комиссией платформы.
 
         Цена для фильтра `price_from`/`price_to` и сортировок по цене и CPV — цена формата `format_id`,
         без него — минимальная включённая цена канала. `cpv` — эта цена, делённая на `avg_views`,
@@ -403,6 +426,10 @@ paths:
 
         Курсор относится к своей сортировке: курсор другой сортировки или испорченный — `422`
         с `details.reason = invalid_cursor`. При смене фильтров выдача начинается с первой страницы.
+
+        Другие отказы `422`: `price_from` больше `price_to` — `details.field = price_from`,
+        `details.reason = range`; то же для `subscribers_from` (`details.field = subscribers_from`);
+        `format_id` не активного формата — `details.field = format_id`, `details.reason = unknown_format`.
       parameters:
         - name: q
           in: query
@@ -457,6 +484,7 @@ paths:
       tags: [catalog]
       operationId: getCatalogChannel
       summary: Карточка канала
+      description: Канал не виден в каталоге (правила — в `listCatalogChannels`) — `404`.
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
@@ -528,7 +556,8 @@ paths:
       operationId: addCartItem
       summary: Добавить канал в корзину
       description: |
-        Один канал — одна позиция. Канал должен быть виден в каталоге (иначе `404`).
+        Один канал — одна позиция. Канал должен быть виден в каталоге по правилам `listCatalogChannels`
+        (иначе `404`).
         Повторное добавление канала — `409` с `details.reason = already_in_cart`.
         `422` с `details.reason`: `format_unavailable` — формат не активен или цена выключена;
         `own_channel` — канал принадлежит той же организации; `cart_full` — в корзине уже 50 позиций.
@@ -620,6 +649,7 @@ paths:
                         items: { $ref: '#/components/schemas/Campaign' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
     post:
       tags: [campaigns]
       operationId: createCampaign
@@ -629,10 +659,12 @@ paths:
 
         Проверки формы (A-39; полнота кампании проверяется при оплате). Отказ — `422`,
         причина в `details.reason`, поле — в `details.field`:
-        - `required` — нет `name` или оно пустое после обрезки пробелов;
+        - `required` — нет `name` или оно из одних пробелов (пустая строка отклоняется схемой
+          с `details.reason = minLength`);
         - `period_order` — `date_from` позже `date_to`;
         - `period_too_long` — период длиннее 14 суток;
-        - `period_in_past` — `date_from` раньше сегодняшнего дня по Москве;
+        - `period_in_past` — `date_from` (а без неё — `date_to`) раньше сегодняшнего дня по Москве;
+          проверяется, только когда даты меняются;
         - `time_pair` — задано только одно из `time_from`, `time_to`;
         - `time_window` — `time_from` не раньше `time_to` или окно короче 1 часа.
       requestBody:
@@ -678,7 +710,8 @@ paths:
       summary: Изменить кампанию
       description: |
         Меняет только переданные поля; отсутствующее поле не меняется. Очистить поле нельзя:
-        `null` и пустая строка не принимаются.
+        `null` не принимается. Пустая строка не принимается в `name`, а в `extra_requirements`
+        сохраняется как есть.
 
         Наименование меняется всегда; период дат и времени и `extra_requirements` — только в `draft`,
         иначе `409` с `details.reason = not_draft`. Новое значение проверяется вместе с сохранёнными
@@ -744,9 +777,14 @@ paths:
           `too_many_nodes` (больше 3000 текстовых узлов), `doc_too_large` (JSON больше 128 КБ),
           `href_required`, `href_unexpected`, `href_invalid` (не `https://`, нет хоста, есть
           `userinfo` или пробел, длиннее 2048);
-        - `too_long` — сериализованный текст длиннее 8000 знаков;
-        - `media_not_found` — файла нет, он удалён или чужой, идентификатор в `details.media_file_id`;
-        - `duplicate_media` — файл повторяется в альбоме.
+        - `too_long` (`details.field = content_doc`) — сериализованный текст длиннее 8000 знаков;
+        - `media_not_found` (`details.field = media_file_ids`) — файла нет, он удалён или чужой,
+          идентификатор в `details.media_file_id`;
+        - `duplicate_media` (`details.field = media_file_ids`) — файл повторяется в альбоме;
+        - `too_many_media` (`details.field = media_file_ids`) — изображений больше `MEDIA_ALBUM_LIMIT`
+          (от 1 до 10).
+
+        Кампания в `archived` — `409 conflict` с `details.reason = campaign_archived`.
 
         Длина считается в кодовых единицах UTF-16 сериализованного текста вместе с разметкой.
       parameters:
@@ -781,6 +819,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /campaigns/{id}/post/preview:
     post:
@@ -817,12 +856,15 @@ paths:
         с баланса; очищает корзину; кампания переходит в `ordered`.
         Отказ — `409` с кодом:
         - `campaign_incomplete` — кампания не готова к оплате; `details.missing_fields` — незаполненные или
-          недопустимые поля (`date_from`, `date_to`, `time_from`, `time_to`), `details.post_problems` — коды
+          недопустимые поля (`date_from`, `date_to`, `time_from`, `time_to`; `date_to` — и когда до конца
+          окна осталось не больше `PLACEMENT_WINDOW_GUARD`, 1 ч), `details.post_problems` — коды
           проблем поста из предпросмотра;
         - `cart_changed` — корзина пуста, канал недоступен, формат выключен или цена изменилась;
           `details.items` — идентификаторы позиций;
         - `insufficient_balance` — `details.missing_amount` — недостающая сумма в копейках;
-        - `conflict` — кампания не в `draft`.
+        - `conflict` с `details.reason = campaign_not_draft` — кампания не в `draft`.
+        Проверки идут по порядку: поля кампании, корзина, пост. Поэтому `missing_fields` и
+        `post_problems` в одном ответе не встречаются, а `cart_changed` приходит раньше проблем поста.
         Повтор с тем же `Idempotency-Key` возвращает созданный заказ.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -864,6 +906,7 @@ paths:
                         items: { $ref: '#/components/schemas/MediaFile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
     post:
       tags: [media]
       operationId: uploadMedia
@@ -945,6 +988,7 @@ paths:
                         items: { $ref: '#/components/schemas/OrderSummary' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /orders/{id}:
     get:
       tags: [orders]
@@ -972,8 +1016,9 @@ paths:
         опубликованные не меняются. Размещения, у которых до конца окна дат меньше 24 ч, отменяются
         (P-06, `window_elapsed`). Для размещений в `created` деньги удерживаются заново.
         Доступно, когда заказ в `rejected` или `in_progress`. Отказ — `409`:
-        `details.reason = post_version_in_progress` — текущая версия на модерации или регистрации;
-        `nothing_to_update` — нет размещений до публикации; код `insufficient_balance` с
+        `details.reason = post_version_in_progress` — текущая версия на модерации или регистрации
+        (заказ в `moderation` или `marking`); `nothing_to_update` — нет размещений до публикации
+        (так же отвечают `completed` и `cancelled`); код `insufficient_balance` с
         `details.missing_amount`; код `campaign_incomplete` с `details.post_problems`.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -1311,6 +1356,8 @@ paths:
         и удаление сообщений, затем отправляет этот код сообщением в канал; бот связывает
         канал с организацией и удаляет сообщение (A-41). Код из 8 символов действует 60 минут,
         регистр и пробелы по краям не важны. Новый код гасит прежний код организации.
+        Не больше `CHANNEL_LINK_CODES_PER_HOUR` (10) кодов организации в час — `429` с
+        `details.scope = channel_link_code` и `Retry-After: 3600`.
         В тестовом сервере привязку выполняет `POST /_mock/channels/link`.
       responses:
         '201':
@@ -1343,7 +1390,11 @@ paths:
       summary: Описание, категория, номер РКН
       description: |
         Канал из `pending_rights` или `rejected` после правки уходит на модерацию, если права бота в порядке.
-        Канал в `unclaimed`, `disconnected` или `blocked` не правится — `409`.
+        Новый `rkn_number` сбрасывает проверку РКН в `pending`: канал `active` с подписчиками не меньше
+        порога РКН уходит в `suspended` с `status_reason = rkn_required` до проверки администратором.
+        Канал в `unclaimed`, `disconnected` или `blocked` не правится — `409` с `details.status`.
+        Неизвестная или архивная категория — `422` с `details.field = category_id`,
+        `details.reason = unknown category`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1413,7 +1464,8 @@ paths:
         `422` с `details.reason`: `in_past` — начало не раньше конца или конец уже прошёл;
         `too_long` — длиннее 90 суток; `too_far` — начало дальше 365 суток от текущего момента;
         `overlap` — пересекается с интервалом канала (соприкосновение границ — не пересечение);
-        `too_many` — у канала уже 50 действующих интервалов.
+        `too_many` — у канала уже 50 действующих интервалов; `placement_conflict`
+        (`details.field = starts_at`) — пересекается с `[publish_at, remove_at)` размещения канала в `scheduled`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1460,7 +1512,9 @@ paths:
       tags: [blogger-placements]
       operationId: listBloggerPlacements
       summary: Запросы и размещения
-      description: Блогер видит размещения, начиная с `awaiting_blogger` (после P-02).
+      description: |
+        Блогер видит размещения, хотя бы раз отправленные ему (P-02), в том числе вернувшиеся
+        в `created` после новой версии поста (P-11). То же правило у `getBloggerPlacement`.
       parameters:
         - name: status
           in: query
@@ -1486,6 +1540,7 @@ paths:
                         items: { $ref: '#/components/schemas/BloggerPlacement' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /blogger/placements/{id}:
     get:
       tags: [blogger-placements]
@@ -1508,9 +1563,9 @@ paths:
       operationId: bloggerAcceptPlacement
       summary: Принять в работу (P-03)
       description: |
-        Из `awaiting_blogger`. Для блогера не юрлица нужен активный исполнитель Рокет Ворк
-        (иначе `409` с `details.reason = contractor_inactive`). Канал должен быть `active`
-        (иначе `409` с `details.reason = channel_not_active`).
+        Из `awaiting_blogger` (иначе `409 invalid_transition`). Для блогера не юрлица нужен активный
+        исполнитель Рокет Ворк (иначе `409 conflict` с `details.reason = contractor_inactive`). Канал
+        должен быть `active` (иначе `409 conflict` с `details.reason = channel_not_active`).
       parameters:
         - $ref: '#/components/parameters/Id'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1559,8 +1614,8 @@ paths:
         если он внутри периода. `remove_at = publish_at + duration_hours`. Интервал топа
         `[publish_at, publish_at + top_hours)` не пересекается с топом других размещений канала (стык допустим).
         `422` с `details.reason`: `publish_at_required`, `outside_window`, `outside_time`, `too_soon`,
-        `not_aligned`, `channel_unavailable_interval`, `slot_taken`. Канал не `active` — `409` с
-        `details.reason = channel_not_active`.
+        `not_aligned`, `channel_unavailable_interval`, `slot_taken`. Канал не `active` — `409 conflict` с
+        `details.reason = channel_not_active`; не из `awaiting_schedule` — `409 invalid_transition`.
       parameters:
         - $ref: '#/components/parameters/Id'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1587,7 +1642,8 @@ paths:
       operationId: bloggerReschedulePlacement
       summary: Перенести публикацию (P-07)
       description: |
-        Из `scheduled`, если до прежнего `publish_at` больше 1 ч (иначе `409 invalid_transition`).
+        Из `scheduled`, если до прежнего `publish_at` больше 1 ч (иначе `409 invalid_transition`;
+        для `scheduled` с `details.reason = too_late`).
         Новое время проверяется по тем же правилам, что `mode=at` планирования; причины `422` — те же.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -1754,7 +1810,6 @@ paths:
                         items: { $ref: '#/components/schemas/AdminChannelListItem' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '501': { $ref: '#/components/responses/NotImplemented' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
   /admin/channels/{id}:
     get:
@@ -1772,7 +1827,6 @@ paths:
               schema: { $ref: '#/components/schemas/AdminChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '501': { $ref: '#/components/responses/NotImplemented' }
         '404': { $ref: '#/components/responses/NotFound' }
   /admin/channels/{id}/approve:
     post:
@@ -1794,7 +1848,6 @@ paths:
               schema: { $ref: '#/components/schemas/AdminChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '501': { $ref: '#/components/responses/NotImplemented' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/channels/{id}/reject:
@@ -1821,7 +1874,6 @@ paths:
               schema: { $ref: '#/components/schemas/AdminChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '501': { $ref: '#/components/responses/NotImplemented' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -1832,8 +1884,9 @@ paths:
       summary: Результат проверки номера РКН (06 §6.3, Q-34)
       description: |
         Роль: moderator, senior. Администратор вручную сверил номер с реестром. Канал в `unclaimed` или `disconnected`
-        либо без номера — `409`. `confirmed` возвращает в `active` канал, приостановленный с
-        причиной `rkn_required`; `rejected` оставляет такой канал приостановленным.
+        либо без номера — `409` с `details.status`. `confirmed` возвращает в `active` канал,
+        приостановленный с причиной `rkn_required`; `rejected` оставляет такой канал приостановленным,
+        а канал `active` с подписчиками не меньше порога РКН переводит в `suspended` с `rkn_required`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1850,7 +1903,6 @@ paths:
               schema: { $ref: '#/components/schemas/AdminChannel' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '501': { $ref: '#/components/responses/NotImplemented' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -1861,8 +1913,9 @@ paths:
       summary: Заблокировать канал (S-19 `block_channel`)
       description: |
         Роль: senior. Из любого состояния, кроме `blocked`. Канал пропадает из каталога и корзины,
-        новые размещения невозможны; уже идущие размещения продолжаются. Основание видно блогеру
-        в `status_reason`. Повторная блокировка — `409`.
+        новые размещения невозможны; уже идущие размещения продолжаются. Блогер видит
+        `status_reason = blocked_by_admin`; основание пишется только в журнал действий.
+        Повторная блокировка — `409` с `details.reason = already_blocked`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1888,7 +1941,9 @@ paths:
       operationId: unblockChannel
       summary: Снять блокировку канала
       description: |
-        Роль: senior. Только из `blocked`; канал уходит на повторную модерацию (`moderation`).
+        Роль: senior. Только из `blocked` (иначе `409` с `details.status`); канал уходит на повторную
+        модерацию (`moderation`), а без прав бота или публичности — в `pending_rights` с
+        `status_reason` `missing_rights` или `not_public`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -1976,7 +2031,7 @@ paths:
           schema: { type: string, enum: [moderation, marking, all], default: moderation }
         - name: query
           in: query
-          description: Номер заказа или ИНН рекламодателя
+          description: Номер заказа или ИНН рекламодателя целиком (точное совпадение)
           schema: { type: string, maxLength: 100 }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -2091,7 +2146,7 @@ paths:
           schema: { type: string, format: date }
         - name: removal_overdue
           in: query
-          description: Только с просроченным снятием (пост жив после `remove_at`)
+          description: Только с просроченным снятием (пост жив после `remove_at` или снятие по сроку не удалось)
           schema: { type: boolean }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -2195,6 +2250,11 @@ paths:
         Роль: senior. Только `published`, когда бот не может удалить пост: публикация считается
         снятой в `removed_at` (между публикацией и «сейчас»), размещение `removed` (P-10), нарушение
         не записывается, срок претензии — от `removed_at`.
+
+        Публикации нет, или она не жива и снятие не просрочено — `409 conflict` с
+        `details.reason = publication_not_live`; недопустимый переход размещения — `409 invalid_transition`.
+        `removed_at` раньше публикации или в будущем — `422` с `details.field = removed_at`,
+        `details.reason = out_of_range`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -2303,7 +2363,9 @@ paths:
       summary: Как распределятся деньги при решении
       description: |
         Роль: moderator, senior. Ничего не меняет. `proportional` без `share` — по предложению системы;
-        его нет — `422` с `details.reason = share_required`.
+        его нет — `422` с `details.reason = share_required`. `share` при `full_payout` или `full_refund`
+        не передаётся, иначе `422` с `details.reason = out_of_range`. В обоих отказах
+        `details.field = performance_share`.
       parameters:
         - $ref: '#/components/parameters/Id'
         - name: resolution
@@ -2330,9 +2392,13 @@ paths:
       operationId: resolveDispute
       summary: Вынести решение (S-18 шаг 3, P-15)
       description: |
-        Роль: moderator, senior. Решение окончательное: повтор — `409` с `details.reason = dispute_resolved`.
-        `accepted` при живой публикации — `409` с `details.reason = publication_live` (удалите пост
-        или дождитесь снятия по сроку). `full_refund` при живой публикации удаляет пост сейчас.
+        Роль: moderator, senior. Решение окончательное: повтор — `409 conflict` с
+        `details.reason = dispute_resolved`. `full_payout` или `proportional` (размещение станет
+        `accepted`) при живой публикации — `409 invalid_transition` с `details.transition = P-15`
+        и `details.reason = publication_live` (удалите пост или дождитесь снятия по сроку).
+        `full_refund` при живой публикации удаляет пост сейчас. Правила `share` и поле
+        `performance_share` в отказах — как у предпросмотра. Комментарий из одних пробелов — `422`
+        с `details.field = comment`, `details.reason = length`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -2558,8 +2624,12 @@ paths:
       summary: Реестр выплат в CSV
       description: |
         Роль: senior. Те же фильтры, что у списка, без постраничности (до 10 000 строк). UTF-8 с BOM,
-        разделитель `;`, суммы в рублях с запятой, время по Москве; ИНН маскирован. Выгрузка
-        пишется в журнал действий.
+        разделитель `;`, суммы в рублях с запятой, время по Москве (`ДД.ММ.ГГГГ ЧЧ:ММ`); ИНН маскирован.
+        Строки сверх 10 000 отбрасываются молча. Выгрузка пишется в журнал действий.
+
+        Колонки: Создана (МСК), Блогер, ИНН, Заказ, Канал, Попытка, Способ, Сумма ₽, Состояние,
+        Код ошибки, Платёжное поручение, Завершена (МСК), Выплата, Размещение. Значения перечислений
+        выводятся как в API; ячейка, начинающаяся с `=`, `+`, `-` или `@`, получает ведущий апостроф.
       parameters:
         - name: status
           in: query
@@ -2590,7 +2660,8 @@ paths:
       operationId: retryPayout
       summary: Повторить выплату (S-19 `retry_payout`)
       description: |
-        Роль: senior. Только последняя попытка `failed` размещения в `accepted`: создаётся новая попытка.
+        Роль: senior. Только последняя попытка `failed` с `method = rocketwork` размещения в `accepted`:
+        создаётся новая попытка. Иначе — `409` с `details.reason = not_retryable`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -2618,6 +2689,11 @@ paths:
       description: |
         Роль: senior. Только `bank_transfer`. Сумма больше порога второго подтверждения — ответ `202`
         с запросом подтверждения: выплата отмечается после подтверждения другим `senior`.
+
+        Отказы: не `bank_transfer`, попытка `failed` или уже `succeeded` с другим `bank_reference` —
+        `409` с `details.reason = invalid_state`; пустой после обрезки пробелов `Idempotency-Key` —
+        `422` с `details.field = Idempotency-Key`, `details.reason = invalid`. Повтор для `succeeded`
+        с тем же `bank_reference` — `200` без изменений.
       parameters:
         - $ref: '#/components/parameters/Id'
         - name: Idempotency-Key
@@ -2650,8 +2726,16 @@ paths:
       operationId: uploadBankStatement
       summary: Загрузить выписку (S-30 шаг 1)
       description: |
-        Роль: senior. Файл «1С:Предприятие» (UTF-8, cp866, windows-1251). Повтор того же файла — `409`
-        с `details.reason = statement_already_imported`; выписка не по счёту платформы — `422`.
+        Роль: senior. Файл «1С:Предприятие» (UTF-8, cp866, windows-1251), до `STATEMENT_MAX_BYTES`
+        (10 МБ); тип файла не проверяется. Повтор того же файла — `409` с
+        `details.reason = statement_already_imported`.
+
+        Отказы по файлу — `422` с `details.field = file` и `details.reason`: `required` — части `file`
+        нет или она пуста; `invalid` — тело не разбирается как multipart; `too_large` — больше лимита;
+        `format` — файл не разобран как выписка; `another_account` — выписка не по счёту платформы.
+
+        Выписка сохраняется до зачисления строк: если зачисление прервалось ошибкой `500`, уже
+        зачисленные строки остаются, а повторная загрузка того же файла вернёт `409`.
       requestBody:
         required: true
         content:
@@ -2723,8 +2807,13 @@ paths:
       operationId: matchBankTransaction
       summary: Зачислить поступление организации (S-30 шаг 3)
       description: |
-        Роль: senior. Из `unmatched` или `ignored`; `matched` — `409`. Сумма зачисляется на баланс,
-        счёт (если указан) помечается `paid`.
+        Роль: senior. Из `unmatched` или `ignored`; `matched` — `409 conflict` с `details.status`.
+        Сумма зачисляется на баланс, счёт (если указан) помечается `paid`.
+
+        Отказы: организация или счёт не найдены — `404`; организация платформы — `422` с
+        `details.field = organization`, `details.reason = platform`; счёт другой организации — `422`
+        с `details.field = invoice`, `details.reason = another_organization`; счёт не в `issued` и не
+        в `expired` — `409 conflict` с `details.status`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -2809,7 +2898,9 @@ paths:
       tags: [admin-payments]
       operationId: cancelAdminInvoice
       summary: Отменить счёт
-      description: 'Роль: senior. Только `issued`.'
+      description: |
+        Роль: senior. Только из `issued` или `expired`; из `paid` и `cancelled` — `409 conflict`
+        с текущим состоянием в `details.status`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -2852,7 +2943,10 @@ paths:
       tags: [admin-ledger]
       operationId: listLedgerEntries
       summary: Журнал денег (проводки)
-      description: 'Роль: senior. Новые первыми.'
+      description: |
+        Роль: senior. Новые первыми. Один элемент — одна проводка: у операции из нескольких проводок
+        (расчёт по размещению, выплата с комиссией) элементы идут подряд с одним `id`. Фильтр
+        `organization_id` отбирает проводки, где организация на стороне дебета или кредита.
       parameters:
         - name: kind
           in: query
@@ -2895,6 +2989,14 @@ paths:
         (100 000 ₽) — проводка сразу (`201`); больше — `202` с запросом подтверждения: проводка
         создаётся, когда другой `senior` подтвердит запрос. Повтор с тем же `Idempotency-Key`
         возвращает ту же проводку или тот же запрос.
+
+        Отказы `409` с `details.reason`: `insufficient_balance` (недостающая сумма в копейках —
+        в `details.missing`); `idempotency_conflict` — тот же ключ с другой проводкой или другим
+        запросом; `second_approval` — нужно второе подтверждение. Отказы `422`: пустой ключ —
+        `details.field = Idempotency-Key`, `details.reason = invalid`; неверная пара счетов (дебет
+        равен кредиту, `organization_id`/`placement_id` не подходят виду счёта) — `details.field = debit`,
+        `details.reason = invalid_account`; пустое основание — `details.field = reason`,
+        `details.reason = required`.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -2927,7 +3029,8 @@ paths:
       operationId: createDepositTopup
       summary: Пополнение депозита Рокет Ворк с расчётного счёта
       description: |
-        Роль: senior. Проводка `deposit_topup` (bank → rocketwork_deposit); порог второго подтверждения — как у ручной проводки.
+        Роль: senior. Проводка `deposit_topup` (bank → rocketwork_deposit); порог второго подтверждения,
+        повтор по `Idempotency-Key` и отказы `409`/`422` — как у ручной проводки.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -2956,8 +3059,10 @@ paths:
       operationId: createBalanceReturn
       summary: Возврат свободного остатка рекламодателю (S-33)
       description: |
-        Роль: senior. Не больше свободного остатка баланса (иначе `409` с `details.reason = insufficient_balance`);
-        перевод на счёт рекламодателя делает человек по реквизитам организации.
+        Роль: senior. Не больше свободного остатка баланса (иначе `409` с `details.reason = insufficient_balance`
+        и недостающей суммой в `details.missing`); тот же `Idempotency-Key` с другой суммой — `409`
+        с `details.reason = idempotency_conflict`. Перевод на счёт рекламодателя делает человек
+        по реквизитам организации.
       parameters:
         - $ref: '#/components/parameters/Id'
         - name: Idempotency-Key
@@ -2988,7 +3093,9 @@ paths:
       tags: [admin-approvals]
       operationId: listAdminApprovals
       summary: Запросы второго подтверждения
-      description: 'Роль: senior. По умолчанию — `pending`, старые первыми.'
+      description: |
+        Роль: senior. По умолчанию — все запросы: `pending` старые первыми, за ними остальные новые
+        первыми. Просроченный запрос переводится в `expired` при чтении.
       parameters:
         - name: status
           in: query
@@ -3020,6 +3127,9 @@ paths:
       description: |
         Роль: senior, не автор запроса (`409` с `details.reason = same_admin`). Операция исполняется
         сразу; уже решённый запрос — `409 approval_decided`, просроченный — `409 approval_expired`.
+        Если исполнение отказало, запрос остаётся `pending`, а ответ — отказ операции: `409` с
+        `details.reason` `insufficient_balance`, `idempotency_conflict` или `invalid_state`; `404` —
+        выплата не найдена.
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
@@ -3065,9 +3175,10 @@ paths:
       operationId: listAdminOrganizations
       summary: Организации
       description: |
-        Роль: moderator, senior. Поиск по ИНН, наименованию или почте участника. ИНН полный у `senior`,
-        маскированный у `moderator`. `senior` ищет по началу ИНН, `moderator` — только по ИНН целиком
-        (иначе подбором по началу восстанавливается скрытая часть, R-14).
+        Роль: moderator, senior. Новые первыми. Поиск по ИНН, части наименования (без учёта регистра)
+        или почте участника целиком. ИНН полный у `senior`, маскированный у `moderator`. `senior` ищет
+        по началу ИНН, `moderator` — только по ИНН целиком (иначе подбором по началу восстанавливается
+        скрытая часть, R-14). Организации платформы в списке нет, её карточка — `404`.
       parameters:
         - name: query
           in: query
@@ -3199,7 +3310,8 @@ paths:
       summary: Журнал действий
       description: |
         Роль: senior. Новые первыми. `data` — как записано (ИНН, почта, телефон и ФИО маскируются при записи);
-        IP-адрес не отдаётся. `manual_only` — только действия администраторов. Коды действий: `channel.approved`,
+        IP-адрес не отдаётся. `manual_only` — только действия администраторов, `actor_type` при этом
+        не учитывается. `from` и `to` — дни по Москве, `to` включительно. Коды действий: `channel.approved`,
         `channel.rejected`, `channel.rkn_checked`, `channel.blocked`, `channel.unblocked`, `channel_category.created`,
         `channel_category.updated`, `post.version_approved`, `post.version_rejected`, `placement.admin_cancel`,
         `placement.admin_mark_removed`, `dispute.opened`, `dispute.resolved`, `dispute.remove_post`,
@@ -3263,7 +3375,9 @@ paths:
       tags: [admin-ord]
       operationId: listOrdErrors
       summary: 'Объекты ОРД в ошибке (S-20 шаг 1)'
-      description: 'Роль: moderator, senior. Давно изменённые первыми.'
+      description: |
+        Роль: moderator, senior. Давно изменённые первыми. Без `limit` страница — 50 записей,
+        а не 20, как у других списков.
       parameters:
         - name: type
           in: query
@@ -3315,7 +3429,7 @@ paths:
       operationId: retryOrdObject
       summary: Повторить отправку в ОРД (S-20 шаг 2)
       description: |
-        Роль: moderator, senior. Только объект в `error`; иначе — `409`. Креатив с erid заново не
+        Роль: moderator, senior. Только объект в `error`; иначе — `409` с `details.sync_status`. Креатив с erid заново не
         отправляется: возобновляется опрос статуса.
       parameters:
         - name: type
@@ -3412,7 +3526,8 @@ paths:
       summary: Отправить отчёт в ОРД
       description: |
         Роль: senior. Ставит в очередь отправки все записи месяца, ждущие отправки или в ошибке.
-        Отчёт не сформирован — `409` с `details.reason = report_not_built`.
+        Отчёт не сформирован — `409` с `details.reason = report_not_built`. Текущий или будущий
+        месяц — `422` с `details.field = period`, `details.reason = period_not_closed`.
       parameters:
         - $ref: '#/components/parameters/Period'
       requestBody:
@@ -3456,8 +3571,9 @@ paths:
       summary: События MAX Bot API
       description: |
         Подлинность — секретная часть пути и секретный токен подписки в заголовке
-        `X-Max-Bot-Api-Secret` (Q-35). Тело до 1 МБ. Событие сохраняется и разбирается
-        заданием; ответ не зависит от результата разбора.
+        `X-Max-Bot-Api-Secret` (Q-35; без `MAX_WEBHOOK_SECRET`, только вне продакшена, заголовок
+        не проверяется). Тело до 1 МБ. Событие сохраняется и разбирается заданием; ответ не зависит
+        от результата разбора: тело без `update_type` тоже получает `200` и отбрасывается.
       security: []
       parameters:
         - name: secret
@@ -3472,13 +3588,19 @@ paths:
             example: { update_type: bot_added, timestamp: 1760000000000, chat_id: -70000000001 }
       responses:
         '200': { description: Событие принято }
+        '400': { description: Тело не прочитано }
         '401': { description: Проверка подлинности не пройдена }
         '413': { description: Тело больше 1 МБ }
+        '500': { description: Событие не сохранено; MAX повторит доставку }
   /webhooks/rocketwork:
     post:
       tags: [webhooks]
       operationId: rocketworkWebhook
       summary: События Рокет Ворк
+      description: |
+        Подпись — заголовок `X-Rocketwork-Signature: sha256=<hex>`, HMAC-SHA256 тела общим секретом
+        (предположение, Q-12). Нет заголовка или секрета — `401`. Событие с верной подписью, но
+        неразобранное или неизвестное — `200`: повтор того же тела ничего не исправит.
       security: []
       requestBody:
         required: true
@@ -3488,9 +3610,11 @@ paths:
             example: { id: rwe-1, event: payment.status_changed, object_id: rwp-1, occurred_at: "2026-10-20T09:00:00Z" }
       responses:
         '200': { description: Событие принято }
+        '400': { description: Тело не прочитано }
         '401': { description: Подпись не прошла проверку }
         '404': { description: Рокет Ворк не подключён (`ROCKETWORK_MODE=disabled`) }
         '413': { description: Тело больше 1 МБ }
+        '500': { description: Событие не сохранено; Рокет Ворк повторит доставку }
 
   # ---------------------------------------------------------------- _mock
   /_mock/reset:
@@ -3701,12 +3825,17 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/AdminApproval' }
     ValidationFailed:
-      description: Запрос не прошёл проверку
+      description: |
+        Запрос не прошёл проверку. В `details` всегда есть `field` и `reason`. Запрос сначала
+        проверяется по этой спецификации: тогда `field` — путь к полю, `reason` — ключевое слово
+        схемы (`required`, `pattern`, `minLength`, `maximum`, `enum`…), а для неразобранного тела или
+        параметра — `malformed` или `invalid`. Проверки предметной области дают свои причины
+        (`required`, `invalid_format`, `not_allowed`, …), они названы в описаниях операций.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example:
-            error: { code: validation_failed, message: request body is invalid, details: { field: email } }
+            error: { code: validation_failed, message: request body is invalid, details: { field: email, reason: pattern } }
             request_id: 0190a000-0000-7000-8000-00000000aaaa
     Unauthorized:
       description: Нет сессии или неверный код
@@ -3715,8 +3844,11 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
       description: |
-        Нет нужного кабинета или не заполнены реквизиты; для операций администратора — нет нужной
-        роли (`details.reason = admin_required`) или запрос не из разрешённой сети (`admin_network`)
+        Доступ запрещён, причина в `details.reason`: `cabinet_required` — нет нужного кабинета
+        (какого — в `details.cabinet`); `organization_required` — не заполнены реквизиты; `csrf` —
+        нет или не совпал `X-CSRF-Token`; `user_blocked` — пользователь заблокирован (при входе);
+        `admin_required` — у операции администратора нет нужной роли. Запрос к `/admin*` не из
+        разрешённой сети отклоняет edge (`403 forbidden` без `details`) до `api`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -3726,7 +3858,9 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Conflict:
-      description: Действие невозможно в текущем состоянии данных
+      description: |
+        Действие невозможно в текущем состоянии данных; уточнение — в `details.reason`
+        (перечислено в описании операции) или в `details.status` с текущим состоянием объекта
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -3986,11 +4120,26 @@ components:
         name: { type: string, minLength: 1, maxLength: 500, description: Наименование или ФИО }
         contact_name: { type: string, minLength: 1, maxLength: 200 }
         phone: { type: string, pattern: '^\+7[0-9]{10}$' }
-        kpp: { type: string, pattern: '^[0-9]{9}$', description: Только для `legal_entity` }
-        address: { type: string, maxLength: 500 }
-        tax_regime: { $ref: '#/components/schemas/TaxRegime' }
-        vat_rate: { $ref: '#/components/schemas/VatRate' }
-        signer_position: { type: string, maxLength: 200 }
+        kpp:
+          type: string
+          pattern: '^[0-9]{9}$'
+          description: Только у `legal_entity` с кабинетом блогера, там обязателен; иначе `422 not_allowed`
+        address:
+          type: string
+          maxLength: 500
+          description: Обязателен у `legal_entity` и `sole_proprietor`; у `self_employed` — `422 not_allowed`
+        tax_regime:
+          allOf: [{ $ref: '#/components/schemas/TaxRegime' }]
+          description: У `self_employed` без значения — `npd`
+        vat_rate:
+          allOf: [{ $ref: '#/components/schemas/VatRate' }]
+          description: У `self_employed` без значения — `none`
+        signer_position:
+          type: string
+          maxLength: 200
+          description: |
+            Поля `signer_*` — только у `legal_entity` с кабинетом блогера, там все четыре обязательны;
+            иначе `422 not_allowed`
         signer_name: { type: string, maxLength: 200 }
         signer_basis_name: { type: string, maxLength: 200 }
         signer_basis_number: { type: string, maxLength: 100 }
@@ -3998,7 +4147,12 @@ components:
         bank_name: { type: string, maxLength: 300 }
         bank_corr_account: { type: string, pattern: '^[0-9]{20}$' }
         bank_bik: { type: string, pattern: '^[0-9]{9}$' }
-        blogger_full_name: { type: string, maxLength: 200, description: ФИО блогера для выплат }
+        blogger_full_name:
+          type: string
+          maxLength: 200
+          description: |
+            ФИО блогера для выплат. Только с кабинетом блогера; у `legal_entity` — `422 not_allowed`,
+            у `sole_proprietor` и `self_employed` обязательно, без значения берётся `name`
     OrganizationCreate:
       allOf:
         - $ref: '#/components/schemas/OrganizationFields'
@@ -4007,7 +4161,12 @@ components:
           properties:
             cabinet: { $ref: '#/components/schemas/Cabinet' }
             legal_type: { $ref: '#/components/schemas/LegalType' }
-            inn: { type: string, pattern: '^([0-9]{10}|[0-9]{12})$', description: '10 цифр у юрлица, 12 у остальных' }
+            inn:
+              type: string
+              pattern: '^([0-9]{10}|[0-9]{12})$'
+              description: |
+                10 цифр у юрлица, 12 у остальных; проверяются контрольные цифры ФНС. Отказы — `422`
+                с `details.reason` `invalid_length` (длина не по `legal_type`) или `invalid_checksum`
     OrganizationUpdate:
       $ref: '#/components/schemas/OrganizationFields'
     Organization:
@@ -4143,6 +4302,7 @@ components:
               items: { $ref: '#/components/schemas/ChannelMetricsPoint' }
             unavailability:
               type: array
+              description: Недоступность, заданная блогером, и интервалы, занятые размещениями; по началу
               items: { $ref: '#/components/schemas/Unavailability' }
     ChannelMetricsPoint:
       type: object
@@ -4176,7 +4336,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/Money' }]
           description: Нет, если формат канала выключен
         price_changed: { type: boolean }
-        available: { type: boolean, description: Канал `active` и формат включён }
+        available: { type: boolean, description: Канал виден в каталоге (правила — в `listCatalogChannels`) и формат включён }
     Cart:
       type: object
       required: [items, total_amount]
@@ -4184,7 +4344,9 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/CartItem' }
-        total_amount: { $ref: '#/components/schemas/Money' }
+        total_amount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Сумма `current_total_amount` доступных позиций
 
     # ------------------------------------------------ campaigns and posts
     CampaignInput:
@@ -4641,7 +4803,8 @@ components:
           description: |
             Код причины состояния: `not_public` — канал закрытый; `missing_rights` — у бота нет
             прав из `missing_permissions`; `unclaimed_expired` — канал не подключён кодом за 7 суток;
-            текст отказа модерации для `rejected`.
+            `rkn_required` — канал приостановлен до подтверждения номера РКН; `blocked_by_admin` —
+            канал заблокирован администратором; текст отказа модерации для `rejected`.
         description: { type: string }
         category_id: { $ref: '#/components/schemas/Uuid' }
         subscribers_count: { type: integer }
@@ -4967,7 +5130,7 @@ components:
           description: Самое раннее начало окна публикации размещений заказа
         urgent:
           type: boolean
-          description: До `publish_from` меньше 6 часов или оно прошло (A-40)
+          description: Заказ в `moderation`, и до `publish_from` меньше 6 часов или оно прошло (A-40); в других состояниях — `false`
         waiting_since: { type: string, format: date-time, description: С какого момента заказ в текущем состоянии }
         created_at: { type: string, format: date-time }
     AdminOrder:
@@ -5008,7 +5171,7 @@ components:
             status_changed_at: { type: string, format: date-time }
             total_amount: { $ref: '#/components/schemas/Money' }
             refund_amount: { $ref: '#/components/schemas/Money' }
-            removal_overdue: { type: boolean, description: Пост жив после `remove_at` }
+            removal_overdue: { type: boolean, description: Пост жив после `remove_at` или снятие по сроку не удалось }
             created_at: { type: string, format: date-time }
     PlacementViolation:
       type: object
@@ -5095,7 +5258,7 @@ components:
             placement: { $ref: '#/components/schemas/AdminPlacement' }
             preview:
               allOf: [{ $ref: '#/components/schemas/DisputePreview' }]
-              description: Распределение по предложенной доле; нет — предложения нет или спор решён
+              description: Распределение по предложенной доле; нет — предложения нет. Остаётся и у решённого спора
             messages:
               type: array
               items: { $ref: '#/components/schemas/DisputeMessage' }
@@ -5118,7 +5281,7 @@ components:
           type: integer
           minimum: 1
           maximum: 9999
-          description: Для `proportional`; нет — предложение системы
+          description: Только для `proportional`; нет — предложение системы. При других решениях — `422 out_of_range`
         comment: { type: string, minLength: 1, maxLength: 2000 }
     DisputeMessage:
       type: object
@@ -5166,6 +5329,7 @@ components:
       properties:
         by_status:
           type: array
+          description: Только состояния, в которых есть выплаты
           items: { $ref: '#/components/schemas/AdminPayoutStatusTotal' }
         deposit_ledger_amount:
           allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
@@ -5178,7 +5342,10 @@ components:
           description: Попытки `created` и `sent`
         shortage_amount:
           allOf: [{ $ref: '#/components/schemas/Money' }]
-          description: Сколько не хватает депозита по журналу до суммы к выплате; 0 — хватает
+          description: |
+            Сколько не хватает депозита по журналу: начислено и не выплачено блогерам, которым платит
+            Рокет Ворк (не `legal_entity`), плюс их доля по размещениям в `published` и `removed`,
+            минус `deposit_ledger_amount`; 0 — хватает
     PayoutMarkPaidInput:
       type: object
       required: [bank_reference, reason]
@@ -5280,8 +5447,13 @@ components:
           description: Расчётный счёт по журналу
         bank_statement_amount:
           allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
-          description: Исходящий остаток последней выписки; нет — выписок нет или в ней нет остатка
-        bank_statement_date: { type: string, format: date }
+          description: |
+            Исходящий остаток последней по периоду (`date_to`) выписки, а не последней загруженной;
+            нет — выписок нет или в ней нет остатка
+        bank_statement_date:
+          type: string
+          format: date
+          description: Конец периода этой выписки; бывает и без `bank_statement_amount`
         bank_difference:
           allOf: [{ $ref: '#/components/schemas/SignedMoney' }]
           description: Выписка минус журнал
@@ -5289,7 +5461,9 @@ components:
       type: object
       required: [id, kind, amount, debit, credit, actor_type, created_at]
       properties:
-        id: { $ref: '#/components/schemas/Uuid' }
+        id:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          description: Идентификатор операции; повторяется у каждой её проводки
         kind: { $ref: '#/components/schemas/LedgerTransactionKind' }
         amount: { $ref: '#/components/schemas/Money' }
         debit: { $ref: '#/components/schemas/LedgerAccountRef' }
@@ -5365,7 +5539,10 @@ components:
       required: [reason]
       properties:
         name: { type: string, minLength: 1, maxLength: 500 }
-        kpp: { type: string, pattern: '^[0-9]{9}$', description: Только для `legal_entity` }
+        kpp:
+          type: string
+          pattern: '^[0-9]{9}$'
+          description: Только у `legal_entity` с кабинетом блогера; иначе `422 not_allowed`
         reason: { type: string, minLength: 1, maxLength: 500 }
 
     # ------------------------------------------------ admin: audit log
@@ -5399,18 +5576,22 @@ components:
       properties:
         type: { $ref: '#/components/schemas/OrdObjectType' }
         id: { $ref: '#/components/schemas/Uuid' }
-        title: { type: string, description: 'Что это, для списка (наименование, номер заказа, канал, месяц)' }
+        title:
+          type: string
+          description: |
+            Что это: в списке ошибок — `вид:идентификатор`, в карточке — подпись вида
+            «Креатив версии <id>», «Статистика ГГГГ-ММ»
         external_id: { type: string }
         status: { $ref: '#/components/schemas/OrdSyncStatus' }
         ord_status: { type: string, description: Статус ответа ОРД }
-        erid: { type: string, description: Для креатива }
+        erid: { type: string, description: Для креатива; в списке ошибок не заполняется }
         error: { type: string }
         attempts: { type: integer, minimum: 0 }
         updated_at: { type: string, format: date-time }
         last_request: { $ref: '#/components/schemas/OrdRequestLog' }
         blocked:
           type: array
-          description: Что ждёт этот объект (зависимые объекты)
+          description: Что ждёт этот объект (зависимые объекты). Бэкенд пока не заполняет
           items: { $ref: '#/components/schemas/OrdObjectRef' }
     OrdObjectRef:
       type: object
