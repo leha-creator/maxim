@@ -67,6 +67,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/caddy"
           sed -e 's/__DOMAIN__/stage-api.example.test/' -e 's/__PREFIX__/maxim-staging/g' \
+            -e 's|__ADMIN_ALLOW__|203.0.113.10/32 private_ranges|g' \
             deploy/app/maxim-app.caddy > "$RUNNER_TEMP/caddy/Caddyfile"
           docker run --rm -v "$RUNNER_TEMP/caddy:/etc/caddy:ro" caddy:2.11.7 \
             caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
